@@ -26,9 +26,12 @@ const label = {
   platform: '平台字段异常',
   list: '数组字段异常',
   leak: '缓存字段泄漏',
+  dev: '开发商字段异常',
+  flag: '布尔字段异常',
 };
 const issues = {
   duplicate: [], date: [], score: [], title: [], id: [], genre: [], platform: [], list: [], leak: [],
+  dev: [], flag: [],
 };
 const seen = new Map();
 
@@ -68,9 +71,22 @@ data.forEach((x, idx) => {
       issues.list.push(`${x.i}.${key}`);
     }
   });
+
+  // 开发商：去重、无公司后缀残留
+  if (Array.isArray(x.dev)) {
+    if (new Set(x.dev).size !== x.dev.length) issues.dev.push(`${x.i}:重复`);
+    if (x.dev.some((d) => /co\.,?\s*ltd|株式会社$|有限会社$/i.test(String(d)))) {
+      issues.dev.push(`${x.i}:未归一`);
+    }
+  }
+
+  if (x.ns != null && typeof x.ns !== 'boolean') issues.flag.push(`${x.i}.ns`);
+
+  // 运行期才注入的字段不能写进数据文件
+  if (x.vo !== undefined) issues.leak.push(`${x.i}.vo`);
 });
 
-const total = Object.values(issues).reduce((n, arr) => n + arr.length, 0);
+let total = Object.values(issues).reduce((n, arr) => n + arr.length, 0);
 Object.keys(issues).forEach((key) => {
   const arr = issues[key];
   if (arr.length) console.log(`FAIL ${label[key]}：${arr.length} 条，示例 ${arr.slice(0, 5).join(', ')}`);
@@ -108,5 +124,70 @@ console.log(`题材覆盖：${withGenre}/${data.length}（${pct(withGenre)}）`)
 console.log(`题材分布：${dist || '无'}`);
 console.log(`平台分布：${topPlatforms || '无'}`);
 console.log(`开发商 Top：${topDevs || '无'}`);
+
+// ---------- 覆盖率底线 ----------
+const floors = [
+  ['发售日', count((x) => x.d) / data.length, 0.95],
+  ['评分', count((x) => Number(x.s) > 0) / data.length, 0.95],
+  ['封面', count((x) => x.img) / data.length, 0.99],
+  ['平台', count((x) => Array.isArray(x.pl) && x.pl.length) / data.length, 0.94],
+  ['开发商', count((x) => Array.isArray(x.dev) && x.dev.length) / data.length, 0.74],
+  ['题材', withGenre / data.length, 0.50],
+];
+floors.forEach(([name, ratio, min]) => {
+  if (ratio < min) {
+    console.log(`FAIL 覆盖率不足：${name} ${(ratio * 100).toFixed(1)}% < ${(min * 100).toFixed(0)}%`);
+    total += 1;
+  }
+});
+
+// ---------- 第二数据源（VNDB） ----------
+try {
+  const vraw = await readFile(path.join(ROOT, 'data', 'vndb.js'), 'utf8');
+  const vm = vraw.match(/window\.GL_VNDB\s*=\s*(\{[\s\S]*\});/);
+  if (!vm) throw new Error('未找到 window.GL_VNDB');
+  const vndb = JSON.parse(vm[1]);
+  const map = vndb.map || {};
+  const ids = new Set(data.map((x) => String(x.i)));
+  const bad = [];
+  Object.keys(map).forEach((id) => {
+    const v = map[id];
+    if (!ids.has(id)) bad.push(`${id}:主库不存在`);
+    else if (!/^v\d+$/.test(String(v.v))) bad.push(`${id}:${v.v}`);
+    else if (!(Number(v.r) >= 0 && Number(v.r) <= 100)) bad.push(`${id}:评分 ${v.r}`);
+    else if (!(Number(v.l) >= 0)) bad.push(`${id}:时长 ${v.l}`);
+  });
+  const matched = Object.keys(map).length;
+  console.log(`VNDB：匹配 ${matched} 条（尝试 ${vndb.meta?.tried || 0}），异常 ${bad.length} 条`);
+  if (matched < 100) {
+    console.log(`FAIL VNDB 匹配过少：${matched} < 100`);
+    total += 1;
+  }
+  if (bad.length) {
+    console.log(`FAIL VNDB 映射异常：${bad.slice(0, 5).join(', ')}`);
+    total += bad.length;
+  }
+  if (Number(vndb.meta?.matched) !== matched) {
+    console.log(`FAIL VNDB 元信息数量不一致：${vndb.meta?.matched} != ${matched}`);
+    total += 1;
+  }
+} catch (err) {
+  console.log(`FAIL 第二数据源不可用：${err.message}`);
+  total += 1;
+}
+
+// ---------- 体积预算 ----------
+const mainSize = Buffer.byteLength(raw, 'utf8');
+let vndbSize = 0;
+try {
+  vndbSize = Buffer.byteLength(await readFile(path.join(ROOT, 'data', 'vndb.js'), 'utf8'), 'utf8');
+} catch { /* 缺失已在上面报错 */ }
+const totalSize = mainSize + vndbSize;
+console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
+if (totalSize > 1300 * 1024) {
+  console.log(`FAIL 数据体积超预算：${(totalSize / 1024).toFixed(0)}KB > 1300KB`);
+  total += 1;
+}
+
 console.log(`问题总数：${total}`);
 process.exit(total ? 1 : 0);

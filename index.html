@@ -20,7 +20,19 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="1.0.0">
+<meta name="version" content="2.0.0">
+<meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
+<link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Galgame 库">
+<meta property="og:title" content="Galgame 库 · 我的游玩">
+<meta property="og:description" content="1820 部 Galgame / 视觉小说的本地优先浏览与游玩记录，支持筛选、搜索、离线与云同步。">
+<meta property="og:url" content="https://xyykmkefke.github.io/galgame-library/">
+<meta property="og:image" content="https://xyykmkefke.github.io/galgame-library/icons/icon-512.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Galgame 库 · 我的游玩">
+<meta name="twitter:description" content="1820 部 Galgame / 视觉小说的本地优先浏览与游玩记录。">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Galgame 库","applicationCategory":"EntertainmentApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},"description":"本地优先的 Galgame 浏览与游玩记录 PWA"}</script>
 <style>
   :root {
     --bg: #0d0f14;
@@ -2345,6 +2357,123 @@
     justify-content: center;
     margin: 10px 0 8px;
   }
+
+  /* 数据统计面板 */
+  .stats-panel {
+    width: min(780px, 100%);
+    max-height: min(86vh, 900px);
+    overflow-y: auto;
+  }
+  .stats-panel h2 { display: flex; align-items: center; gap: 8px; }
+  .stats-panel h2 small { font-size: 11.5px; font-weight: 400; color: var(--muted-2); }
+  .stats-sec { margin: 16px 0 0; }
+  .stats-sec h3 {
+    margin: 0 0 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }
+  .stat-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    gap: 8px;
+  }
+  .stat-card {
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel-2);
+  }
+  .stat-card b { display: block; font-size: 17px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+  .stat-card span { font-size: 11px; color: var(--muted-2); }
+  .bars { display: flex; flex-direction: column; gap: 4px; }
+  .bar-row {
+    display: grid;
+    grid-template-columns: 120px 1fr 58px;
+    gap: 9px;
+    align-items: center;
+    width: 100%;
+    padding: 3px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .bar-row:hover { background: rgba(255, 255, 255, 0.05); }
+  .bar-row .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { height: 7px; border-radius: 5px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 5px; background: var(--grad); }
+  .bar-row .num { color: var(--muted-2); text-align: right; font-variant-numeric: tabular-nums; }
+  .recent-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .recent-chip {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 5px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .recent-chip:hover { border-color: rgba(255, 107, 157, 0.5); color: #ffa8c6; }
+  .stats-src { display: flex; flex-wrap: wrap; gap: 6px; }
+  .stats-src a, .stats-src span {
+    padding: 4px 9px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    font-size: 11.5px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .stats-src a:hover { color: var(--text); border-color: var(--line-strong); }
+  .install-tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 10px 13px;
+    border: 1px solid rgba(139, 123, 255, 0.4);
+    border-radius: 12px;
+    background: rgba(139, 123, 255, 0.10);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .install-tip[hidden] { display: none; }
+  .install-tip b { color: #c7bdff; }
+  .install-tip .x {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--muted-2);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+  .install-tip .x:hover { color: var(--text); }
+  @media (max-width: 640px) {
+    .bar-row { grid-template-columns: 96px 1fr 48px; font-size: 11.5px; }
+    .stats-panel { max-height: 88vh; padding: 16px; }
+  }
+  .footer-link {
+    border: 0;
+    background: none;
+    padding: 0;
+    font: inherit;
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .footer-link:hover { color: var(--pink); }
 </style>
 </head>
 <body>
@@ -2377,6 +2506,10 @@
       <div class="popmenu" id="moreMenu" hidden>
         <div class="popmenu-label">视图</div>
         <button type="button" data-more="palette">命令面板<kbd>Ctrl K</kbd></button>
+        <button type="button" data-more="stats">数据统计<kbd>I</kbd></button>
+        <button type="button" data-more="random">摇一部<kbd>R</kbd></button>
+        <button type="button" data-more="recent">最近浏览</button>
+        <button type="button" data-more="install">安装到桌面</button>
         <div class="popmenu-label">数据</div>
         <button type="button" data-more="export-json">导出 JSON</button>
         <button type="button" data-more="export-csv">导出 CSV</button>
@@ -2392,6 +2525,11 @@
     </div>
 
     <div class="offlinebar" id="offlineBar" hidden>当前处于离线状态，封面可能无法加载；已保存的游玩记录仍可正常使用。</div>
+
+    <div class="install-tip" id="installTip" hidden>
+      <div id="installTipText"></div>
+      <button class="x" id="installTipClose" type="button" aria-label="关闭安装提示">×</button>
+    </div>
 
     <div class="filters-slot" id="filtersSlot">
     <div class="filters" id="filters">
@@ -2512,7 +2650,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · 通过镜像接口生成 · 封面版权归原作者所有 · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本">v1.0.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.0.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2556,6 +2694,8 @@
       <li><kbd>↑</kbd><kbd>↓</kbd><span>在卡片间移动焦点</span></li>
       <li><kbd>Enter</kbd><span>打开当前聚焦的游戏</span></li>
       <li><kbd>T</kbd><span>切换明暗主题</span></li>
+      <li><kbd>I</kbd><span>打开数据统计</span></li>
+      <li><kbd>R</kbd><span>摇一部随机推荐</span></li>
       <li><kbd>Esc</kbd><span>关闭详情或本帮助</span></li>
       <li><kbd>?</kbd><span>打开 / 关闭本帮助</span></li>
       <li><kbd>长按</kbd><span>快捷菜单；Ctrl K 打开命令面板</span></li>
@@ -2598,6 +2738,18 @@
   </div>
 </div>
 
+<div class="help" id="statsModal" hidden>
+  <div class="help-mask" data-stats-close></div>
+  <div class="help-panel stats-panel" role="dialog" aria-modal="true" aria-label="数据统计">
+    <h2>数据统计 <small id="statsCount"></small></h2>
+    <div id="statsBody"></div>
+    <div class="settings-actions">
+      <button class="btn" id="statsCopy" type="button">复制统计</button>
+      <button class="btn primary" id="statsClose" type="button">完成</button>
+    </div>
+  </div>
+</div>
+
 <div class="help" id="syncModal" hidden>
   <div class="help-mask" id="syncMask"></div>
   <div class="help-panel sync-panel" role="dialog" aria-modal="true" aria-label="云同步设置">
@@ -2629,11 +2781,15 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="data/galgames.js"></script>
+<script src="data/vndb.js"></script>
 <script>
 (function () {
   'use strict';
 
   var META = window.GL_META || {};
+  // 第二数据源（VNDB）：按 Bangumi id 关联，主库结构不变
+  var VNDB = window.GL_VNDB || null;
+  var VNDB_MAP = (VNDB && VNDB.map) || {};
   // 数据量约 1700 条，一次加载，无需分层
   var fullReady = true;
   var DATA = [];
@@ -2641,6 +2797,10 @@
 
   function adoptData() {
     DATA = (window.GL_DATA || []).slice();
+    DATA.forEach(function (x) {
+      var v = VNDB_MAP[String(x.i)];
+      if (v && v.v) x.vo = v;
+    });
     byId = new Map(DATA.map(function (x) { return [String(x.i), x]; }));
   }
 
@@ -3111,7 +3271,30 @@
     renderHist();
   }
 
-  // ---- 最近浏览已移除，仅保留详情导航 ----
+  // ---- 最近浏览：最多保留 20 条，记录详情打开顺序 ----
+  var RECENT_KEY = 'yuc_gl_recent_v1';
+  var RECENT_MAX = 20;
+
+  function loadRecent() {
+    if (!canStore) return [];
+    try {
+      var arr = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+      if (!Array.isArray(arr)) return [];
+      return arr.map(String).filter(function (id) { return byId.has(id); }).slice(0, RECENT_MAX);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  var recentList = loadRecent();
+
+  function pushRecent(id) {
+    if (!canStore || !byId.has(id)) return;
+    recentList = [id].concat(recentList.filter(function (x) { return x !== id; })).slice(0, RECENT_MAX);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(recentList));
+    } catch (e) { /* 忽略存储失败 */ }
+  }
 
   function writeHash() {
     var parts = [
@@ -4065,6 +4248,11 @@
       ['排名', item.rk ? '#' + item.rk : '未上榜']
     ];
     if (item.ns) pairs.push(['分级', 'R18']);
+    // 第二数据源：VNDB 评分（0-100）折算成 10 分制，时长换算成小时
+    if (item.vo) {
+      pairs.push(['VNDB', item.vo.r ? (item.vo.r / 10).toFixed(1) : '暂无']);
+      if (item.vo.l) pairs.push(['时长', Math.round(item.vo.l / 60) + ' 小时']);
+    }
     // 收藏后补充加入时间，方便回顾是什么时候开始玩的
     if (collected && myMap[id].t) {
       var jd = new Date(myMap[id].t);
@@ -4088,11 +4276,20 @@
       return '<span class="chip"><i>' + label + '</i>' + inner + '</span>';
     }
 
+    var linkHtml = '<span class="chip"><i>链接</i>' +
+      '<a class="inlink" href="https://bgm.tv/subject/' + id + '" target="_blank" rel="noreferrer">Bangumi</a>' +
+      '<span class="sep">·</span>' +
+      (item.vo
+        ? '<a class="inlink" href="https://vndb.org/' + escapeHtml(item.vo.v) + '" target="_blank" rel="noreferrer">VNDB</a>'
+        : '<a class="inlink" href="https://vndb.org/v?q=' + encodeURIComponent(item.n || detailTitle) +
+          '" target="_blank" rel="noreferrer">VNDB 搜索</a>') +
+      '</span>';
+
     $('detailMeta').innerHTML = pairs.map(function (p) {
       if (p[0] === '平台' && item.pl && item.pl.length) return chipGroup('平台', item.pl, 'jump-type');
       if (p[0] === '开发' && item.dev && item.dev.length) return chipGroup('开发', item.dev, 'jump-dev');
       return '<span class="chip"><i>' + p[0] + '</i>' + escapeHtml(p[1]) + '</span>';
-    }).join('') + genreHtml;
+    }).join('') + genreHtml + linkHtml;
     var opts = $('statusOpts');
     opts.hidden = !collected;
     opts.innerHTML = collected ? STATUS_ORDER.map(function (s) {
@@ -4128,6 +4325,7 @@
     if (switched) {
       var panel = modalEl.querySelector('.modal-panel');
       if (panel) panel.scrollTop = 0;
+      pushRecent(id);
     }
     writeHash();
   }
@@ -4162,6 +4360,268 @@
 
   $('detailPrev').addEventListener('click', function () { shiftDetail(-1); });
   $('detailNext').addEventListener('click', function () { shiftDetail(1); });
+
+  // ---- 数据统计面板 ----
+  var statsEl = $('statsModal');
+  var lastStatsFocus = null;
+
+  function percent(n, total) {
+    return total ? (n / total * 100).toFixed(1) : '0.0';
+  }
+
+  function statCards(list) {
+    return '<div class="stat-cards">' + list.map(function (item) {
+      return '<div class="stat-card"><b>' + escapeHtml(String(item[0])) + '</b><span>' +
+        escapeHtml(String(item[1])) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  // attr 为空时渲染为不可点击的分布条；有 attr 时整行可点，直接跳到对应筛选
+  function barRows(entries, total, attr) {
+    if (!entries.length) return '<p class="hint">暂无数据</p>';
+    var max = 1;
+    entries.forEach(function (e) { if (e[1] > max) max = e[1]; });
+    var tag = attr ? 'button' : 'div';
+    return '<div class="bars">' + entries.map(function (e) {
+      var open = attr
+        ? '<' + tag + ' class="bar-row" type="button" ' + attr + '="' +
+          escapeHtml(e[2] == null ? e[0] : e[2]) + '" title="按「' + escapeHtml(e[0]) + '」筛选">'
+        : '<' + tag + ' class="bar-row">';
+      return open +
+        '<span class="lbl">' + escapeHtml(e[0]) + '</span>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' +
+          (e[1] / max * 100).toFixed(1) + '%"></span></span>' +
+        '<span class="num">' + e[1] + ' · ' + percent(e[1], total) + '%</span>' +
+        '</' + tag + '>';
+    }).join('') + '</div>';
+  }
+
+  function topEntries(counts, limit) {
+    return Object.keys(counts).map(function (k) { return [k, counts[k]]; })
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .slice(0, limit || 10);
+  }
+
+  function renderStats() {
+    var total = DATA.length;
+    var dateN = 0, scoreN = 0, imgN = 0, plN = 0, devN = 0, genreN = 0, nsN = 0, voN = 0, sumS = 0;
+    var years = {}, plats = {}, devs = {}, gens = {};
+    var minY = 9999, maxY = 0;
+    DATA.forEach(function (x) {
+      if (x.d) {
+        dateN += 1;
+        var y = parseInt(String(x.d).slice(0, 4), 10);
+        if (y) {
+          years[y] = (years[y] || 0) + 1;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+      if (Number(x.s) > 0) { scoreN += 1; sumS += Number(x.s); }
+      if (x.img) imgN += 1;
+      if (x.pl && x.pl.length) plN += 1;
+      if (x.dev && x.dev.length) devN += 1;
+      if (x.tg && x.tg.length) genreN += 1;
+      if (x.ns) nsN += 1;
+      if (x.vo) voN += 1;
+      (x.pl || []).forEach(function (p) { plats[p] = (plats[p] || 0) + 1; });
+      (x.dev || []).forEach(function (d) { devs[d] = (devs[d] || 0) + 1; });
+      (x.tg || []).forEach(function (g) { gens[g] = (gens[g] || 0) + 1; });
+    });
+
+    var mineN = 0;
+    var statusCounts = { want: 0, doing: 0, done: 0, drop: 0 };
+    Object.keys(myMap).forEach(function (id) {
+      if (!byId.has(id)) return;
+      mineN += 1;
+      var s = myMap[id] && myMap[id].s;
+      if (statusCounts[s] != null) statusCounts[s] += 1;
+    });
+
+    var decade = {};
+    Object.keys(years).forEach(function (y) {
+      var key = Math.floor(Number(y) / 10) * 10 + 's';
+      decade[key] = (decade[key] || 0) + years[y];
+    });
+    var decadeEntries = Object.keys(decade).sort().map(function (k) { return [k, decade[k]]; });
+
+    var genreEntries = GENRES.filter(function (g) { return gens[g.id]; })
+      .map(function (g) { return [g.label, gens[g.id], g.id]; })
+      .sort(function (a, b) { return b[1] - a[1]; });
+
+    var recentHtml = recentList.length
+      ? '<div class="recent-list">' + recentList.slice(0, 12).map(function (id) {
+          var x = byId.get(id);
+          return '<button class="recent-chip" type="button" data-stat-recent="' + id + '">' +
+            escapeHtml((x.cn || x.n || '').slice(0, 28)) + '</button>';
+        }).join('') + '</div>'
+      : '<p class="hint">打开过的作品会出现在这里</p>';
+
+    $('statsCount').textContent = '共 ' + total + ' 部';
+    $('statsBody').innerHTML =
+      '<div class="stats-sec">' + statCards([
+        [total, '全库条目'],
+        [minY <= maxY ? minY + '–' + maxY : '未知', '发售年份跨度'],
+        [scoreN ? (sumS / scoreN).toFixed(2) : '—', '平均评分'],
+        [mineN, '我的收藏'],
+        [nsN, 'R18 标记'],
+        [voN, 'VNDB 匹配']
+      ]) + '</div>' +
+      '<div class="stats-sec"><h3>字段覆盖率</h3>' + statCards([
+        [percent(dateN, total) + '%', '发售日'],
+        [percent(scoreN, total) + '%', '评分'],
+        [percent(imgN, total) + '%', '封面'],
+        [percent(plN, total) + '%', '平台'],
+        [percent(devN, total) + '%', '开发商'],
+        [percent(genreN, total) + '%', '题材']
+      ]) + '</div>' +
+      '<div class="stats-sec"><h3>年份分布（按十年）</h3>' + barRows(decadeEntries, total) + '</div>' +
+      '<div class="stats-sec"><h3>平台 Top 10</h3>' + barRows(topEntries(plats, 10), total, 'data-stat-platform') + '</div>' +
+      '<div class="stats-sec"><h3>开发商 Top 10</h3>' + barRows(topEntries(devs, 10), total, 'data-stat-dev') + '</div>' +
+      '<div class="stats-sec"><h3>题材分布</h3>' + barRows(genreEntries, total, 'data-stat-genre') + '</div>' +
+      '<div class="stats-sec"><h3>我的游玩</h3>' + barRows([
+        ['想玩', statusCounts.want], ['在玩', statusCounts.doing],
+        ['已通关', statusCounts.done], ['弃坑', statusCounts.drop]
+      ], mineN || 1) + '</div>' +
+      '<div class="stats-sec"><h3>最近浏览</h3>' + recentHtml + '</div>' +
+      '<div class="stats-sec"><h3>数据来源</h3><div class="stats-src">' +
+        '<a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 主库 ' + total + ' 条</a>' +
+        '<a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB 匹配 ' + voN + ' 条</a>' +
+        '<span>快照 ' + escapeHtml(META.generatedAt || '未知') + '</span>' +
+      '</div></div>';
+  }
+
+  function statsSummary() {
+    var lines = ['Galgame 库 · 数据统计', '全库 ' + DATA.length + ' 部'];
+    var platforms = {};
+    var devs = {};
+    DATA.forEach(function (x) {
+      (x.pl || []).forEach(function (p) { platforms[p] = (platforms[p] || 0) + 1; });
+      (x.dev || []).forEach(function (d) { devs[d] = (devs[d] || 0) + 1; });
+    });
+    lines.push('平台 Top5：' + topEntries(platforms, 5).map(function (e) { return e[0] + ' ' + e[1]; }).join(' / '));
+    lines.push('开发商 Top5：' + topEntries(devs, 5).map(function (e) { return e[0] + ' ' + e[1]; }).join(' / '));
+    lines.push('我的收藏：' + Object.keys(myMap).filter(function (id) { return byId.has(id); }).length + ' 部');
+    return lines.join('\n');
+  }
+
+  function openStats() {
+    if (statsEl.hidden) lastStatsFocus = document.activeElement;
+    renderStats();
+    statsEl.hidden = false;
+    $('statsClose').focus();
+  }
+
+  function closeStats() {
+    if (statsEl.hidden) return;
+    statsEl.hidden = true;
+    var back = lastStatsFocus;
+    lastStatsFocus = null;
+    if (back && document.contains(back)) back.focus();
+  }
+
+  statsEl.addEventListener('click', function (e) {
+    if (e.target.closest('[data-stats-close]') || e.target.closest('#statsClose')) {
+      closeStats();
+      return;
+    }
+    var recent = e.target.closest('[data-stat-recent]');
+    if (recent) {
+      closeStats();
+      openDetail(recent.dataset.statRecent);
+      return;
+    }
+    var pl = e.target.closest('[data-stat-platform]');
+    var dv = e.target.closest('[data-stat-dev]');
+    var gr = e.target.closest('[data-stat-genre]');
+    if (!pl && !dv && !gr) return;
+    closeStats();
+    setTab('all');
+    state.year = 'all';
+    state.q = '';
+    state.status = 'all';
+    state.onlyMine = false;
+    state.hideMine = false;
+    state.highScore = false;
+    if (pl) {
+      state.platform = pl.dataset.statPlatform;
+      state.dev = '';
+      state.genre = 'all';
+    } else if (dv) {
+      state.dev = dv.dataset.statDev;
+      state.platform = 'all';
+      state.genre = 'all';
+    } else {
+      state.genre = gr.dataset.statGenre;
+      state.platform = 'all';
+      state.dev = '';
+    }
+    syncControls();
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  $('statsCopy').addEventListener('click', function () {
+    copyText(statsSummary(), function () { toast('统计摘要已复制'); });
+  });
+  $('statsLink').addEventListener('click', openStats);
+
+  // ---- 摇一部：从当前筛选结果里随机抽一部 ----
+  function randomPick() {
+    var pool = filteredList();
+    if (!pool.length) pool = DATA;
+    if (!pool.length) { toast('还没有可抽取的条目'); return; }
+    var pick = pool[Math.floor(Math.random() * pool.length)];
+    openDetail(String(pick.i));
+  }
+
+  // ---- PWA 安装引导：Chrome/Edge 用原生提示，iOS 给出添加到主屏幕步骤 ----
+  var deferredPrompt = null;
+  var INSTALL_KEY = 'yuc_gl_install_v1';
+
+  function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      window.navigator.standalone === true;
+  }
+
+  function installTipDismissed() {
+    try { return localStorage.getItem(INSTALL_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function showInstallTip() {
+    var tip = $('installTip');
+    if (!tip) return;
+    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    $('installTipText').innerHTML = ios
+      ? '<b>安装到主屏幕</b>：在 Safari 点底部「分享」→「添加到主屏幕」，即可全屏离线使用。'
+      : '<b>安装到桌面</b>：在浏览器地址栏右侧或菜单里选择「安装 Galgame 库」，之后可像 App 一样离线打开。';
+    tip.hidden = false;
+  }
+
+  function installApp() {
+    showInstallTip();
+    var evt = deferredPrompt;
+    deferredPrompt = null;
+    if (evt) {
+      try {
+        var ret = evt.prompt();
+        if (ret && typeof ret.catch === 'function') ret.catch(function () {});
+        evt.userChoice.then(function () {}, function () {});
+      } catch (err) { /* 非用户手势时浏览器会拒绝，保留文字引导即可 */ }
+      return;
+    }
+    if (isStandalone()) toast('已经以独立应用方式打开');
+  }
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+  });
+
+  $('installTipClose').addEventListener('click', function () {
+    $('installTip').hidden = true;
+    try { localStorage.setItem(INSTALL_KEY, '1'); } catch (e) { /* 忽略存储失败 */ }
+  });
 
   function setStatus(id, status) {
     var item = byId.get(id);
@@ -4414,6 +4874,10 @@
     else if (act === 'check-update') checkUpdate();
     else if (act === 'help') $('helpBtn').click();
     else if (act === 'palette') openPalette();
+    else if (act === 'stats') openStats();
+    else if (act === 'random') randomPick();
+    else if (act === 'recent') openStats();
+    else if (act === 'install') installApp();
     else if (act === 'export-json') $('exportBtn').click();
     else if (act === 'export-csv') $('exportCsv').click();
     else if (act === 'export-md') $('exportMd').click();
@@ -4525,6 +4989,10 @@
       { name: '只用高分（≥8.0）', kind: '筛选', run: function () { state.highScore = true; syncControls(); render(); } },
       { name: '只看已收藏', kind: '筛选', run: function () { state.onlyMine = true; state.hideMine = false; syncControls(); render(); } },
       { name: '隐藏已收藏', kind: '筛选', run: function () { state.hideMine = true; state.onlyMine = false; syncControls(); render(); } },
+      { name: '数据统计', kind: '视图', run: function () { openStats(); } },
+      { name: '摇一部', kind: '发现', run: function () { randomPick(); } },
+      { name: '最近浏览', kind: '发现', run: function () { openStats(); } },
+      { name: '安装到桌面', kind: '应用', run: function () { installApp(); } },
       { name: '切换明暗主题', kind: '外观', run: function () { $('themeBtn').click(); } },
       { name: '云同步设置', kind: '数据', run: function () { $('syncBtn').click(); } },
       { name: '导出 JSON', kind: '数据', run: function () { $('exportBtn').click(); } },
@@ -5313,6 +5781,15 @@
       }
       return;
     }
+    if (!$('statsModal').hidden) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeStats();
+      } else if (e.key === 'Tab') {
+        trapModalTab($('statsModal'), e);
+      }
+      return;
+    }
     if (!$('help').hidden) {
       if (e.key === 'Escape' || e.key === '?') {
         e.preventDefault();
@@ -5359,6 +5836,16 @@
     if ((e.key === 't' || e.key === 'T') && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       toggleTheme();
+      return;
+    }
+    if ((e.key === 'i' || e.key === 'I') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      openStats();
+      return;
+    }
+    if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      randomPick();
       return;
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -6029,6 +6516,15 @@
   if (initialDetail && byId.has(initialDetail)) openDetail(initialDetail);
   updateDataHint();
   renderDataUpdated();
+  var verEl = $('appVersion');
+  if (verEl) {
+    var verMeta = document.querySelector('meta[name="version"]');
+    if (verMeta && verMeta.content) verEl.textContent = 'v' + verMeta.content;
+  }
+  // iOS 没有 beforeinstallprompt，只在首次访问时给出添加到主屏幕的说明
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !isStandalone() && !installTipDismissed()) {
+    setTimeout(showInstallTip, 2500);
+  }
   if (!canStore) {
     $('storageWarn').hidden = false;
   }

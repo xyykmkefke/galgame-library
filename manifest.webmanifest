@@ -1,8 +1,8 @@
 {
   "name": "Galgame 库 · 我的游玩",
   "short_name": "Galgame",
-  "description": "本地优先的 Galgame 浏览与游玩记录",
-  "version": "1.0.0",
+  "description": "本地优先的 Galgame 浏览与游玩记录：1820 部作品，支持筛选、搜索、统计、离线与云同步",
+  "version": "2.0.0",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",

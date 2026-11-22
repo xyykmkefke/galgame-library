@@ -376,3 +376,53 @@ PWA / 移动端：
 - 验收：`npm run verify` 由 59 项扩到 75 项，当前 75/75；`npm run check-data` 问题总数 0。
 - 版本：`package.json` 升至 1.1.0（相对 v1.0.0 增加数据源与交互改进）。
 - 部署：受本次任务约束，未执行 commit / push / Pages 开启；部署命令见第 7 节 Step 6。
+
+## 12. v1.x 收尾与 v2.0 多源（2.0.0）
+
+### 12.1 版本拆分
+
+本轮把第一阶段称为「1 大版本收尾」，内容落在 v1.2 / v1.3 / v1.4，随后进入 v2.0，对外统一发布 **2.0.0**：
+
+- v1.2 洞察：数据统计面板、摇一部、最近浏览、PWA 安装引导、SEO。
+- v1.3 元数据：开发商名归一、详情 Bangumi / VNDB 双外链、VNDB 评分与时长。
+- v1.4 自动化：verify 扩到 100 项、GitHub Actions、check-data 覆盖率底线与体积预算。
+- v2.0 多源：VNDB 补充数据独立成 `data/vndb.js`，运行时按 Bangumi ID 关联。
+
+### 12.2 新增文件与数据
+
+| 文件 | 作用 |
+|---|---|
+| `scripts/fetch-vndb.mjs` | VNDB Kana API 补充脚本，标题归一 + 年份容差保守匹配 |
+| `data/vndb.js` | 生成物，`window.GL_VNDB = { meta, map }`，map 键为 Bangumi ID |
+| `data/build/vndb-map.json` | 匹配缓存（不提交），增量续跑 |
+| `.github/workflows/ci.yml` | push / PR 跑 check-data + verify |
+| `robots.txt` / `sitemap.xml` | 站点索引 |
+
+VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC、去空格标点、小写），与候选的 `title / alttitle / titles / aliases` 比对，要求至少一个完全相等；候选按标题重合度、发售年差（≤3 年）、投票数排序取第一。宁缺毋滥，未命中不写入。
+
+### 12.3 页面变化
+
+- 头部「更多」新增：数据统计（`I`）、摇一部（`R`）、最近浏览、安装到桌面。
+- 统计面板：6 张总量卡 + 6 张覆盖率卡 + 年份按十年分布 + 平台 / 开发商 Top10 + 题材分布 + 我的状态 + 最近浏览 + 数据来源；平台 / 开发商 / 题材分布条点击即跳筛选。
+- 最近浏览：`yuc_gl_recent_v1`，最多 20 条，去重置顶。
+- 详情：有 VNDB 匹配时显示 VNDB 评分（0-100 折算 10 分制）与时长；「链接」chip 提供 Bangumi 与 VNDB（未匹配时给 VNDB 搜索）。
+- 安装引导：`beforeinstallprompt` 捕获后原生提示；iOS 首次访问 2.5s 后提示添加到主屏幕；关闭记 `yuc_gl_install_v1`。
+- SW 缓存升级 `yuc-gl-shell-v2`，预缓存 `data/vndb.js`。
+
+### 12.4 数据变化
+
+- `scripts/fetch-games.mjs` 增加 `normalizeDevName` / `normalizeDevList`：去掉「株式会社」「有限会社」「Co., Ltd.」「Inc.」等前后缀，纯符号丢弃。开发商覆盖率保持 76.0%。
+- 规则改动可完全离线重算：`node scripts/fetch-games.mjs`（缓存齐全时网络请求 0 次）。
+- `check-data` 新增：开发商重复 / 后缀残留、`ns` 类型、`vo` 泄漏、6 项覆盖率底线、VNDB 映射合法性、数据体积预算（<1300KB）。
+
+### 12.5 验收
+
+- `npm run check-data`：问题总数 0，VNDB 匹配与体积见输出。
+- `npm run verify`：100 项全绿（新增 VNDB 关联、详情双外链、统计面板与跳筛选、最近浏览、摇一部、安装引导、SEO、体积预算、开发商归一、版本号等）。
+- 已知未验证：真实 GitHub Gist（仍为 mock）、真机 iOS 添加到主屏幕、月幕数据源（需 client_id / client_secret，纯前端不可放凭据）。
+
+### 12.6 后续可选
+
+1. 月幕接入：需要服务端代理保存凭据，或改为构建期离线抓取后随仓库发布。
+2. VNDB 覆盖面：当前只补热度前 350 条，可 `--limit=800` 继续增量；注意 200 次 / 5 分钟限流。
+3. 系列聚合：可基于标题前缀或 VNDB 系列关系生成 `series` 字段。

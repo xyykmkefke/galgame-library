@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://xyykmkefke.github.io/galgame-library/sitemap.xml

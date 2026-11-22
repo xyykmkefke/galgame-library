@@ -180,6 +180,31 @@ function splitValues(values, re = /[、，,]/) {
   return out;
 }
 
+// 开发商名归一：去掉「株式会社」「Co., Ltd.」等公司后缀，便于按厂商聚合
+const DEV_NOISE_HEAD = /^(株式会社|有限会社|合同会社|（株）|\(株\)|（有）|\(有\))\s*/;
+const DEV_NOISE_TAIL = /\s*(co\.,?\s*ltd\.?|co\.,?\s*ltd|inc\.?|llc|ltd\.?|corporation|corp\.?|gmbh|株式会社|有限会社|合同会社)\s*$/i;
+
+function normalizeDevName(raw) {
+  let v = cleanToken(raw);
+  v = v.replace(DEV_NOISE_HEAD, '').replace(DEV_NOISE_TAIL, '').trim();
+  v = v.replace(/^[·・,，、.\s]+|[·・,，、.\s]+$/g, '');
+  // 至少保留一个任意语言的字母或数字；纯符号视为无效
+  if (!v || !/[\p{L}\p{N}]/u.test(v)) return '';
+  return v;
+}
+
+function normalizeDevList(list) {
+  const out = [];
+  const seen = new Set();
+  (list || []).forEach((raw) => {
+    const name = normalizeDevName(raw);
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  });
+  return out;
+}
+
 // 多值字段用「、」连接成一个展示字符串
 function joinValues(values) {
   return splitValues(values, /[、，,/／]/).join('、');
@@ -372,6 +397,8 @@ async function main() {
           if (tg.length) rest.tg = tg;
           else delete rest.tg;
 
+          // 开发商名归一，改规则后可直接离线重算
+          if (Array.isArray(rest.dev)) rest.dev = normalizeDevList(rest.dev);
           if (Array.isArray(rest.dev) && !rest.dev.length) delete rest.dev;
 
           const prev = byId.get(rest.i);

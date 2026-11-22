@@ -15,11 +15,15 @@ const CDP_PORT = 9338;
 const KEEP = process.argv.includes('--keep');
 
 const EDGE_CANDIDATES = [
+  process.env.CHROME_PATH,
   'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-];
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+].filter(Boolean);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -177,6 +181,7 @@ async function main() {
         '--disable-gpu',
         '--hide-scrollbars',
         '--no-first-run',
+        ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
         `--remote-debugging-port=${CDP_PORT}`,
         `--user-data-dir=${profile}`,
         '--window-size=1440,1100',
@@ -644,15 +649,15 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v1/.test(swText) && /data\/galgames\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v2/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v1').then((c)=>c.match('./data/galgames.js')).then(Boolean)");
-    check('Service Worker 已缓存全库数据', cachedData === true);
+      "caches.open('yuc-gl-shell-v2').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js')])).then((a)=>a.every(Boolean))");
+    check('Service Worker 已缓存全库数据与第二数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
       offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
@@ -673,6 +678,125 @@ async function main() {
     const deepTitle = await cdp.evaluate("document.getElementById('modalTitle').textContent");
     check('深链 #d=1126 直接打开详情', /时空轮回/.test(deepTitle), deepTitle);
     await cdp.evaluate("document.getElementById('modalClose').click()");
+
+    // ---------- v1.2 发现 / 统计 / 安装引导 ----------
+    const vndbInfo = await cdp.evaluate(
+      "(() => { const v=window.GL_VNDB||{}; const m=v.map||{}; let n=0; (window.GL_DATA||[]).forEach((x)=>{ if(x.vo) n++; }); return [Object.keys(m).length, n, (v.meta||{}).matched||0]; })()");
+    check('VNDB 第二数据源已加载并关联', vndbInfo[0] > 100 && vndbInfo[1] === vndbInfo[0], vndbInfo.join(' / '));
+    check('VNDB 元信息与映射数量一致', vndbInfo[2] === vndbInfo[0], vndbInfo[2] + ' / ' + vndbInfo[0]);
+    const rawHasVo = await cdp.evaluate("!!(window.GL_VNDB && (window.GL_VNDB.map || {})['13'])");
+    check('VNDB 数据独立于主库文件', rawHasVo === true);
+
+    const vId = await cdp.evaluate("(() => { const x=(window.GL_DATA||[]).find((x)=>x.vo && x.vo.l && x.vo.r); return x ? String(x.i) : ''; })()");
+    await cdp.evaluate(`location.hash = '#d=${vId}'`);
+    await waitFor("document.getElementById('modal').hidden === false");
+    const vndbDetail = await cdp.evaluate(
+      "(() => { const m=document.getElementById('detailMeta'); return { text: m.textContent, vndb: (m.querySelector('a[href*=\"vndb.org\"]')||{}).getAttribute ? m.querySelector('a[href*=\"vndb.org\"]').getAttribute('href') : '', bgm: m.querySelector('a[href*=\"bgm.tv\"]') ? 1 : 0 }; })()");
+    check('详情展示 VNDB 评分与时长', /VNDB/.test(vndbDetail.text) && /时长/.test(vndbDetail.text), vndbDetail.text.slice(0, 80));
+    check('详情提供 Bangumi 与 VNDB 外链', vndbDetail.bgm === 1 && /^https:\/\/vndb\.org\/v\d+$/.test(vndbDetail.vndb), vndbDetail.vndb);
+
+    const recentSaved = await cdp.evaluate("JSON.parse(localStorage.getItem('yuc_gl_recent_v1')||'[]')");
+    check('最近浏览写入 yuc_gl_recent_v1', Array.isArray(recentSaved) && recentSaved[0] === vId, JSON.stringify(recentSaved.slice(0, 3)));
+    await cdp.evaluate("document.getElementById('modalClose').click()");
+    await sleep(200);
+
+    // 统计面板
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'i',bubbles:true}))");
+    await sleep(250);
+    check('I 键打开数据统计', await cdp.evaluate("document.getElementById('statsModal').hidden === false") === true);
+    const statsInfo = await cdp.evaluate(
+      "(() => { const b=document.getElementById('statsBody'); return { cards: b.querySelectorAll('.stat-card').length, bars: b.querySelectorAll('.bar-row').length, text: b.textContent }; })()");
+    check('统计面板含覆盖率与分布', statsInfo.cards >= 12 && statsInfo.bars >= 20, statsInfo.cards + ' 卡片 / ' + statsInfo.bars + ' 条');
+    check('统计面板显示字段覆盖率百分比', /%/.test(statsInfo.text) && /字段覆盖率/.test(statsInfo.text));
+    check('统计面板列出最近浏览', (await cdp.evaluate("document.querySelectorAll('#statsBody [data-stat-recent]').length")) > 0);
+
+    const statPlat = await cdp.evaluate(
+      "(() => { const b=document.querySelector('#statsBody [data-stat-platform]'); if(!b) return ''; const v=b.dataset.statPlatform; b.click(); return v; })()");
+    await sleep(450);
+    const statFiltered = await cdp.evaluate(
+      "(() => [document.getElementById('statsModal').hidden, document.getElementById('platform').value, document.querySelectorAll('.card').length])()");
+    check('统计条点击即按平台筛选', !!statPlat && statFiltered[0] === true && statFiltered[1] === statPlat && statFiltered[2] > 0,
+      statPlat + ' → ' + statFiltered[2] + ' 张');
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'i',bubbles:true}))");
+    await sleep(250);
+    const statDev = await cdp.evaluate(
+      "(() => { const b=document.querySelector('#statsBody [data-stat-dev]'); if(!b) return ''; const v=b.dataset.statDev; b.click(); return v; })()");
+    await sleep(450);
+    const devFiltered = await cdp.evaluate(
+      "(() => [document.getElementById('statsModal').hidden, document.getElementById('developer').value, document.querySelectorAll('.card').length])()");
+    check('统计条点击即按开发商筛选', !!statDev && devFiltered[0] === true && devFiltered[1] === statDev && devFiltered[2] > 0,
+      statDev + ' → ' + devFiltered[2] + ' 张');
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'i',bubbles:true}))");
+    await sleep(200);
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+    check('Esc 关闭统计面板', await cdp.evaluate("document.getElementById('statsModal').hidden === true") === true);
+
+    // 最近浏览去重并置顶
+    const recentOrder = await cdp.evaluate("(() => { const l=JSON.parse(localStorage.getItem('yuc_gl_recent_v1')||'[]'); return [l.length, new Set(l).size, l[0]]; })()");
+    check('最近浏览去重且最新在前', recentOrder[0] === recentOrder[1] && recentOrder[0] > 0, String(recentOrder));
+    check('最近浏览上限 20 条', recentOrder[0] <= 20, recentOrder[0] + ' 条');
+
+    // 摇一部：只在当前筛选结果内抽取
+    await cdp.evaluate("document.querySelector('[data-year=\"2020\"]').click()");
+    await sleep(300);
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'r',bubbles:true}))");
+    await waitFor("document.getElementById('modal').hidden === false", 4000);
+    const randomDate = await cdp.evaluate("document.getElementById('detailMeta').textContent");
+    check('R 键摇一部随机打开详情', await cdp.evaluate("document.getElementById('modal').hidden === false") === true);
+    check('摇一部只从当前筛选结果抽取', /2020/.test(randomDate), randomDate.slice(0, 40));
+    await cdp.evaluate("document.getElementById('modalClose').click()");
+    await sleep(200);
+    await cdp.evaluate("document.querySelector('[data-year=\"all\"]').click()");
+    await sleep(300);
+
+    // 安装引导
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await cdp.evaluate("(() => { const b=[...document.querySelectorAll('#moreMenu [data-more]')].find((x)=>x.dataset.more==='install'); b.click(); })()");
+    await sleep(300);
+    const installVisible = await cdp.evaluate("document.getElementById('installTip').hidden === false");
+    check('安装引导可显示', installVisible === true);
+    if (installVisible) {
+      await cdp.evaluate("document.getElementById('installTipClose').click()");
+      await sleep(150);
+      const installDismissed = await cdp.evaluate(
+        "(() => [document.getElementById('installTip').hidden, localStorage.getItem('yuc_gl_install_v1')])()");
+      check('关闭安装引导后不再提示', installDismissed[0] === true && installDismissed[1] === '1', String(installDismissed));
+    }
+
+    // 键盘帮助与命令面板
+    const helpText = await cdp.evaluate("document.getElementById('help').textContent");
+    check('快捷键帮助包含统计与随机', /I/.test(helpText) && /R/.test(helpText) && /数据统计/.test(helpText) && /摇一部/.test(helpText));
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}))");
+    await sleep(250);
+    await cdp.evaluate("(() => { const i=document.getElementById('paletteInput'); i.value='摇'; i.dispatchEvent(new Event('input',{bubbles:true})); })()");
+    await sleep(250);
+    const paletteRandom = await cdp.evaluate("document.getElementById('paletteList').textContent");
+    check('命令面板可搜索新增命令', /摇一部/.test(paletteRandom), paletteRandom.slice(0, 40));
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+
+    // SEO 与体积预算
+    const seo = await cdp.evaluate(
+      "Promise.all(['robots.txt','sitemap.xml'].map((u)=>fetch(u).then((r)=>r.ok?r.text():''))).then(([r,s])=>[r.indexOf('Sitemap')>=0, s.indexOf('galgame-library')>=0])");
+    check('robots 与 sitemap 可访问', seo[0] && seo[1], String(seo));
+    const seoMeta = await cdp.evaluate(
+      "(() => { const q=(s)=>!!document.querySelector(s); return [q('meta[name=\"description\"]'), q('meta[property=\"og:title\"]'), q('meta[property=\"og:image\"]'), q('link[rel=\"canonical\"]')]; })()");
+    check('描述、OG 与 canonical 完整', seoMeta.every(Boolean), String(seoMeta));
+    const dataSize = await cdp.evaluate(
+      "Promise.all(['data/galgames.js','data/vndb.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
+    check('数据体积在预算内（<1.3MB）', dataSize[0] + dataSize[1] < 1300000, (dataSize[0] + dataSize[1]) + ' 字节');
+    const devJunk = await cdp.evaluate(
+      "(() => { const bad=[]; (window.GL_DATA||[]).forEach((x)=>(x.dev||[]).forEach((d)=>{ if (/co\\.,?\\s*ltd|株式会社$|有限会社$/i.test(d)) bad.push(d); })); return bad.slice(0, 5); })()");
+    check('开发商名已归一（无公司后缀）', devJunk.length === 0, devJunk.join(' / '));
+    const appVer = await cdp.evaluate("(document.querySelector('meta[name=\"version\"]')||{}).content || ''");
+    check('页面版本号 ≥ 1.2.0', /^1\.[2-9]\.|^[2-9]\./.test(appVer), appVer);
 
     // ---------- 移动端 ----------
     await cdp.send('Emulation.setDeviceMetricsOverride', {
