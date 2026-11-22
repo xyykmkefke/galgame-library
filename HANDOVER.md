@@ -419,10 +419,42 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 - `npm run check-data`：问题总数 0，VNDB 匹配与体积见输出。
 - `npm run verify`：100 项全绿（新增 VNDB 关联、详情双外链、统计面板与跳筛选、最近浏览、摇一部、安装引导、SEO、体积预算、开发商归一、版本号等）。
-- 已知未验证：真实 GitHub Gist（仍为 mock）、真机 iOS 添加到主屏幕、月幕数据源（需 client_id / client_secret，纯前端不可放凭据）。
+- 已知未验证：真实 GitHub Gist（仍为 mock）、真机 iOS 添加到主屏幕。
+- 月幕数据源已在 v2.1 接入，见下一节。
 
 ### 12.6 后续可选
 
-1. 月幕接入：需要服务端代理保存凭据，或改为构建期离线抓取后随仓库发布。
+1. 月幕接入：需要服务端代理保存凭据，或改为构建期离线抓取后随仓库发布。（v2.1 已按构建期抓取落地）
 2. VNDB 覆盖面：当前按热度补到 700 条，成功匹配 627 条（约全库 34%）；继续用 `node scripts/fetch-vndb.mjs --limit=1200` 增量推进，注意 200 次 / 5 分钟限流（脚本已固定 1.6s 间隔）。
 3. 系列聚合：可基于标题前缀或 VNDB 系列关系生成 `series` 字段。
+
+## 13. v2.1 月幕第三数据源（2.1.0）
+
+### 13.1 凭据与接口
+
+- 月幕为学习 / 实验提供公共凭据，无需申请：`client_id=ymgal`，`client_secret=luna0327`；专属凭据在 <https://github.com/ymgal/docs> 提 issue。
+- Token：`GET https://www.ymgal.games/oauth/token?grant_type=client_credentials&client_id=ymgal&client_secret=luna0327&scope=public`，有效期约 1 小时，脚本内复用并在 401 时刷新。
+- 请求头必须带 `Authorization: Bearer <token>`、`version: 1`、`Accept: application/json;charset=utf-8`（漏 Bearer 会 401）。
+- 搜索：`GET /open/archive/search-game?mode=list&keyword=<urlencode>&pageNum=1&pageSize=10`。
+- 站点链接：`https://www.ymgal.games/GA<gid>`。
+
+### 13.2 构建与页面
+
+| 文件 | 作用 |
+|---|---|
+| `scripts/fetch-ymgal.mjs` | 月幕补充脚本，标题归一严格匹配、顺序 800ms 限速、429 退避 |
+| `data/ymgal.js` | 生成物，`window.GL_YMGAL = { meta, map }`，map 键为 Bangumi ID |
+| `data/build/ymgal-map.json` | 匹配缓存（不提交），增量续跑 |
+
+- 匹配值：`{ g, n, cn, d, o, i, s, hc }`（gid、原名、中文名、发售日、开发商、封面、评分、中文版）。
+- 页面 `adoptData()` 注入 `x.ym`，主库结构不变；详情展示月幕评分（有值时）、中文版标记与月幕外链；统计面板新增「月幕匹配」卡与数据来源链接；页脚标注月幕 Galgame 来源。
+- SW 缓存升级 `yuc-gl-shell-v3`，SHELL 预缓存 `data/ymgal.js`。
+- R18 保持不隐藏：仍全量收录并以详情「分级 R18」标记，不加默认隐藏。
+
+### 13.3 验收
+
+- `npm run check-data`：问题总数 0；月幕匹配 441 条（尝试 758），映射异常 0；体积 675KB + 71KB + 92KB = 838KB。
+- `npm run verify`：108/108 通过（新增月幕关联、独立文件、详情外链与中文版标记、统计卡、页脚署名、SW v3 预缓存）。
+- GitHub Actions CI 保持开启，push 后自动跑 check-data + verify。
+
+

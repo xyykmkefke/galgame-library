@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.0.0">
+<meta name="version" content="2.1.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2650,7 +2650,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.0.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.1.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2782,6 +2782,7 @@
 
 <script src="data/galgames.js"></script>
 <script src="data/vndb.js"></script>
+<script src="data/ymgal.js"></script>
 <script>
 (function () {
   'use strict';
@@ -2790,6 +2791,9 @@
   // 第二数据源（VNDB）：按 Bangumi id 关联，主库结构不变
   var VNDB = window.GL_VNDB || null;
   var VNDB_MAP = (VNDB && VNDB.map) || {};
+  // 第三数据源（月幕）：同样按 Bangumi id 关联
+  var YMGAL = window.GL_YMGAL || null;
+  var YMGAL_MAP = (YMGAL && YMGAL.map) || {};
   // 数据量约 1700 条，一次加载，无需分层
   var fullReady = true;
   var DATA = [];
@@ -2800,6 +2804,8 @@
     DATA.forEach(function (x) {
       var v = VNDB_MAP[String(x.i)];
       if (v && v.v) x.vo = v;
+      var y = YMGAL_MAP[String(x.i)];
+      if (y && y.g) x.ym = y;
     });
     byId = new Map(DATA.map(function (x) { return [String(x.i), x]; }));
   }
@@ -4253,6 +4259,11 @@
       pairs.push(['VNDB', item.vo.r ? (item.vo.r / 10).toFixed(1) : '暂无']);
       if (item.vo.l) pairs.push(['时长', Math.round(item.vo.l / 60) + ' 小时']);
     }
+    // 第三数据源：月幕评分与中文版标记
+    if (item.ym) {
+      if (Number(item.ym.s) > 0) pairs.push(['月幕', Number(item.ym.s).toFixed(1)]);
+      if (item.ym.hc) pairs.push(['中文版', '有']);
+    }
     // 收藏后补充加入时间，方便回顾是什么时候开始玩的
     if (collected && myMap[id].t) {
       var jd = new Date(myMap[id].t);
@@ -4283,6 +4294,10 @@
         ? '<a class="inlink" href="https://vndb.org/' + escapeHtml(item.vo.v) + '" target="_blank" rel="noreferrer">VNDB</a>'
         : '<a class="inlink" href="https://vndb.org/v?q=' + encodeURIComponent(item.n || detailTitle) +
           '" target="_blank" rel="noreferrer">VNDB 搜索</a>') +
+      (item.ym
+        ? '<span class="sep">·</span><a class="inlink" href="https://www.ymgal.games/GA' + escapeHtml(item.ym.g) +
+          '" target="_blank" rel="noreferrer">月幕</a>'
+        : '') +
       '</span>';
 
     $('detailMeta').innerHTML = pairs.map(function (p) {
@@ -4404,7 +4419,7 @@
 
   function renderStats() {
     var total = DATA.length;
-    var dateN = 0, scoreN = 0, imgN = 0, plN = 0, devN = 0, genreN = 0, nsN = 0, voN = 0, sumS = 0;
+    var dateN = 0, scoreN = 0, imgN = 0, plN = 0, devN = 0, genreN = 0, nsN = 0, voN = 0, ymN = 0, sumS = 0;
     var years = {}, plats = {}, devs = {}, gens = {};
     var minY = 9999, maxY = 0;
     DATA.forEach(function (x) {
@@ -4424,6 +4439,7 @@
       if (x.tg && x.tg.length) genreN += 1;
       if (x.ns) nsN += 1;
       if (x.vo) voN += 1;
+      if (x.ym) ymN += 1;
       (x.pl || []).forEach(function (p) { plats[p] = (plats[p] || 0) + 1; });
       (x.dev || []).forEach(function (d) { devs[d] = (devs[d] || 0) + 1; });
       (x.tg || []).forEach(function (g) { gens[g] = (gens[g] || 0) + 1; });
@@ -4465,7 +4481,8 @@
         [scoreN ? (sumS / scoreN).toFixed(2) : '—', '平均评分'],
         [mineN, '我的收藏'],
         [nsN, 'R18 标记'],
-        [voN, 'VNDB 匹配']
+        [voN, 'VNDB 匹配'],
+        [ymN, '月幕匹配']
       ]) + '</div>' +
       '<div class="stats-sec"><h3>字段覆盖率</h3>' + statCards([
         [percent(dateN, total) + '%', '发售日'],
@@ -4487,6 +4504,7 @@
       '<div class="stats-sec"><h3>数据来源</h3><div class="stats-src">' +
         '<a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 主库 ' + total + ' 条</a>' +
         '<a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB 匹配 ' + voN + ' 条</a>' +
+        '<a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕匹配 ' + ymN + ' 条</a>' +
         '<span>快照 ' + escapeHtml(META.generatedAt || '未知') + '</span>' +
       '</div></div>';
   }

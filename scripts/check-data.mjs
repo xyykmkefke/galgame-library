@@ -176,14 +176,55 @@ try {
   total += 1;
 }
 
+// ---------- 第三数据源（月幕） ----------
+try {
+  const yraw = await readFile(path.join(ROOT, 'data', 'ymgal.js'), 'utf8');
+  const ymMatch = yraw.match(/window\.GL_YMGAL\s*=\s*(\{[\s\S]*\});/);
+  if (!ymMatch) throw new Error('未找到 window.GL_YMGAL');
+  const ymgal = JSON.parse(ymMatch[1]);
+  const map = ymgal.map || {};
+  const ids = new Set(data.map((x) => String(x.i)));
+  const bad = [];
+  Object.keys(map).forEach((id) => {
+    const v = map[id];
+    if (!ids.has(id)) bad.push(`${id}:主库不存在`);
+    else if (!(Number.isInteger(Number(v.g)) && Number(v.g) > 0)) bad.push(`${id}:gid ${v.g}`);
+    else if (!String(v.n || '').trim()) bad.push(`${id}:缺少标题`);
+    else if (v.d && !/^\d{4}-\d{2}-\d{2}$/.test(String(v.d))) bad.push(`${id}:日期 ${v.d}`);
+    else if (v.s !== '' && !(Number(v.s) >= 0 && Number(v.s) <= 10)) bad.push(`${id}:评分 ${v.s}`);
+    else if (v.hc !== 0 && v.hc !== 1) bad.push(`${id}:hc ${v.hc}`);
+  });
+  const matched = Object.keys(map).length;
+  console.log(`月幕：匹配 ${matched} 条（尝试 ${ymgal.meta?.tried || 0}），异常 ${bad.length} 条`);
+  if (matched < 100) {
+    console.log(`FAIL 月幕匹配过少：${matched} < 100`);
+    total += 1;
+  }
+  if (bad.length) {
+    console.log(`FAIL 月幕映射异常：${bad.slice(0, 5).join(', ')}`);
+    total += bad.length;
+  }
+  if (Number(ymgal.meta?.matched) !== matched) {
+    console.log(`FAIL 月幕元信息数量不一致：${ymgal.meta?.matched} != ${matched}`);
+    total += 1;
+  }
+} catch (err) {
+  console.log(`FAIL 第三数据源不可用：${err.message}`);
+  total += 1;
+}
+
 // ---------- 体积预算 ----------
 const mainSize = Buffer.byteLength(raw, 'utf8');
 let vndbSize = 0;
+let ymgalSize = 0;
 try {
   vndbSize = Buffer.byteLength(await readFile(path.join(ROOT, 'data', 'vndb.js'), 'utf8'), 'utf8');
 } catch { /* 缺失已在上面报错 */ }
-const totalSize = mainSize + vndbSize;
-console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
+try {
+  ymgalSize = Buffer.byteLength(await readFile(path.join(ROOT, 'data', 'ymgal.js'), 'utf8'), 'utf8');
+} catch { /* 缺失已在上面报错 */ }
+const totalSize = mainSize + vndbSize + ymgalSize;
+console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB + 月幕 ${(ymgalSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
 if (totalSize > 1300 * 1024) {
   console.log(`FAIL 数据体积超预算：${(totalSize / 1024).toFixed(0)}KB > 1300KB`);
   total += 1;

@@ -649,15 +649,15 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v2/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v3/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v2').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js')])).then((a)=>a.every(Boolean))");
-    check('Service Worker 已缓存全库数据与第二数据源', cachedData === true);
+      "caches.open('yuc-gl-shell-v3').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+    check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
       offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
@@ -700,7 +700,28 @@ async function main() {
     await cdp.evaluate("document.getElementById('modalClose').click()");
     await sleep(200);
 
-    // 统计面板
+    // ---------- v2.1 月幕第三数据源 ----------
+    const ymgalInfo = await cdp.evaluate(
+      "(() => { const y=window.GL_YMGAL||{}; const m=y.map||{}; let n=0; (window.GL_DATA||[]).forEach((x)=>{ if(x.ym) n++; }); return [Object.keys(m).length, n, (y.meta||{}).matched||0]; })()");
+    check('月幕第三数据源已加载并关联', ymgalInfo[0] > 100 && ymgalInfo[1] === ymgalInfo[0], ymgalInfo.join(' / '));
+    check('月幕元信息与映射数量一致', ymgalInfo[2] === ymgalInfo[0], ymgalInfo[2] + ' / ' + ymgalInfo[0]);
+    const ymgalFile = await cdp.evaluate(
+      "fetch('data/ymgal.js').then((r)=>r.text()).then((t)=>[t.indexOf('window.GL_YMGAL')>=0, t.length])");
+    check('月幕数据独立成文件', ymgalFile[0] === true, ymgalFile[1] + ' 字节');
+
+    const ymId = await cdp.evaluate(
+      "(() => { const x=(window.GL_DATA||[]).find((x)=>x.ym&&x.ym.hc); return x ? String(x.i) : ((window.GL_DATA||[]).find((x)=>x.ym)||{}).i || ''; })()");
+    await cdp.evaluate(`location.hash = '#d=${ymId}'`);
+    await waitFor("document.getElementById('modal').hidden === false");
+    const ymDetail = await cdp.evaluate(
+      "(() => { const m=document.getElementById('detailMeta'); const a=m.querySelector('a[href*=\"ymgal.games\"]'); return { text: m.textContent, href: a ? a.getAttribute('href') : '' }; })()");
+    check('详情提供月幕外链', /^https:\/\/www\.ymgal\.games\/GA\d+$/.test(ymDetail.href), ymDetail.href);
+    check('详情展示月幕中文版标记', /中文版/.test(ymDetail.text), ymDetail.text.slice(0, 60));
+    await cdp.evaluate("document.getElementById('modalClose').click()");
+    await sleep(200);
+
+    const ymFooter = await cdp.evaluate("!!document.querySelector('footer a[href*=\"ymgal.games\"]')");
+    check('页脚注明月幕 Galgame 数据来源', ymFooter === true);
     await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'i',bubbles:true}))");
     await sleep(250);
     check('I 键打开数据统计', await cdp.evaluate("document.getElementById('statsModal').hidden === false") === true);
@@ -708,6 +729,7 @@ async function main() {
       "(() => { const b=document.getElementById('statsBody'); return { cards: b.querySelectorAll('.stat-card').length, bars: b.querySelectorAll('.bar-row').length, text: b.textContent }; })()");
     check('统计面板含覆盖率与分布', statsInfo.cards >= 12 && statsInfo.bars >= 20, statsInfo.cards + ' 卡片 / ' + statsInfo.bars + ' 条');
     check('统计面板显示字段覆盖率百分比', /%/.test(statsInfo.text) && /字段覆盖率/.test(statsInfo.text));
+    check('统计面板显示月幕匹配', /月幕匹配/.test(statsInfo.text));
     check('统计面板列出最近浏览', (await cdp.evaluate("document.querySelectorAll('#statsBody [data-stat-recent]').length")) > 0);
 
     const statPlat = await cdp.evaluate(
@@ -790,8 +812,9 @@ async function main() {
       "(() => { const q=(s)=>!!document.querySelector(s); return [q('meta[name=\"description\"]'), q('meta[property=\"og:title\"]'), q('meta[property=\"og:image\"]'), q('link[rel=\"canonical\"]')]; })()");
     check('描述、OG 与 canonical 完整', seoMeta.every(Boolean), String(seoMeta));
     const dataSize = await cdp.evaluate(
-      "Promise.all(['data/galgames.js','data/vndb.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
-    check('数据体积在预算内（<1.3MB）', dataSize[0] + dataSize[1] < 1300000, (dataSize[0] + dataSize[1]) + ' 字节');
+      "Promise.all(['data/galgames.js','data/vndb.js','data/ymgal.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
+    check('数据体积在预算内（<1.3MB）', dataSize[0] + dataSize[1] + dataSize[2] < 1300000,
+      (dataSize[0] + dataSize[1] + dataSize[2]) + ' 字节');
     const devJunk = await cdp.evaluate(
       "(() => { const bad=[]; (window.GL_DATA||[]).forEach((x)=>(x.dev||[]).forEach((d)=>{ if (/co\\.,?\\s*ltd|株式会社$|有限会社$/i.test(d)) bad.push(d); })); return bad.slice(0, 5); })()");
     check('开发商名已归一（无公司后缀）', devJunk.length === 0, devJunk.join(' / '));

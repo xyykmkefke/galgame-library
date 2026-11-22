@@ -1,13 +1,14 @@
 {
   "name": "galgame-library",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
-  "description": "本地优先的 Galgame 浏览与游玩记录，内置 Bangumi galgame 标签条目与 VNDB 补充数据",
+  "description": "本地优先的 Galgame 浏览与游玩记录，内置 Bangumi galgame 标签条目与 VNDB、月幕补充数据",
   "license": "MIT",
   "scripts": {
     "start": "npx serve .",
     "fetch-data": "node scripts/fetch-games.mjs",
     "fetch-vndb": "node scripts/fetch-vndb.mjs",
+    "fetch-ymgal": "node scripts/fetch-ymgal.mjs",
     "build-pinyin": "node scripts/build-pinyin.mjs",
     "check-data": "node scripts/check-data.mjs",
     "verify": "node scripts/verify.mjs"
