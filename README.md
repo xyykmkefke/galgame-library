@@ -48,7 +48,7 @@ VNDB 匿名限流约 200 次 / 5 分钟，脚本固定 1.6s 间隔并对 429 退
 
 ```bash
 npm start        # 本地静态服务
-npm run verify   # Edge/Chrome + CDP 自动验收（108 项，含 Gist mock、离线重开、统计与三数据源）
+npm run verify   # Edge/Chrome + CDP 自动验收（109 项，含 Gist mock、离线重开、统计与三数据源）
 ```
 
 CI：`.github/workflows/ci.yml` 在 push / PR 时运行 `check-data` 与 `verify`（Linux 下自动使用系统 Chrome）。

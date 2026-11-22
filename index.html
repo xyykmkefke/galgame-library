@@ -3734,14 +3734,19 @@
     var selecting = state.bulk && state.tab === 'mine';
     var selected = selecting && bulkSel[id];
     var phHue = Number(String(x.i).slice(-3)) % 360;
+    // 封面兜底：Bangumi 图失效或缺失时改用月幕主图，减少破图
+    var ymCover = (x.ym && x.ym.i) || '';
+    var cover = x.img || ymCover;
+    var coverFallback = x.img && ymCover && x.img !== ymCover ? ymCover : '';
 
     return '<article class="card' + (picked ? ' picked' : '') + (selected ? ' selected' : '') + '" data-id="' + id + '" title="' + escapeHtml(titleText) + '">' +
       (selecting ? '<button class="selbox" type="button" data-act="select" aria-label="选择《' + escapeHtml(titleText) + '》" aria-pressed="' + !!selected + '">✓</button>' : '') +
       '<a class="card-link" href="#d=' + id + '" tabindex="-1" aria-label="查看《' + escapeHtml(titleText) + '》详情">' +
-        '<div class="cover' + (x.img ? '' : ' noimg') + '" style="--phh:' + phHue + '">' +
-          (x.img ? '<img loading="lazy" decoding="async" referrerpolicy="no-referrer" src="' + escapeHtml(x.img) + '"' +
-            (coverSrcset(x.img) ? ' srcset="' + coverSrcset(x.img) + '" sizes="(max-width: 640px) 46vw, 210px"' : '') +
-            ' alt="" onload="this.parentElement.classList.add(\'loaded\')" onerror="this.style.display=\'none\';this.parentElement.classList.add(\'noimg\')">' : '') +
+        '<div class="cover' + (cover ? '' : ' noimg') + '" style="--phh:' + phHue + '">' +
+          (cover ? '<img loading="lazy" decoding="async" referrerpolicy="no-referrer" src="' + escapeHtml(cover) + '"' +
+            (coverSrcset(cover) ? ' srcset="' + coverSrcset(cover) + '" sizes="(max-width: 640px) 46vw, 210px"' : '') +
+            (coverFallback ? ' data-fb="' + escapeHtml(coverFallback) + '"' : '') +
+            ' alt="" onload="this.parentElement.classList.add(\'loaded\')" onerror="var f=this.dataset.fb;if(f){this.src=f;delete this.dataset.fb}else{this.style.display=\'none\';this.parentElement.classList.add(\'noimg\')}">' : '') +
           '<span class="ph">' + escapeHtml(initial) + '</span>' +
           (score ? '<span class="badge score">' + score + '</span>' : '<span class="badge score none">暂无</span>') +
           (x.pl && x.pl[0] ? '<span class="badge plat">' + escapeHtml(x.pl[0]) + '</span>' : '') +
@@ -4217,10 +4222,13 @@
     var item = byId.get(id);
     if (!item) return;
     var collected = !!myMap[id];
-    $('detailCover').innerHTML = item.img
-      ? '<img src="' + escapeHtml(item.img) + '"' +
-        (coverSrcset(item.img) ? ' srcset="' + coverSrcset(item.img) + '" sizes="(max-width: 640px) 42vw, 220px"' : '') +
-        ' decoding="async" alt="" onerror="this.style.display=\'none\'">'
+    var dFallback = item.img && item.ym && item.ym.i && item.img !== item.ym.i ? item.ym.i : '';
+    var dCover = item.img || dFallback;
+    $('detailCover').innerHTML = dCover
+      ? '<img src="' + escapeHtml(dCover) + '"' +
+        (coverSrcset(dCover) ? ' srcset="' + coverSrcset(dCover) + '" sizes="(max-width: 640px) 42vw, 220px"' : '') +
+        (dFallback ? ' data-fb="' + escapeHtml(dFallback) + '"' : '') +
+        ' decoding="async" alt="" onerror="var f=this.dataset.fb;if(f){this.src=f;delete this.dataset.fb}else{this.style.display=\'none\'}">'
       : '<span>无封面</span>';
     var detailTitle = item.cn || item.n || '未知游戏';
     $('modalTitle').innerHTML = highlightHtml(detailTitle, state.q);

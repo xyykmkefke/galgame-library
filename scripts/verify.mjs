@@ -259,6 +259,9 @@ async function main() {
     const cards = await cdp.evaluate("document.querySelectorAll('.card').length");
     check('首屏分批渲染 240 张卡片', cards === 240, cards + ' 张');
 
+    const coverFallback = await cdp.evaluate("document.querySelectorAll('.cover img[data-fb]').length");
+    check('封面支持月幕主图兜底', coverFallback > 0, coverFallback + ' 张');
+
     const pyReady = await cdp.evaluate('!!(window.GL_DATA || []).find((x) => x.py)');
     check('数据包含拼音首字母字段', pyReady === true);
 
