@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.1.0">
+<meta name="version" content="2.1.1">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2489,7 +2489,7 @@
           <circle cx="11" cy="11" r="7"></circle>
           <path d="m20 20-3.5-3.5"></path>
         </svg>
-        <input id="search" type="search" placeholder="搜索游戏名、中文名或拼音首字母（空格分隔，-词 排除）" autocomplete="off" aria-label="搜索游戏名">
+        <input id="search" type="search" placeholder="搜索游戏名、中文名、英文别名或拼音首字母（空格分隔，-词 排除）" autocomplete="off" aria-label="搜索游戏名">
         <div class="searchhist" id="searchHist" hidden></div>
       </div>
       <nav class="tabs">
@@ -2650,7 +2650,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.1.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.1.1</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3584,11 +3584,23 @@
       .filter(function (t) { return t; });
   }
 
+  // 跨源别名：VNDB 英文 / 罗马字标题、月幕原名与中文名，运行时拼接参与搜索，不写入主库
+  function aliasText(x) {
+    var parts = [];
+    if (x.vo && x.vo.t) parts.push(x.vo.t);
+    if (x.ym) {
+      if (x.ym.n) parts.push(x.ym.n);
+      if (x.ym.cn) parts.push(x.ym.cn);
+    }
+    return parts.join(' ').toLowerCase();
+  }
+
   // 搜索相关度：0 完全一致 > 1 前缀 > 2 包含，越靠前越优先
   function searchRank(x, q) {
     var cn = String(x.cn || '').toLowerCase();
     var n = String(x.n || '').toLowerCase();
     var py = String(x.py || '');
+    var alias = aliasText(x);
     var fields = [cn, n];
     var best = 3;
     fields.forEach(function (f) {
@@ -3601,6 +3613,11 @@
       if (py === q) best = Math.min(best, 0);
       else if (py.indexOf(q) === 0) best = Math.min(best, 1);
       else if (py.indexOf(q) >= 0) best = Math.min(best, 2);
+    }
+    // 别名命中排在主标题之后：前缀 1，包含 2
+    if (alias) {
+      if (alias.indexOf(q) === 0) best = Math.min(best, 1);
+      else if (alias.indexOf(q) >= 0) best = Math.min(best, 2);
     }
     // 标题都不命中时，开发商 / 平台命中排在命中结果之后
     if (best === 3) {
@@ -3618,11 +3635,12 @@
         else if (f.indexOf(head) >= 0) best = Math.min(best, 2);
       });
       if (py && /^[a-z0-9]+$/.test(head) && py.indexOf(head) >= 0) best = Math.min(best, 2);
+      if (best === 3 && alias.indexOf(head) >= 0) best = 2;
     }
     return best;
   }
 
-  // 单条记录是否命中关键词：中文名 / 原名 / 拼音首字母 / 开发商 / 平台
+  // 单条记录是否命中关键词：中文名 / 原名 / 拼音首字母 / 跨源别名 / 开发商 / 平台
   function matchesQuery(x, token) {
     var cn = String(x.cn || '').toLowerCase();
     var n = String(x.n || '').toLowerCase();
@@ -3630,6 +3648,7 @@
     var dev = (x.dev || []).join(' ').toLowerCase();
     var pl = (x.pl || []).join(' ').toLowerCase();
     return cn.indexOf(token) >= 0 || n.indexOf(token) >= 0 ||
+      aliasText(x).indexOf(token) >= 0 ||
       dev.indexOf(token) >= 0 || pl.indexOf(token) >= 0 ||
       (/^[a-z0-9]+$/.test(token) && py.indexOf(token) >= 0);
   }
@@ -4305,6 +4324,14 @@
     if (item.vo) {
       pairs.push(['VNDB', item.vo.r ? (item.vo.r / 10).toFixed(1) : '暂无']);
       if (item.vo.l) pairs.push(['时长', Math.round(item.vo.l / 60) + ' 小时']);
+      // 别名：VNDB 英文 / 罗马字标题与主标题不同才展示，方便核对搜索命中的来源
+      var aliasName = item.vo.t || '';
+      var ownNames = [item.cn, item.n].map(function (v) {
+        return String(v || '').toLowerCase().replace(/\s+/g, '');
+      });
+      if (aliasName && ownNames.indexOf(aliasName.toLowerCase().replace(/\s+/g, '')) < 0) {
+        pairs.push(['别名', aliasName]);
+      }
     }
     // 第三数据源：月幕评分与中文版标记
     if (item.ym) {
@@ -5116,7 +5143,8 @@
         var cn = String(x.cn || '').toLowerCase();
         var n = String(x.n || '').toLowerCase();
         var py = String(x.py || '');
-        if (cn.indexOf(q) >= 0 || n.indexOf(q) >= 0 || py.indexOf(q) >= 0) {
+        if (cn.indexOf(q) >= 0 || n.indexOf(q) >= 0 || py.indexOf(q) >= 0 ||
+          aliasText(x).indexOf(q) >= 0) {
           found.push(x);
         }
       }

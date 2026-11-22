@@ -333,6 +333,43 @@ async function main() {
       "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); return ids.length > 0 && ids.every((id)=>{ const x=map[id]||{}; return (x.pl||[]).some((p)=>/^Switch/i.test(p)) || (x.dev||[]).some((d)=>/switch/i.test(d)) || /switch/i.test(x.cn||x.n||''); }); })()");
     check('搜索可命中平台', platSearch === true, platSearch ? 'Switch' : '未命中');
 
+    // 跨源别名：VNDB 英文 / 罗马字标题参与搜索（主库原名不含该标题时才用于验证）
+    const vAlias = await cdp.evaluate(`(() => {
+      const vm = (window.GL_VNDB || {}).map || {};
+      const hit = (window.GL_DATA || []).find((x) => {
+        const v = vm[String(x.i)];
+        if (!v || !v.t || v.t.length < 8) return false;
+        return ((x.cn || '') + ' ' + (x.n || '')).toLowerCase().indexOf(v.t.toLowerCase()) < 0;
+      });
+      return hit ? [vm[String(hit.i)].t, String(hit.i)] : null;
+    })()`);
+    await typeSearch(vAlias[0]);
+    const vAliasIds = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
+    check('搜索可命中 VNDB 英文标题别名', vAliasIds.includes(vAlias[1]), `${vAlias[0]} → ${vAliasIds.length} 条`);
+
+    // 跨源别名：月幕原名参与搜索
+    const yAlias = await cdp.evaluate(`(() => {
+      const ym = (window.GL_YMGAL || {}).map || {};
+      const hit = (window.GL_DATA || []).find((x) => {
+        const y = ym[String(x.i)];
+        if (!y || !y.n || y.n.length < 6) return false;
+        return ((x.cn || '') + ' ' + (x.n || '')).toLowerCase().indexOf(y.n.toLowerCase()) < 0;
+      });
+      return hit ? [ym[String(hit.i)].n, String(hit.i)] : null;
+    })()`);
+    await typeSearch(yAlias[0]);
+    const yAliasIds = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
+    check('搜索可命中月幕原名别名', yAliasIds.includes(yAlias[1]), `${yAlias[0]} → ${yAliasIds.length} 条`);
+
+    // 详情展示别名，便于核对搜索命中来源
+    await clearSearch();
+    await cdp.evaluate(`location.hash = '#d=${vAlias[1]}'`);
+    await waitFor("document.getElementById('modal').hidden === false");
+    const aliasMeta = await cdp.evaluate("document.getElementById('detailMeta').textContent");
+    check('详情展示 VNDB 别名', aliasMeta.includes('别名') && aliasMeta.includes(vAlias[0]), aliasMeta.slice(0, 80));
+    await cdp.evaluate("document.getElementById('modalClose').click()");
+    await sleep(200);
+
     await clearSearch();
     await typeSearch('游戏 -性');
     let exclInfo = await cdp.evaluate(
