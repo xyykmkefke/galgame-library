@@ -543,6 +543,31 @@ async function main() {
       "(() => { const b=document.querySelector('#detailMeta [data-jump-series]'); return b ? [b.dataset.jumpSeries, b.textContent] : null; })()");
     check('详情展示系列入口与部数', !!seriesChip && seriesChip[0] === seriesName && /10 部/.test(seriesChip[1]), String(seriesChip));
     const seriesCount = Number((String(seriesChip && seriesChip[1]).match(/(\d+) 部/) || [])[1] || 0);
+    // 同系列其他作品：详情内直接列出并切换，按发售日升序，最多 12 部
+    const seriesSibs = await cdp.evaluate(`(() => {
+      const head = document.querySelector('#detailSimilar .series-head');
+      const rows = [...document.querySelectorAll('#detailSimilar .series-list [data-sim]')];
+      return { head: head ? head.textContent : '', n: rows.length,
+        ids: rows.map((b) => String(b.dataset.sim)), cur: String(${JSON.stringify(seriesIds[0] || '')}) };
+    })()`);
+    const expectSibs = Math.min(seriesCount - 1, 12);
+    check('详情列出同系列其他作品', /同系列/.test(seriesSibs.head) && seriesSibs.n === expectSibs &&
+      seriesSibs.ids.every((id) => id !== seriesSibs.cur), seriesSibs.n + ' 部 / 应有 ' + expectSibs);
+    const sibOpen = await cdp.evaluate(`(() => {
+      const b = document.querySelector('#detailSimilar .series-list [data-sim]');
+      if (!b) return null;
+      const title = b.querySelector('.sim-title').textContent;
+      const id = String(b.dataset.sim);
+      b.click();
+      return { title: title, id: id };
+    })()`);
+    await sleep(350);
+    const sibState = await cdp.evaluate(
+      "(() => ({ title: document.getElementById('modalTitle').textContent, hash: location.hash," +
+      " hidden: document.getElementById('modal').hidden }))()");
+    check('点同系列条目直接切换详情', !!sibOpen && sibState.hidden === false &&
+      sibState.title.indexOf(sibOpen.title) >= 0 && sibState.hash.indexOf('d=' + sibOpen.id) >= 0,
+      (sibOpen ? sibOpen.title : '无') + ' → ' + sibState.title);
     await cdp.evaluate("document.querySelector('#detailMeta [data-jump-series]').click()");
     await sleep(450);
     const seriesState = await cdp.evaluate(
@@ -829,14 +854,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v5/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v6/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v5').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v6').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {

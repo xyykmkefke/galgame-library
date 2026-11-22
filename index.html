@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.3.0">
+<meta name="version" content="2.4.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -4553,8 +4553,36 @@
     btn.className = 'btn' + (collected ? ' danger' : ' primary');
     $('detailLink').href = 'https://bgm.tv/subject/' + id;
 
+    // 系列内其他作品：详情页直接切换同系列条目，按发售日升序，最多列出 12 部
+    var seriesListHtml = '';
+    if (seriesName) {
+      var sibs = DATA.filter(function (x) {
+        return String(x.i) !== String(item.i) && seriesKey(x) === seriesName;
+      }).sort(function (a, b) {
+        var da = String(a.d || '9999-99-99');
+        var db = String(b.d || '9999-99-99');
+        if (da !== db) return da < db ? -1 : 1;
+        var na = String(a.cn || a.n || '');
+        var nb = String(b.cn || b.n || '');
+        return na < nb ? -1 : (na > nb ? 1 : 0);
+      });
+      var shownSibs = sibs.slice(0, 12);
+      if (shownSibs.length) {
+        var tail = shownSibs.length < sibs.length ? ' · 显示前 ' + shownSibs.length + ' 部' : '';
+        seriesListHtml = '<div class="similar-head series-head">同系列 · ' + escapeHtml(seriesName) +
+          '（' + seriesInfo[seriesName].n + ' 部' + tail + '）</div><div class="similar-list series-list">' +
+          shownSibs.map(function (x) {
+            var st = myMap[String(x.i)];
+            return '<button class="sim-card" type="button" data-sim="' + x.i + '">' +
+              '<span class="sim-title">' + escapeHtml(x.cn || x.n || '未知游戏') + '</span>' +
+              '<span class="sim-meta">' + (x.d ? escapeHtml(x.d) : '日期未知') +
+              (x.s ? ' · ' + Number(x.s).toFixed(1) : '') +
+              (st ? ' · ' + STATUS[st.s] : '') + '</span></button>';
+          }).join('') + '</div>';
+      }
+    }
     var sims = similarItems(item, 4);
-    $('detailSimilar').innerHTML = sims.length
+    var simsHtml = sims.length
       ? '<div class="similar-head">相似推荐 · 同平台 / 同开发商</div><div class="similar-list">' +
         sims.map(function (x) {
           return '<button class="sim-card" type="button" data-sim="' + x.i + '">' +
@@ -4563,6 +4591,7 @@
             (x.d ? ' · ' + escapeHtml(x.d) : '') + '</span></button>';
         }).join('') + '</div>'
       : '';
+    $('detailSimilar').innerHTML = seriesListHtml + simsHtml;
   }
 
   function openDetail(id) {
