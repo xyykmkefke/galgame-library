@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.6.0">
+<meta name="version" content="2.7.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2411,6 +2411,14 @@
   .bar-track { height: 7px; border-radius: 5px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 5px; background: var(--grad); }
   .bar-row .num { color: var(--muted-2); text-align: right; font-variant-numeric: tabular-nums; }
+  /* 带备注的分布条（如系列进度）多一列，备注为空时也保持列宽稳定 */
+  .bars.with-note .bar-row { grid-template-columns: 120px 1fr auto 58px; }
+  .bar-row .rownote {
+    color: var(--muted-2);
+    font-size: 11px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
   .recent-list { display: flex; flex-wrap: wrap; gap: 6px; }
   .recent-chip {
     max-width: 220px;
@@ -2464,6 +2472,8 @@
   .install-tip .x:hover { color: var(--text); }
   @media (max-width: 640px) {
     .bar-row { grid-template-columns: 96px 1fr 48px; font-size: 11.5px; }
+    .bars.with-note .bar-row { grid-template-columns: 88px 1fr auto 46px; gap: 6px; }
+    .bar-row .rownote { font-size: 10.5px; }
     .stats-panel { max-height: 88vh; padding: 16px; }
   }
   .footer-link {
@@ -2980,6 +2990,19 @@
   function itemSeries(item) {
     var k = seriesKey(item);
     return seriesInfo[k] ? k : '';
+  }
+
+  // 系列进度：统计该系列已收藏与已通关数量，只在运行时计算，不写入数据文件
+  function seriesProgress(name) {
+    var c = 0, done = 0;
+    DATA.forEach(function (x) {
+      if (seriesKey(x) !== name) return;
+      var e = myMap[String(x.i)];
+      if (!e) return;
+      c += 1;
+      if (e.s === 'done') done += 1;
+    });
+    return { c: c, done: done };
   }
 
   var now = new Date();
@@ -4542,12 +4565,16 @@
         '" title="查看全部「' + escapeHtml(label) + '」游戏"><i>题材</i>' +
         escapeHtml(label) + ' ›</button>';
     }).join('');
-    // 系列：同前缀有 ≥2 部不同作品时才展示，点击筛选整个系列
+    // 系列：同前缀有 ≥2 部不同作品时才展示，点击筛选整个系列；有收藏时追加我的进度
     var seriesName = itemSeries(item);
+    var seriesProg = seriesName ? seriesProgress(seriesName) : null;
+    var seriesProgText = seriesProg && seriesProg.c
+      ? ' · 收藏 ' + seriesProg.c + (seriesProg.done ? ' · 通关 ' + seriesProg.done : '')
+      : '';
     var seriesHtml = seriesName
       ? '<button class="chip chipbtn" type="button" data-jump-series="' + escapeHtml(seriesName) +
         '" title="查看同系列全部作品"><i>系列</i>' +
-        escapeHtml(seriesName) + ' · ' + seriesInfo[seriesName].n + ' 部 ›</button>'
+        escapeHtml(seriesName) + ' · ' + seriesInfo[seriesName].n + ' 部' + seriesProgText + ' ›</button>'
       : '';
     // 多值字段逐项可点：点平台 / 开发商 / 制作人员即跳到对应筛选
     function chipGroup(label, values, attr, kind) {
@@ -4609,7 +4636,7 @@
       if (shownSibs.length) {
         var tail = shownSibs.length < sibs.length ? ' · 显示前 ' + shownSibs.length + ' 部' : '';
         seriesListHtml = '<div class="similar-head series-head">同系列 · ' + escapeHtml(seriesName) +
-          '（' + seriesInfo[seriesName].n + ' 部' + tail + '）</div><div class="similar-list series-list">' +
+          '（' + seriesInfo[seriesName].n + ' 部' + seriesProgText + tail + '）</div><div class="similar-list series-list">' +
           shownSibs.map(function (x) {
             var st = myMap[String(x.i)];
             return '<button class="sim-card" type="button" data-sim="' + x.i + '">' +
@@ -4698,12 +4725,14 @@
   }
 
   // attr 为空时渲染为不可点击的分布条；有 attr 时整行可点，直接跳到对应筛选
+  // entries 第 4 项为可选备注（如系列进度），有备注时整表追加一列
   function barRows(entries, total, attr) {
     if (!entries.length) return '<p class="hint">暂无数据</p>';
     var max = 1;
     entries.forEach(function (e) { if (e[1] > max) max = e[1]; });
+    var hasNote = entries.some(function (e) { return e[3]; });
     var tag = attr ? 'button' : 'div';
-    return '<div class="bars">' + entries.map(function (e) {
+    return '<div class="bars' + (hasNote ? ' with-note' : '') + '">' + entries.map(function (e) {
       var open = attr
         ? '<' + tag + ' class="bar-row" type="button" ' + attr + '="' +
           escapeHtml(e[2] == null ? e[0] : e[2]) + '" title="按「' + escapeHtml(e[0]) + '」筛选">'
@@ -4712,6 +4741,7 @@
         '<span class="lbl">' + escapeHtml(e[0]) + '</span>' +
         '<span class="bar-track"><span class="bar-fill" style="width:' +
           (e[1] / max * 100).toFixed(1) + '%"></span></span>' +
+        (hasNote ? '<span class="rownote">' + escapeHtml(e[3] || '') + '</span>' : '') +
         '<span class="num">' + e[1] + ' · ' + percent(e[1], total) + '%</span>' +
         '</' + tag + '>';
     }).join('') + '</div>';
@@ -4898,22 +4928,29 @@
     var names = Object.keys(seriesInfo);
     var total = DATA.length;
     var covered = 0;
+    var mineSeries = 0;
     var entries = names.map(function (name) {
       var info = seriesInfo[name];
       covered += info.n;
-      return [name, info.n];
+      var prog = seriesProgress(name);
+      if (prog.c) mineSeries += 1;
+      var note = prog.c ? '我的 ' + prog.c + (prog.done ? ' · 通关 ' + prog.done : '') : '';
+      return [name, info.n, name, note];
     }).sort(function (a, b) {
       if (b[1] !== a[1]) return b[1] - a[1];
       return a[0].localeCompare(b[0], 'zh-Hans-CN');
     });
 
     $('seriesTotal').textContent = entries.length + ' 个系列 · ' + covered + ' 部';
+    var cards = [
+      [entries.length, '系列数'],
+      [covered, '覆盖作品'],
+      [percent(covered, total) + '%', '系列覆盖']
+    ];
+    // 有收藏时才补充我的进度卡，避免全新用户看到一堆 0
+    if (mineSeries) cards.push([mineSeries, '我收藏的系列']);
     $('seriesBody').innerHTML =
-      '<div class="stats-sec">' + statCards([
-        [entries.length, '系列数'],
-        [covered, '覆盖作品'],
-        [percent(covered, total) + '%', '系列覆盖']
-      ]) + '</div>' +
+      '<div class="stats-sec">' + statCards(cards) + '</div>' +
       '<p class="hint">同一标题前缀下至少 2 部不同作品才计为系列；点击任意系列即筛出全部作品。</p>' +
       '<div class="stats-sec"><h3>全部系列</h3>' +
         barRows(entries, total, 'data-series-pick') + '</div>';

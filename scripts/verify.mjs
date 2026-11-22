@@ -820,6 +820,43 @@ async function main() {
 
     await shot('desktop-mine');
 
+    // 系列进度：详情与系列一览展示我的收藏 / 通关数，只在运行时计算
+    const spName = '秋之回忆';
+    const spIds = await cdp.evaluate(`(() => {
+      const ids = (window.GL_DATA || []).filter((x) => String(x.cn || x.n || '').indexOf(${JSON.stringify(spName)}) === 0)
+        .map((x) => String(x.i)).slice(0, 3);
+      const mine = {};
+      ids.forEach((id, i) => { mine[id] = { s: i < 2 ? 'done' : 'doing', t: 1000, u: 1000 }; });
+      localStorage.setItem('yuc_gl_mine_v1', JSON.stringify(mine));
+      return ids;
+    })()`);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?sp=${Date.now()}#d=${spIds[0]}` });
+    await waitFor("document.getElementById('modal').hidden === false", 15000);
+    const spChip = await cdp.evaluate(
+      "(() => { const b=document.querySelector('#detailMeta [data-jump-series]'); return b ? b.textContent : ''; })()");
+    check('详情系列入口显示我的收藏与通关', /收藏 3/.test(spChip) && /通关 2/.test(spChip), spChip);
+    const spHead = await cdp.evaluate("(document.querySelector('#detailSimilar .series-head') || {}).textContent || ''");
+    check('同系列头部显示系列进度', /收藏 3/.test(spHead) && /通关 2/.test(spHead), spHead);
+    await cdp.evaluate("document.getElementById('modalClose').click()");
+    await sleep(250);
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"series\"]').click()");
+    await waitFor("document.getElementById('seriesModal').hidden === false");
+    const spPanel = await cdp.evaluate(`(() => {
+      const row = [...document.querySelectorAll('#seriesBody [data-series-pick]')]
+        .find((r) => r.dataset.seriesPick === ${JSON.stringify(spName)});
+      const cards = [...document.querySelectorAll('#seriesBody .stat-card')].map((c) => c.textContent);
+      return { note: row ? (row.querySelector('.rownote') || {}).textContent || '' : '', cards: cards };
+    })()`);
+    check('系列一览显示我的收藏与通关', /我的 3/.test(spPanel.note) && /通关 2/.test(spPanel.note), String(spPanel.note));
+    check('系列一览补充我收藏的系列卡',
+      spPanel.cards.some((t) => /我收藏的系列/.test(t) && /^1/.test(t)), spPanel.cards.join(' / '));
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
     // ---------- 导出 ----------
     await cdp.evaluate(`(() => {
       window.__dl = [];
@@ -990,14 +1027,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v8/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v9/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v8').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v9').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
