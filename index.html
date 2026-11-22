@@ -3595,6 +3595,22 @@
     return parts.join(' ').toLowerCase();
   }
 
+  // 宽松归一：全角转半角、忽略大小写、空格与标点，用于「steinsgate」「ＦＡＴＥ」这类输入
+  function looseText(s) {
+    return String(s == null ? '' : s).normalize('NFKC').toLowerCase()
+      .replace(/[^0-9a-z\u00c0-\u024f\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]+/g, '');
+  }
+
+  // 严格匹配失败时的兜底命中：标题 / 别名 / 开发商 / 平台去掉空格与标点后仍包含关键词
+  function matchesQueryLoose(x, token) {
+    var t = looseText(token);
+    if (!t) return false;
+    return looseText(x.cn).indexOf(t) >= 0 || looseText(x.n).indexOf(t) >= 0 ||
+      looseText(aliasText(x)).indexOf(t) >= 0 ||
+      looseText((x.dev || []).join(' ')).indexOf(t) >= 0 ||
+      looseText((x.pl || []).join(' ')).indexOf(t) >= 0;
+  }
+
   // 搜索相关度：0 完全一致 > 1 前缀 > 2 包含，越靠前越优先
   function searchRank(x, q) {
     var cn = String(x.cn || '').toLowerCase();
@@ -3637,6 +3653,18 @@
       if (py && /^[a-z0-9]+$/.test(head) && py.indexOf(head) >= 0) best = Math.min(best, 2);
       if (best === 3 && alias.indexOf(head) >= 0) best = 2;
     }
+    // 严格匹配都未命中时按宽松归一档位排序，保证「steinsgate」这类输入也有合理顺序
+    if (best === 3) {
+      var lq = looseText(q);
+      if (lq) {
+        [looseText(cn), looseText(n), looseText(alias)].forEach(function (f) {
+          if (!f) return;
+          if (f === lq) best = Math.min(best, 0);
+          else if (f.indexOf(lq) === 0) best = Math.min(best, 1);
+          else if (f.indexOf(lq) >= 0) best = Math.min(best, 2);
+        });
+      }
+    }
     return best;
   }
 
@@ -3661,16 +3689,27 @@
     var tokens = allTokens.filter(function (t) { return t.charAt(0) !== '-' || t.length < 2; });
     var excludes = allTokens.filter(function (t) { return t.charAt(0) === '-' && t.length > 1; })
       .map(function (t) { return t.slice(1); });
-
     if (tokens.length || excludes.length) {
+      var loose = false;
       if (tokens.length) {
-        list = list.filter(function (x) {
+        var strict = list.filter(function (x) {
           return tokens.every(function (t) { return matchesQuery(x, t); });
         });
+        // 严格匹配无结果时放宽：忽略空格、标点与全半角差异，从原始列表再试一次
+        if (strict.length) {
+          list = strict;
+        } else {
+          list = list.filter(function (x) {
+            return tokens.every(function (t) { return matchesQueryLoose(x, t); });
+          });
+          loose = true;
+        }
       }
       if (excludes.length) {
         list = list.filter(function (x) {
-          return !excludes.some(function (t) { return matchesQuery(x, t); });
+          return !excludes.some(function (t) {
+            return loose ? matchesQueryLoose(x, t) : matchesQuery(x, t);
+          });
         });
       }
     } else if (state.tab === 'all' && state.year !== 'all') {

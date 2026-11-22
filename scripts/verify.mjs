@@ -361,6 +361,25 @@ async function main() {
     const yAliasIds = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
     check('搜索可命中月幕原名别名', yAliasIds.includes(yAlias[1]), `${yAlias[0]} → ${yAliasIds.length} 条`);
 
+    // 宽松搜索：严格匹配无结果时忽略空格与标点再试一次（如 Fate/stay night → fatestaynight）
+    const looseHit = await cdp.evaluate(
+      "(() => { const x=(window.GL_DATA||[]).find((x)=>String(x.n||'').toLowerCase().replace(/[^a-z0-9]+/g,'').indexOf('fatestaynight')===0); return x?[String(x.i), x.n]:null; })()");
+    await typeSearch('fatestaynight');
+    const looseIds = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
+    check('忽略标点与空格的英文搜索', !!looseHit && looseIds.includes(looseHit[0]),
+      looseHit ? `${looseHit[1]} → ${looseIds.length} 条` : '未找到样例');
+
+    // 全角输入走宽松兜底：严格匹配不会命中，NFKC 归一后可命中
+    await typeSearch('ＦＡＴＥ');
+    const wideCards = await cdp.evaluate("document.querySelectorAll('.card').length");
+    check('全角关键词搜索可命中', wideCards > 0, wideCards + ' 条');
+
+    // 宽松模式下排除词同样生效
+    await typeSearch('ＦＡＴＥ -ｈｏｌｌｏｗ');
+    const looseExclude = await cdp.evaluate(
+      "(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); return [ids.length, ids.every((id)=>/hollow/i.test(((map[id]||{}).n||'')+((map[id]||{}).cn||''))===false)]; })()");
+    check('宽松搜索下排除词仍生效', looseExclude[0] > 0 && looseExclude[1] === true, looseExclude[0] + ' 条');
+
     // 详情展示别名，便于核对搜索命中来源
     await clearSearch();
     await cdp.evaluate(`location.hash = '#d=${vAlias[1]}'`);
