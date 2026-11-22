@@ -824,6 +824,52 @@ async function main() {
     check('Esc 可关闭制作人员一览',
       await cdp.evaluate("document.getElementById('staffModal').hidden") === true);
 
+    // 题材一览：列出全部有作品的题材，显示汇总卡与我的进度，点击即筛选
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"genres\"]').click()");
+    await waitFor("document.getElementById('genreModal') && document.getElementById('genreModal').hidden === false");
+    const genrePanel = await cdp.evaluate(`(() => {
+      const ids = new Set();
+      (window.GL_DATA || []).forEach((x) => (x.tg || []).forEach((g) => ids.add(g)));
+      const rows = [...document.querySelectorAll('#genreBody [data-genre-pick]')];
+      return {
+        rows: rows.length,
+        expected: ids.size,
+        first: rows[0] ? rows[0].dataset.genrePick : '',
+        firstLabel: rows[0] ? rows[0].querySelector('.lbl').textContent : '',
+        firstCount: rows[0] ? Number((rows[0].querySelector('.num').textContent.match(/^(\\d+)/) || [])[1] || 0) : 0,
+        total: document.getElementById('genreTotal').textContent,
+        cards: document.querySelectorAll('#genreBody .stat-card').length
+      };
+    })()`);
+    check('题材一览列出全部有作品的题材', genrePanel.rows === genrePanel.expected && genrePanel.rows >= 15 &&
+      /^\d+ \/ 18 个题材 · 覆盖 \d+ 部$/.test(genrePanel.total) && genrePanel.cards === 3,
+      genrePanel.rows + ' 行 / ' + genrePanel.total);
+
+    await cdp.evaluate("document.querySelector('#genreBody [data-genre-pick]').click()");
+    await sleep(500);
+    const genreJump = await cdp.evaluate(
+      "(() => ({ hidden: document.getElementById('genreModal').hidden," +
+      " n: document.querySelectorAll('.card').length," +
+      " chips: document.getElementById('filterChips').textContent," +
+      " hash: location.hash }))()");
+    check('题材一览选择后即筛选该题材',
+      genreJump.hidden === true && genreJump.n === Math.min(genrePanel.firstCount, 240) &&
+      genreJump.chips.includes(genrePanel.firstLabel) && /gr=/.test(genreJump.hash),
+      genrePanel.firstLabel + ' → ' + genreJump.n + ' 张');
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"genres\"]').click()");
+    await waitFor("document.getElementById('genreModal').hidden === false");
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+    check('Esc 可关闭题材一览',
+      await cdp.evaluate("document.getElementById('genreModal').hidden") === true);
+
     // ---------- 加入 / 状态 / 批量 ----------
     const targetId = await cdp.evaluate("document.querySelector('.card').dataset.id");
     await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
@@ -860,6 +906,7 @@ async function main() {
     }
     const undone = await cdp.evaluate("JSON.parse(localStorage.getItem('yuc_gl_mine_v1'))['" + targetId + "'].s");
     check('撤销批量操作恢复原状态', undoBtn && undone === 'doing', String(undone));
+
 
     await cdp.evaluate("document.getElementById('groupBtn').click()");
     await sleep(300);
@@ -933,6 +980,25 @@ async function main() {
     await sleep(200);
     await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
     await sleep(300);
+
+    // 题材一览我的进度：本地收藏与通关数在对应题材行右侧展示
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"genres\"]').click()");
+    await waitFor("document.getElementById('genreModal').hidden === false");
+    const genreNotes = await cdp.evaluate(`(() => {
+      const rows = [...document.querySelectorAll('#genreBody [data-genre-pick]')];
+      const notes = rows.map((r) => { const n = r.querySelector('.rownote'); return n ? n.textContent : ''; });
+      const cards = [...document.querySelectorAll('#genreBody .stat-card')].map((c) => c.textContent);
+      return { notes: notes, cards: cards };
+    })()`);
+    const noteList = genreNotes.notes.filter(Boolean);
+    check('题材一览显示我的收藏进度',
+      noteList.length > 0 && noteList.every((t) => /^我的 \d+ · 通关 \d+$/.test(t)) &&
+      genreNotes.cards.some((t) => /我收藏的题材/.test(t)),
+      noteList.slice(0, 3).join(' / '));
+    await cdp.evaluate("document.getElementById('genreClose').click()");
+    await sleep(200);
 
     // ---------- 导出 ----------
     await cdp.evaluate(`(() => {
@@ -1104,14 +1170,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v12/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v13/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v12').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v13').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {

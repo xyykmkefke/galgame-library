@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.10.0">
+<meta name="version" content="2.11.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2523,6 +2523,7 @@
         <button type="button" data-more="series">系列一览</button>
         <button type="button" data-more="devs">开发商一览</button>
         <button type="button" data-more="staffs">制作人员一览</button>
+        <button type="button" data-more="genres">题材一览</button>
         <button type="button" data-more="random">摇一部<kbd>R</kbd></button>
         <button type="button" data-more="recent">最近浏览</button>
         <button type="button" data-more="install">安装到桌面</button>
@@ -2817,6 +2818,17 @@
     <div class="settings-actions">
       <button class="btn" id="staffToggleAll" type="button" aria-pressed="false">显示仅 1 部的人员</button>
       <button class="btn primary" id="staffClose" type="button">完成</button>
+    </div>
+  </div>
+</div>
+
+<div class="help" id="genreModal" hidden>
+  <div class="help-mask" data-genre-close></div>
+  <div class="help-panel stats-panel" role="dialog" aria-modal="true" aria-label="题材一览">
+    <h2>题材一览 <small id="genreTotal"></small></h2>
+    <div id="genreBody"></div>
+    <div class="settings-actions">
+      <button class="btn primary" id="genreClose" type="button">完成</button>
     </div>
   </div>
 </div>
@@ -5226,6 +5238,73 @@
       '已筛选全部 ' + (STAFF_LABEL[kind] || '制作') + '「' + name + '」作品');
   });
 
+  // ---- 题材一览：汇总 18 个题材的作品数与我的进度，点击即筛选 ----
+  var genreEl = $('genreModal');
+  var lastGenreFocus = null;
+
+  function renderGenrePanel() {
+    var counts = {};
+    var mine = {};
+    DATA.forEach(function (x) {
+      var rec = myMap[String(x.i)];
+      (x.tg || []).forEach(function (id) {
+        counts[id] = (counts[id] || 0) + 1;
+        if (!rec) return;
+        if (!mine[id]) mine[id] = { n: 0, done: 0 };
+        mine[id].n += 1;
+        if (rec.s === 'done') mine[id].done += 1;
+      });
+    });
+    var used = GENRES.filter(function (g) { return counts[g.id]; });
+    var covered = DATA.filter(function (x) { return x.tg && x.tg.length; }).length;
+    var mineGenres = used.filter(function (g) { return mine[g.id]; }).length;
+    var entries = used.map(function (g) {
+      var note = mine[g.id] ? '我的 ' + mine[g.id].n + ' · 通关 ' + mine[g.id].done : '';
+      return [g.label, counts[g.id], g.id, note];
+    }).sort(function (a, b) {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0], 'zh-Hans-CN');
+    });
+
+    $('genreTotal').textContent = used.length + ' / ' + GENRES.length + ' 个题材 · 覆盖 ' + covered + ' 部';
+    $('genreBody').innerHTML =
+      '<div class="stats-sec">' + statCards([
+        [used.length, '有作品的题材'],
+        [covered, '覆盖作品'],
+        [mineGenres, '我收藏的题材']
+      ]) + '</div>' +
+      '<p class="hint">按收录作品数排序，右侧是我的收藏与通关数量；点击任意题材即筛出全部作品。</p>' +
+      '<div class="stats-sec"><h3>题材分布</h3>' +
+        barRows(entries, DATA.length, 'data-genre-pick') + '</div>';
+  }
+
+  function openGenrePanel() {
+    if (genreEl.hidden) lastGenreFocus = document.activeElement;
+    renderGenrePanel();
+    genreEl.hidden = false;
+    $('genreClose').focus();
+  }
+
+  function closeGenrePanel() {
+    if (genreEl.hidden) return;
+    genreEl.hidden = true;
+    var back = lastGenreFocus;
+    lastGenreFocus = null;
+    if (back && document.contains(back)) back.focus();
+  }
+
+  genreEl.addEventListener('click', function (e) {
+    if (e.target.closest('[data-genre-close]') || e.target.closest('#genreClose')) {
+      closeGenrePanel();
+      return;
+    }
+    var pick = e.target.closest('[data-genre-pick]');
+    if (!pick) return;
+    var id = pick.dataset.genrePick;
+    closeGenrePanel();
+    jumpToAll({ genre: id }, '已筛选题材「' + (GENRE_LABEL[id] || id) + '」全部作品');
+  });
+
   // ---- 摇一部：从当前筛选结果里随机抽一部 ----
   function randomPick() {
     var pool = filteredList();
@@ -5547,6 +5626,7 @@
     else if (act === 'series') openSeriesPanel();
     else if (act === 'devs') openDevPanel();
     else if (act === 'staffs') openStaffPanel();
+    else if (act === 'genres') openGenrePanel();
     else if (act === 'random') randomPick();
     else if (act === 'recent') openStats();
     else if (act === 'install') installApp();
@@ -5665,6 +5745,7 @@
       { name: '系列一览', kind: '视图', run: function () { openSeriesPanel(); } },
       { name: '开发商一览', kind: '视图', run: function () { openDevPanel(); } },
       { name: '制作人员一览', kind: '视图', run: function () { openStaffPanel(); } },
+      { name: '题材一览', kind: '视图', run: function () { openGenrePanel(); } },
       { name: '摇一部', kind: '发现', run: function () { randomPick(); } },
       { name: '最近浏览', kind: '发现', run: function () { openStats(); } },
       { name: '安装到桌面', kind: '应用', run: function () { installApp(); } },
@@ -6497,6 +6578,15 @@
         closeStaffPanel();
       } else if (e.key === 'Tab') {
         trapModalTab($('staffModal'), e);
+      }
+      return;
+    }
+    if (!$('genreModal').hidden) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeGenrePanel();
+      } else if (e.key === 'Tab') {
+        trapModalTab($('genreModal'), e);
       }
       return;
     }
