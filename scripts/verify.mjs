@@ -564,6 +564,48 @@ async function main() {
     await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
     await sleep(300);
 
+    // 系列一览：列出全部系列，点击即筛选，Esc 关闭
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"series\"]').click()");
+    await waitFor("document.getElementById('seriesModal') && document.getElementById('seriesModal').hidden === false");
+    const seriesPanel = await cdp.evaluate(`(() => {
+      const rows = [...document.querySelectorAll('#seriesBody [data-series-pick]')];
+      const first = rows[0];
+      const num = first ? first.querySelector('.num') : null;
+      return {
+        rows: rows.length,
+        total: document.getElementById('seriesTotal').textContent,
+        first: first ? first.dataset.seriesPick : '',
+        firstCount: num ? Number((num.textContent.match(/^(\\d+)/) || [])[1] || 0) : 0
+      };
+    })()`);
+    check('系列一览列出全部系列', seriesPanel.rows >= 40 &&
+      /^\d+ 个系列 · \d+ 部$/.test(seriesPanel.total) &&
+      Number(seriesPanel.total.match(/^(\d+)/)[1]) === seriesPanel.rows,
+      seriesPanel.total + ' / ' + seriesPanel.rows + ' 行');
+    await cdp.evaluate("document.querySelector('#seriesBody [data-series-pick]').click()");
+    await sleep(500);
+    const seriesPanelJump = await cdp.evaluate(
+      "(() => ({ hidden: document.getElementById('seriesModal').hidden," +
+      " n: document.querySelectorAll('.card').length," +
+      " chips: document.getElementById('filterChips').textContent," +
+      " hash: location.hash }))()");
+    check('系列一览选择后即筛选该系列',
+      seriesPanelJump.hidden === true && seriesPanelJump.n === seriesPanel.firstCount &&
+      seriesPanelJump.chips.includes(seriesPanel.first) && /se=/.test(seriesPanelJump.hash),
+      seriesPanel.first + ' → ' + seriesPanelJump.n + ' 张');
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"series\"]').click()");
+    await waitFor("document.getElementById('seriesModal').hidden === false");
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+    check('Esc 可关闭系列一览',
+      await cdp.evaluate("document.getElementById('seriesModal').hidden") === true);
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
     // ---------- 加入 / 状态 / 批量 ----------
     const targetId = await cdp.evaluate("document.querySelector('.card').dataset.id");
     await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
@@ -787,14 +829,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v4/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v5/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v4').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v5').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
