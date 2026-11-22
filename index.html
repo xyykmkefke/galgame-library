@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.5.0">
+<meta name="version" content="2.6.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2367,6 +2367,8 @@
   .stats-panel h2 { display: flex; align-items: center; gap: 8px; }
   .stats-panel h2 small { font-size: 11.5px; font-weight: 400; color: var(--muted-2); }
   .dev-search { margin: 4px 0 12px; }
+  .staff-tools { display: flex; gap: 8px; margin: 4px 0 12px; flex-wrap: wrap; }
+  .staff-tools .sync-input { flex: 1 1 180px; margin: 0; }
   .stats-sec { margin: 16px 0 0; }
   .stats-sec h3 {
     margin: 0 0 8px;
@@ -2510,6 +2512,7 @@
         <button type="button" data-more="stats">数据统计<kbd>I</kbd></button>
         <button type="button" data-more="series">系列一览</button>
         <button type="button" data-more="devs">开发商一览</button>
+        <button type="button" data-more="staffs">制作人员一览</button>
         <button type="button" data-more="random">摇一部<kbd>R</kbd></button>
         <button type="button" data-more="recent">最近浏览</button>
         <button type="button" data-more="install">安装到桌面</button>
@@ -2773,6 +2776,27 @@
     <div class="settings-actions">
       <button class="btn" id="devToggleAll" type="button" aria-pressed="false">显示仅 1 部的开发商</button>
       <button class="btn primary" id="devClose" type="button">完成</button>
+    </div>
+  </div>
+</div>
+
+<div class="help" id="staffModal" hidden>
+  <div class="help-mask" data-staff-close></div>
+  <div class="help-panel stats-panel" role="dialog" aria-modal="true" aria-label="制作人员一览">
+    <h2>制作人员一览 <small id="staffTotal"></small></h2>
+    <div class="staff-tools">
+      <select id="staffKind" aria-label="制作人员类型">
+        <option value="sc">剧本</option>
+        <option value="ar">原画</option>
+        <option value="mu">音乐</option>
+        <option value="pub">发行</option>
+      </select>
+      <input class="sync-input" id="staffSearch" type="search" placeholder="搜索人员名称" autocomplete="off" aria-label="搜索制作人员">
+    </div>
+    <div id="staffBody"></div>
+    <div class="settings-actions">
+      <button class="btn" id="staffToggleAll" type="button" aria-pressed="false">显示仅 1 部的人员</button>
+      <button class="btn primary" id="staffClose" type="button">完成</button>
     </div>
   </div>
 </div>
@@ -4996,6 +5020,88 @@
     jumpToAll({ dev: name }, '已筛选开发商「' + name + '」全部作品');
   });
 
+  // ---- 制作人员一览：按剧本 / 原画 / 音乐 / 发行汇总，面板内可搜索与切换，点击即筛选 ----
+  var staffEl = $('staffModal');
+  var lastStaffFocus = null;
+  var staffShowAll = false;
+  var staffQuery = '';
+
+  function renderStaffPanel() {
+    var kind = $('staffKind').value || 'sc';
+    var counts = {};
+    DATA.forEach(function (x) {
+      staffValues(x, kind).forEach(function (n) { counts[n] = (counts[n] || 0) + 1; });
+    });
+    var names = Object.keys(counts);
+    var covered = DATA.filter(function (x) { return staffValues(x, kind).length; }).length;
+    var multi = names.filter(function (n) { return counts[n] >= 2; }).length;
+    var list = names.map(function (n) { return [n, counts[n]]; });
+    if (!staffShowAll) list = list.filter(function (e) { return e[1] >= 2; });
+    var q = staffQuery.trim().toLowerCase();
+    if (q) list = list.filter(function (e) { return e[0].toLowerCase().indexOf(q) >= 0; });
+    list.sort(function (a, b) {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0], 'zh-Hans-CN');
+    });
+
+    var label = STAFF_LABEL[kind] || '制作';
+    $('staffTotal').textContent = label + ' ' + names.length + ' 人 · 覆盖 ' + covered + ' 部';
+    $('staffToggleAll').setAttribute('aria-pressed', staffShowAll ? 'true' : 'false');
+    $('staffToggleAll').textContent = staffShowAll ? '只看 ≥2 部' : '显示仅 1 部的人员';
+    $('staffBody').innerHTML =
+      '<div class="stats-sec">' + statCards([
+        [names.length, label + '人数'],
+        [covered, '覆盖作品'],
+        [multi, '≥2 部人员']
+      ]) + '</div>' +
+      '<p class="hint">默认只列出 2 部及以上的人员；点击任意人员即筛出全部作品。</p>' +
+      '<div class="stats-sec"><h3>' + escapeHtml(label) + '（' + list.length + ' 人）</h3>' +
+        barRows(list, DATA.length, 'data-staff-pick') + '</div>';
+  }
+
+  function openStaffPanel() {
+    if (staffEl.hidden) lastStaffFocus = document.activeElement;
+    renderStaffPanel();
+    staffEl.hidden = false;
+    $('staffSearch').focus();
+  }
+
+  function closeStaffPanel() {
+    if (staffEl.hidden) return;
+    staffEl.hidden = true;
+    var back = lastStaffFocus;
+    lastStaffFocus = null;
+    if (back && document.contains(back)) back.focus();
+  }
+
+  $('staffKind').addEventListener('change', function () {
+    renderStaffPanel();
+  });
+
+  $('staffSearch').addEventListener('input', function () {
+    staffQuery = this.value;
+    renderStaffPanel();
+  });
+
+  $('staffToggleAll').addEventListener('click', function () {
+    staffShowAll = !staffShowAll;
+    renderStaffPanel();
+  });
+
+  staffEl.addEventListener('click', function (e) {
+    if (e.target.closest('[data-staff-close]') || e.target.closest('#staffClose')) {
+      closeStaffPanel();
+      return;
+    }
+    var pick = e.target.closest('[data-staff-pick]');
+    if (!pick) return;
+    var name = pick.dataset.staffPick;
+    var kind = $('staffKind').value || 'sc';
+    closeStaffPanel();
+    jumpToAll({ staff: name, staffKind: kind },
+      '已筛选全部 ' + (STAFF_LABEL[kind] || '制作') + '「' + name + '」作品');
+  });
+
   // ---- 摇一部：从当前筛选结果里随机抽一部 ----
   function randomPick() {
     var pool = filteredList();
@@ -5310,6 +5416,7 @@
     else if (act === 'stats') openStats();
     else if (act === 'series') openSeriesPanel();
     else if (act === 'devs') openDevPanel();
+    else if (act === 'staffs') openStaffPanel();
     else if (act === 'random') randomPick();
     else if (act === 'recent') openStats();
     else if (act === 'install') installApp();
@@ -5427,6 +5534,7 @@
       { name: '数据统计', kind: '视图', run: function () { openStats(); } },
       { name: '系列一览', kind: '视图', run: function () { openSeriesPanel(); } },
       { name: '开发商一览', kind: '视图', run: function () { openDevPanel(); } },
+      { name: '制作人员一览', kind: '视图', run: function () { openStaffPanel(); } },
       { name: '摇一部', kind: '发现', run: function () { randomPick(); } },
       { name: '最近浏览', kind: '发现', run: function () { openStats(); } },
       { name: '安装到桌面', kind: '应用', run: function () { installApp(); } },
@@ -6250,6 +6358,15 @@
         closeDevPanel();
       } else if (e.key === 'Tab') {
         trapModalTab($('devModal'), e);
+      }
+      return;
+    }
+    if (!$('staffModal').hidden) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeStaffPanel();
+      } else if (e.key === 'Tab') {
+        trapModalTab($('staffModal'), e);
       }
       return;
     }

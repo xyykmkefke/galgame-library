@@ -682,6 +682,91 @@ async function main() {
     await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
     await sleep(300);
 
+    // 制作人员一览：默认剧本 ≥2 部，可切换类型、搜索、点击筛选与 Esc
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"staffs\"]').click()");
+    await waitFor("document.getElementById('staffModal') && document.getElementById('staffModal').hidden === false");
+    const staffPanel = await cdp.evaluate(`(() => {
+      const staffValues = (x, k) => String(x[k] || '').split('、').map((v) => v.trim()).filter(Boolean);
+      const d = window.GL_DATA || [];
+      const counts = {};
+      d.forEach((x) => staffValues(x, 'sc').forEach((n) => { counts[n] = (counts[n] || 0) + 1; }));
+      const names = Object.keys(counts);
+      return {
+        rows: document.querySelectorAll('#staffBody [data-staff-pick]').length,
+        expected: names.filter((n) => counts[n] >= 2).length,
+        names: names.length,
+        covered: d.filter((x) => staffValues(x, 'sc').length).length,
+        total: document.getElementById('staffTotal').textContent
+      };
+    })()`);
+    check('制作人员一览默认列出 ≥2 部剧本', staffPanel.rows === staffPanel.expected && staffPanel.rows > 100 &&
+      staffPanel.total === '剧本 ' + staffPanel.names + ' 人 · 覆盖 ' + staffPanel.covered + ' 部',
+      staffPanel.rows + ' 行 / 共 ' + staffPanel.names + ' 人');
+
+    const staffAr = await cdp.evaluate(`(() => {
+      document.getElementById('staffKind').value = 'ar';
+      document.getElementById('staffKind').dispatchEvent(new Event('change', { bubbles: true }));
+      const staffValues = (x, k) => String(x[k] || '').split('、').map((v) => v.trim()).filter(Boolean);
+      const d = window.GL_DATA || [];
+      const counts = {};
+      d.forEach((x) => staffValues(x, 'ar').forEach((n) => { counts[n] = (counts[n] || 0) + 1; }));
+      const names = Object.keys(counts);
+      return {
+        rows: document.querySelectorAll('#staffBody [data-staff-pick]').length,
+        expected: names.filter((n) => counts[n] >= 2).length,
+        total: document.getElementById('staffTotal').textContent
+      };
+    })()`);
+    check('制作人员一览可切换原画类型', staffAr.rows === staffAr.expected && staffAr.rows > 100 &&
+      staffAr.total.indexOf('原画') === 0, staffAr.rows + ' 行 · ' + staffAr.total);
+
+    const staffSearchRows = await cdp.evaluate(`(() => {
+      document.getElementById('staffKind').value = 'sc';
+      document.getElementById('staffKind').dispatchEvent(new Event('change', { bubbles: true }));
+      const rows = [...document.querySelectorAll('#staffBody [data-staff-pick]')];
+      const name = rows[0].dataset.staffPick;
+      const input = document.getElementById('staffSearch');
+      input.value = name.slice(0, 2);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const after = [...document.querySelectorAll('#staffBody [data-staff-pick]')];
+      return {
+        n: after.length,
+        bad: after.filter((r) => r.dataset.staffPick.indexOf(name.slice(0, 2)) < 0).length
+      };
+    })()`);
+    check('制作人员一览支持面板内搜索', staffSearchRows.n > 0 && staffSearchRows.bad === 0,
+      staffSearchRows.n + ' 行命中');
+
+    await cdp.evaluate("(() => { const i=document.getElementById('staffSearch'); i.value='';" +
+      " i.dispatchEvent(new Event('input',{bubbles:true})); })()");
+    await sleep(150);
+    const firstStaff = await cdp.evaluate("(() => { const r=document.querySelector('#staffBody [data-staff-pick]');" +
+      " return r ? [r.dataset.staffPick, Number((r.querySelector('.num').textContent.match(/^(\\d+)/)||[])[1]||0)] : null; })()");
+    await cdp.evaluate("document.querySelector('#staffBody [data-staff-pick]').click()");
+    await sleep(500);
+    const staffPanelJump = await cdp.evaluate(
+      "(() => ({ hidden: document.getElementById('staffModal').hidden," +
+      " n: document.querySelectorAll('.card').length," +
+      " chips: document.getElementById('filterChips').textContent," +
+      " hash: location.hash }))()");
+    check('制作人员一览选择后即筛选该人员',
+      staffPanelJump.hidden === true && staffPanelJump.n === firstStaff[1] &&
+      staffPanelJump.chips.includes(firstStaff[0]) && /sk=sc/.test(staffPanelJump.hash) && /sv=/.test(staffPanelJump.hash),
+      firstStaff[0] + ' → ' + staffPanelJump.n + ' 张');
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"staffs\"]').click()");
+    await waitFor("document.getElementById('staffModal').hidden === false");
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+    check('Esc 可关闭制作人员一览',
+      await cdp.evaluate("document.getElementById('staffModal').hidden") === true);
+
     // ---------- 加入 / 状态 / 批量 ----------
     const targetId = await cdp.evaluate("document.querySelector('.card').dataset.id");
     await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
@@ -905,14 +990,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v7/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v8/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v7').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v8').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
