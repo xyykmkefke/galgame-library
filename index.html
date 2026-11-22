@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.4.0">
+<meta name="version" content="2.5.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2366,6 +2366,7 @@
   }
   .stats-panel h2 { display: flex; align-items: center; gap: 8px; }
   .stats-panel h2 small { font-size: 11.5px; font-weight: 400; color: var(--muted-2); }
+  .dev-search { margin: 4px 0 12px; }
   .stats-sec { margin: 16px 0 0; }
   .stats-sec h3 {
     margin: 0 0 8px;
@@ -2508,6 +2509,7 @@
         <button type="button" data-more="palette">命令面板<kbd>Ctrl K</kbd></button>
         <button type="button" data-more="stats">数据统计<kbd>I</kbd></button>
         <button type="button" data-more="series">系列一览</button>
+        <button type="button" data-more="devs">开发商一览</button>
         <button type="button" data-more="random">摇一部<kbd>R</kbd></button>
         <button type="button" data-more="recent">最近浏览</button>
         <button type="button" data-more="install">安装到桌面</button>
@@ -2758,6 +2760,19 @@
     <div id="seriesBody"></div>
     <div class="settings-actions">
       <button class="btn primary" id="seriesClose" type="button">完成</button>
+    </div>
+  </div>
+</div>
+
+<div class="help" id="devModal" hidden>
+  <div class="help-mask" data-dev-close></div>
+  <div class="help-panel stats-panel" role="dialog" aria-modal="true" aria-label="开发商一览">
+    <h2>开发商一览 <small id="devTotal"></small></h2>
+    <input class="sync-input dev-search" id="devSearch" type="search" placeholder="搜索开发商名称" autocomplete="off" aria-label="搜索开发商">
+    <div id="devBody"></div>
+    <div class="settings-actions">
+      <button class="btn" id="devToggleAll" type="button" aria-pressed="false">显示仅 1 部的开发商</button>
+      <button class="btn primary" id="devClose" type="button">完成</button>
     </div>
   </div>
 </div>
@@ -4907,6 +4922,80 @@
     jumpToAll({ series: name }, '已筛选系列「' + name + '」全部作品');
   });
 
+  // ---- 开发商一览：汇总开发商与作品数，面板内可搜索，点击即筛选 ----
+  var devEl = $('devModal');
+  var lastDevFocus = null;
+  var devShowAll = false;
+  var devQuery = '';
+
+  function renderDevPanel() {
+    var counts = {};
+    DATA.forEach(function (x) {
+      (x.dev || []).forEach(function (n) { counts[n] = (counts[n] || 0) + 1; });
+    });
+    var names = Object.keys(counts);
+    var covered = DATA.filter(function (x) { return x.dev && x.dev.length; }).length;
+    var multi = names.filter(function (n) { return counts[n] >= 2; }).length;
+    var list = names.map(function (n) { return [n, counts[n]]; });
+    if (!devShowAll) list = list.filter(function (e) { return e[1] >= 2; });
+    var q = devQuery.trim().toLowerCase();
+    if (q) list = list.filter(function (e) { return e[0].toLowerCase().indexOf(q) >= 0; });
+    list.sort(function (a, b) {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0], 'zh-Hans-CN');
+    });
+
+    $('devTotal').textContent = names.length + ' 个开发商 · 覆盖 ' + covered + ' 部';
+    $('devToggleAll').setAttribute('aria-pressed', devShowAll ? 'true' : 'false');
+    $('devToggleAll').textContent = devShowAll ? '只看 ≥2 部' : '显示仅 1 部的开发商';
+    $('devBody').innerHTML =
+      '<div class="stats-sec">' + statCards([
+        [names.length, '开发商数'],
+        [covered, '覆盖作品'],
+        [multi, '≥2 部开发商']
+      ]) + '</div>' +
+      '<p class="hint">默认只列出 2 部及以上的开发商；点击任意开发商即筛出全部作品。</p>' +
+      '<div class="stats-sec"><h3>开发商（' + list.length + ' 个）</h3>' +
+        barRows(list, DATA.length, 'data-dev-pick') + '</div>';
+  }
+
+  function openDevPanel() {
+    if (devEl.hidden) lastDevFocus = document.activeElement;
+    renderDevPanel();
+    devEl.hidden = false;
+    $('devSearch').focus();
+  }
+
+  function closeDevPanel() {
+    if (devEl.hidden) return;
+    devEl.hidden = true;
+    var back = lastDevFocus;
+    lastDevFocus = null;
+    if (back && document.contains(back)) back.focus();
+  }
+
+  $('devSearch').addEventListener('input', function () {
+    devQuery = this.value;
+    renderDevPanel();
+  });
+
+  $('devToggleAll').addEventListener('click', function () {
+    devShowAll = !devShowAll;
+    renderDevPanel();
+  });
+
+  devEl.addEventListener('click', function (e) {
+    if (e.target.closest('[data-dev-close]') || e.target.closest('#devClose')) {
+      closeDevPanel();
+      return;
+    }
+    var pick = e.target.closest('[data-dev-pick]');
+    if (!pick) return;
+    var name = pick.dataset.devPick;
+    closeDevPanel();
+    jumpToAll({ dev: name }, '已筛选开发商「' + name + '」全部作品');
+  });
+
   // ---- 摇一部：从当前筛选结果里随机抽一部 ----
   function randomPick() {
     var pool = filteredList();
@@ -5220,6 +5309,7 @@
     else if (act === 'palette') openPalette();
     else if (act === 'stats') openStats();
     else if (act === 'series') openSeriesPanel();
+    else if (act === 'devs') openDevPanel();
     else if (act === 'random') randomPick();
     else if (act === 'recent') openStats();
     else if (act === 'install') installApp();
@@ -5336,6 +5426,7 @@
       { name: '隐藏已收藏', kind: '筛选', run: function () { state.hideMine = true; state.onlyMine = false; syncControls(); render(); } },
       { name: '数据统计', kind: '视图', run: function () { openStats(); } },
       { name: '系列一览', kind: '视图', run: function () { openSeriesPanel(); } },
+      { name: '开发商一览', kind: '视图', run: function () { openDevPanel(); } },
       { name: '摇一部', kind: '发现', run: function () { randomPick(); } },
       { name: '最近浏览', kind: '发现', run: function () { openStats(); } },
       { name: '安装到桌面', kind: '应用', run: function () { installApp(); } },
@@ -6150,6 +6241,15 @@
         closeSeriesPanel();
       } else if (e.key === 'Tab') {
         trapModalTab($('seriesModal'), e);
+      }
+      return;
+    }
+    if (!$('devModal').hidden) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeDevPanel();
+      } else if (e.key === 'Tab') {
+        trapModalTab($('devModal'), e);
       }
       return;
     }

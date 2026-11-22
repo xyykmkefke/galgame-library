@@ -631,6 +631,57 @@ async function main() {
     await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
     await sleep(300);
 
+    // 开发商一览：默认列出 ≥2 部开发商，面板内可搜索、可切换显示全部，点击即筛选
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"devs\"]').click()");
+    await waitFor("document.getElementById('devModal') && document.getElementById('devModal').hidden === false");
+    const devPanel = await cdp.evaluate(`(() => {
+      const d = window.GL_DATA || [];
+      const counts = {};
+      d.forEach((x) => (x.dev || []).forEach((n) => { counts[n] = (counts[n] || 0) + 1; }));
+      const names = Object.keys(counts);
+      return {
+        rows: document.querySelectorAll('#devBody [data-dev-pick]').length,
+        expected: names.filter((n) => counts[n] >= 2).length,
+        names: names.length,
+        covered: d.filter((x) => x.dev && x.dev.length).length,
+        total: document.getElementById('devTotal').textContent
+      };
+    })()`);
+    check('开发商一览默认列出 ≥2 部开发商', devPanel.rows === devPanel.expected && devPanel.rows > 100 &&
+      devPanel.total === devPanel.names + ' 个开发商 · 覆盖 ' + devPanel.covered + ' 部',
+      devPanel.rows + ' 行 / 共 ' + devPanel.names + ' 个');
+
+    await cdp.evaluate("(() => { const i=document.getElementById('devSearch'); i.value='key'; i.dispatchEvent(new Event('input',{bubbles:true})); })()");
+    await sleep(200);
+    const devSearchRows = await cdp.evaluate(
+      "(() => { const rows=[...document.querySelectorAll('#devBody [data-dev-pick]')];" +
+      " return { n: rows.length, bad: rows.filter((r)=>r.dataset.devPick.toLowerCase().indexOf('key')<0).length }; })()");
+    check('开发商一览支持面板内搜索', devSearchRows.n > 0 && devSearchRows.bad === 0, devSearchRows.n + ' 行含 key');
+
+    await cdp.evaluate("(() => { const i=document.getElementById('devSearch'); i.value='';" +
+      " i.dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('devToggleAll').click(); })()");
+    await sleep(200);
+    const devAll = await cdp.evaluate("document.querySelectorAll('#devBody [data-dev-pick]').length");
+    check('可切换显示仅 1 部的开发商', devAll === devPanel.names, devAll + ' 行');
+
+    const firstDev = await cdp.evaluate("(() => { const r=document.querySelector('#devBody [data-dev-pick]');" +
+      " return r ? [r.dataset.devPick, Number((r.querySelector('.num').textContent.match(/^(\\d+)/)||[])[1]||0)] : null; })()");
+    await cdp.evaluate("document.querySelector('#devBody [data-dev-pick]').click()");
+    await sleep(500);
+    const devJump = await cdp.evaluate(
+      "(() => ({ hidden: document.getElementById('devModal').hidden," +
+      " n: document.querySelectorAll('.card').length," +
+      " chips: document.getElementById('filterChips').textContent," +
+      " hash: location.hash }))()");
+    check('开发商一览选择后即筛选该开发商',
+      devJump.hidden === true && devJump.n === firstDev[1] &&
+      devJump.chips.includes(firstDev[0]) && /dv=/.test(devJump.hash),
+      firstDev[0] + ' → ' + devJump.n + ' 张');
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
     // ---------- 加入 / 状态 / 批量 ----------
     const targetId = await cdp.evaluate("document.querySelector('.card').dataset.id");
     await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
@@ -854,14 +905,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v6/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v7/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v6').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v7').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
