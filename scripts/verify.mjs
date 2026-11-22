@@ -429,6 +429,27 @@ async function main() {
     await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
     await sleep(300);
 
+    // 制作人员（剧本 / 原画 / 音乐 / 发行）逐项可点，并按该人员筛选全库
+    const staffId = await cdp.evaluate(
+      "(() => { const x=(window.GL_DATA||[]).find((x)=>x.sc&&x.sc.split('、').map((s)=>s.trim()).filter(Boolean).length); return x ? String(x.i) : ''; })()");
+    await cdp.evaluate(`location.hash = '#d=${staffId}'`);
+    await waitFor("document.getElementById('modal').hidden === false");
+    const staffLinks = await cdp.evaluate("document.querySelectorAll('#detailMeta [data-jump-staff]').length");
+    check('详情剧本与制作人员可点', staffLinks >= 1, staffLinks + ' 个');
+    const staffJump = await cdp.evaluate(
+      "(() => { const b=document.querySelector('#detailMeta [data-jump-staff]'); if (!b) return null; const v=b.dataset.jumpStaff; const k=b.dataset.staffKind; b.click(); return { v, k }; })()");
+    await sleep(450);
+    const staffFiltered = await cdp.evaluate(
+      `(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>c.dataset.id);` +
+      ` const ok=ids.every((id)=>{ const x=(window.GL_DATA||[]).find((y)=>String(y.i)===id);` +
+      ` return x && String(x['${staffJump ? staffJump.k : 'sc'}']||'').split('、').map((s)=>s.trim()).indexOf(${JSON.stringify(staffJump ? staffJump.v : '')})>=0; });` +
+      ` return [ids.length, ok, document.getElementById('modal').hidden, document.getElementById('filterChips').textContent]; })()`);
+    check('详情点制作人员即按该人员筛选', !!staffJump && staffFiltered[0] > 0 && staffFiltered[1] === true && staffFiltered[2] === true,
+      (staffJump ? staffJump.k + ' · ' + staffJump.v : '无') + ' → ' + staffFiltered[0] + ' 张');
+    check('筛选标签显示制作人员筛选', /剧本|原画|音乐|发行/.test(staffFiltered[3]) && staffFiltered[3].includes(staffJump ? staffJump.v : ''), String(staffFiltered[3]).slice(0, 40));
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
     // ---------- 加入 / 状态 / 批量 ----------
     const targetId = await cdp.evaluate("document.querySelector('.card').dataset.id");
     await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
