@@ -487,6 +487,22 @@ async function main() {
     check('题材筛选生效', genreN > 0 && genreN < 240, genreN + ' 张');
     await setSelect('genre', 'all');
 
+    const lengthOptions = await cdp.evaluate("document.querySelectorAll('#length option').length");
+    check('时长下拉三档可用', lengthOptions === 4, lengthOptions + ' 项');
+
+    await setSelect('length', 'short');
+    const shortInfo = await cdp.evaluate(`(() => { const map=(window.GL_VNDB||{}).map||{};
+      const ids=[...document.querySelectorAll('.card')].map((c)=>String(c.dataset.id));
+      return [ids.length, ids.every((id)=>{ const v=map[id]; return v && v.l>0 && v.l<=600; }),
+        /ln=short/.test(location.hash), document.getElementById('filterChips').textContent]; })()`);
+    check('时长筛选只保留短篇', shortInfo[0] > 0 && shortInfo[1] === true, shortInfo[0] + ' 张');
+    check('时长筛选写入 hash 与筛选标签', shortInfo[2] === true && String(shortInfo[3]).includes('时长'), String(shortInfo[3]).slice(0, 24));
+
+    await cdp.evaluate("document.querySelector('[data-chip=length]').click()");
+    await sleep(300);
+    const afterChip = await cdp.evaluate("document.querySelectorAll('.card').length");
+    check('移除时长筛选恢复全库', afterChip === 240, afterChip + ' 张');
+
     await cdp.evaluate("document.getElementById('highScoreBtn').click()");
     await sleep(300);
     const scores = await cdp.evaluate(
@@ -1088,14 +1104,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v11/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v12/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v11').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v12').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {

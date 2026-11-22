@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.9.0">
+<meta name="version" content="2.10.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2559,6 +2559,12 @@
         <select id="genre">
           <option value="all">全部题材</option>
         </select>
+        <select id="length" class="adv-filter" aria-label="按游玩时长筛选" title="时长来自 VNDB，仅覆盖已匹配的条目">
+          <option value="all">全部时长</option>
+          <option value="short">短篇 ≤10h</option>
+          <option value="mid">中篇 10–30h</option>
+          <option value="long">长篇 &gt;30h</option>
+        </select>
         <select id="sort">
           <option value="score">按评分</option>
           <option value="heat">按热度</option>
@@ -2950,6 +2956,18 @@
   var STAFF_LABEL = { sc: '剧本', ar: '原画', mu: '音乐', pub: '发行' };
   var STAFF_BY_LABEL = { '发行': 'pub', '剧本': 'sc', '原画': 'ar', '音乐': 'mu' };
 
+  // 游玩时长：来自 VNDB 的 vo.l（分钟），仅在运行时分档，不写入数据文件
+  // 分档：短篇 ≤10h、中篇 10–30h、长篇 >30h；未匹配 VNDB 或时长为 0 的条目不属于任何档
+  var LENGTH_LABEL = { short: '短篇 ≤10h', mid: '中篇 10–30h', long: '长篇 >30h' };
+
+  function lengthBucket(item) {
+    var minutes = item.vo && typeof item.vo.l === 'number' ? item.vo.l : 0;
+    if (!minutes) return '';
+    if (minutes <= 600) return 'short';
+    if (minutes <= 1800) return 'mid';
+    return 'long';
+  }
+
   // 制作人员字段在数据里是用「、」连接的单串，这里拆成数组用于匹配
   function staffValues(item, kind) {
     return String(item[kind] || '').split('、')
@@ -3020,6 +3038,7 @@
     staffKind: 'sc',
     series: '',
     genre: 'all',
+    length: 'all',
     sort: 'score',
     status: 'all',
     onlyMine: false,
@@ -3292,6 +3311,8 @@
       if (found) { state.staff = map.sv; state.staffKind = staffKind; }
     }
     if (map.gr === 'all' || Object.prototype.hasOwnProperty.call(GENRE_LABEL, map.gr)) state.genre = map.gr;
+    // 时长筛选：只接受三档标签，旧链接或损坏值回落到全部
+    if (['all', 'short', 'mid', 'long'].indexOf(map.ln) >= 0) state.length = map.ln;
     // 系列筛选：只接受已登记且至少 2 部作品的系列名，避免旧链接留下空结果
     state.series = '';
     if (typeof map.se === 'string' && map.se && Object.prototype.hasOwnProperty.call(seriesInfo, map.se)) state.series = map.se;
@@ -3348,6 +3369,7 @@
         sv: state.staff,
         se: state.series,
         gr: state.genre,
+        ln: state.length,
         o: state.sort,
         st: state.status,
         om: state.onlyMine,
@@ -3459,6 +3481,7 @@
       'sv=' + encodeURIComponent(state.staff),
       'se=' + encodeURIComponent(state.series),
       'gr=' + encodeURIComponent(state.genre),
+      'ln=' + encodeURIComponent(state.length),
       'o=' + encodeURIComponent(state.sort),
       'st=' + encodeURIComponent(state.status),
       'om=' + (state.onlyMine ? '1' : '0'),
@@ -3525,6 +3548,7 @@
     $('platform').value = state.platform;
     $('developer').value = state.dev;
     $('genre').value = state.genre;
+    $('length').value = state.length;
     $('sort').value = state.sort;
     $('mineSort').value = state.mineSort;
     var groupBtn = $('groupBtn');
@@ -3930,6 +3954,11 @@
       list = list.filter(function (x) { return (x.tg || []).indexOf(state.genre) >= 0; });
     }
 
+    // 时长筛选：按 VNDB 时长分档，未匹配到 VNDB 的条目不落入任何档位
+    if (state.tab === 'all' && state.length !== 'all') {
+      list = list.filter(function (x) { return lengthBucket(x) === state.length; });
+    }
+
     // 只看已收藏：在全部列表/搜索里快速收窄到个人清单
     if (state.onlyMine) {
       list = list.filter(function (x) { return !!myMap[String(x.i)]; });
@@ -4123,6 +4152,7 @@
     if (state.staff) chips.push({ k: 'staff', label: STAFF_LABEL[state.staffKind] || '制作', v: state.staff });
     if (state.series) chips.push({ k: 'series', label: '系列', v: state.series });
     if (state.genre !== 'all') chips.push({ k: 'genre', label: '题材', v: GENRE_LABEL[state.genre] || state.genre });
+    if (state.length !== 'all') chips.push({ k: 'length', label: '时长', v: LENGTH_LABEL[state.length] || state.length });
     if (state.sort !== 'score') chips.push({ k: 'sort', label: '排序', v: chipLabel('sort') });
     if (state.status !== 'all') chips.push({ k: 'status', label: '状态', v: STATUS[state.status] || state.status });
     if (state.onlyMine) chips.push({ k: 'onlyMine', label: '范围', v: '只看已收藏' });
@@ -4159,6 +4189,9 @@
     } else if (key === 'genre') {
       state.genre = 'all';
       $('genre').value = 'all';
+    } else if (key === 'length') {
+      state.length = 'all';
+      $('length').value = 'all';
     } else if (key === 'sort') {
       state.sort = 'score';
       $('sort').value = 'score';
@@ -4271,7 +4304,7 @@
       tab: state.tab, q: state.q, year: state.year,
       platform: state.platform, dev: state.dev, staff: state.staff, staffKind: state.staffKind,
       series: state.series,
-      genre: state.genre, sort: state.sort,
+      genre: state.genre, length: state.length, sort: state.sort,
       status: state.status, onlyMine: state.onlyMine, highScore: state.highScore,
       hideMine: state.hideMine, view: state.view, group: state.group,
       groupBy: state.groupBy, mineSort: state.mineSort
@@ -4282,7 +4315,7 @@
     applyStateMap({
       tab: v.tab, y: v.year, f: v.platform, dv: v.dev || '',
       sk: v.staffKind || 'sc', sv: v.staff || '', se: v.series || '',
-      gr: v.genre || 'all', o: v.sort, st: v.status, om: !!v.onlyMine, hs: !!v.highScore,
+      gr: v.genre || 'all', ln: v.length || 'all', o: v.sort, st: v.status, om: !!v.onlyMine, hs: !!v.highScore,
       hm: !!v.hideMine, v: v.view, ms: v.mineSort,
       gb: v.group ? v.groupBy : '', q: v.q || ''
     });
@@ -4331,6 +4364,7 @@
     if (q) add('q', '清除搜索「' + q + '」', { q: '' });
     if (state.year !== 'all') add('year', '切到全部年份', { year: 'all' });
     if (state.genre !== 'all') add('genre', '去掉题材「' + (GENRE_LABEL[state.genre] || state.genre) + '」', { genre: 'all' });
+    if (state.length !== 'all') add('length', '去掉时长「' + (LENGTH_LABEL[state.length] || state.length) + '」', { length: 'all' });
     if (state.dev) add('dev', '去掉开发商「' + state.dev + '」', { dev: '' });
     if (state.staff) add('staff', '去掉' + (STAFF_LABEL[state.staffKind] || '制作') + '「' + state.staff + '」',
       { staff: '', staffKind: 'sc' });
@@ -4373,7 +4407,7 @@
     // 筛选按钮与「清除筛选」共用一套计数：前者不含状态与搜索，另单独计入排序
     var filterCount = (state.platform !== 'all' ? 1 : 0) + (state.dev ? 1 : 0) +
       (state.staff ? 1 : 0) + (state.series ? 1 : 0) +
-      (state.genre !== 'all' ? 1 : 0) +
+      (state.genre !== 'all' ? 1 : 0) + (state.length !== 'all' ? 1 : 0) +
       (state.status !== 'all' ? 1 : 0) + (state.onlyMine ? 1 : 0) +
       (state.highScore ? 1 : 0) + (state.hideMine ? 1 : 0) + (state.q.trim() ? 1 : 0);
     var activeFilters = filterCount - (state.status !== 'all' ? 1 : 0) -
@@ -5318,6 +5352,11 @@
     render();
   });
 
+  $('length').addEventListener('change', function (e) {
+    state.length = e.target.value;
+    render();
+  });
+
   $('sort').addEventListener('change', function (e) {
     state.sort = e.target.value;
     render();
@@ -5354,6 +5393,7 @@
     state.staffKind = 'sc';
     state.series = '';
     state.genre = 'all';
+    state.length = 'all';
     state.status = 'all';
     state.onlyMine = false;
     state.highScore = false;
@@ -5402,7 +5442,7 @@
     if (!sheet || !sheet.hidden) return;
     // 有高级条件生效时直接展开，避免用户以为筛选没生效
     var advActive = state.platform !== 'all' || !!state.dev ||
-      state.onlyMine || state.highScore || state.hideMine;
+      state.length !== 'all' || state.onlyMine || state.highScore || state.hideMine;
     $('filters').classList.toggle('adv-open', advActive);
     syncAdvFilterToggle(advActive);
     $('filterSheetBody').appendChild($('filters'));
