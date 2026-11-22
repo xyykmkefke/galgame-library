@@ -1,10 +1,10 @@
 # Galgame 库 · 落实与交接
 
-- 文档日期：2026-11-22
-- 当前状态：v0.1.0 初始骨架（仅目录、规范与本文档，未写业务代码）
+- 文档日期：2026-11-23
+- 当前状态：v1.1.0 已实现（数据 1820 条，`npm run verify` 75/75）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
-- 目标版本：v1.0.0
+- 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
 
 ## 1. 目标与边界
 
@@ -55,21 +55,22 @@ User-Agent: yuc-galgame-list/1.0
 标签范围说明：
 
 - `galgame` 1722 条；`视觉小说` 547 条；`ADV` 1633 条，三者高度重叠。
-- v1.0.0 先只用 `galgame`，数据干净、聚焦。
-- 若上线后觉得偏少，再补抓 `视觉小说`，与 `galgame` 按 `id` 去重后合并；不要在 v1.0.0 同时并入 `ADV`，否则会混入大量非 Galgame 的冒险游戏。
+- v1.0.0 先只用 `galgame`；v1.1.0 已补抓 `视觉小说`，与 `galgame` 按 `id` 去重合并后共 1820 条。
+- 仍不并入 `ADV`，避免混入大量非 Galgame 的冒险游戏；需要时用 `--tags=galgame,视觉小说,ADV` 显式指定。
 
 ## 3. 抓取与产出
 
 新增 `scripts/fetch-games.mjs`，参考 `../番剧/scripts/fetch-bangumi.mjs`：
 
 - 复用 `requestPage` 的重试、`slim` 的压缩思路、`initials` 拼音
-- 去掉季度逻辑，直接按 offset 全量翻页
-- 每页缓存到 `data/build/page-0000.json`，中断可续跑；`--refresh` 清空缓存重抓
+- 去掉季度逻辑，按标签 × 发售年份分桶（`offset >= 1000` 翻页上限），末尾 heat / rank / score 各取前 1000 条兜底
+- 每桶缓存到 `data/build/{g|vn}-{year}.json`，中断可续跑；`--refresh` 清空缓存重抓
+- 桶缓存额外保留 `rt`（原始标签）与 `plr`（原始平台碎片），可离线重算题材与平台归一
 - 输出 `data/galgames.js`：
 
 ```js
 // 由 scripts/fetch-games.mjs 生成，请勿手动修改
-window.GL_META = { generatedAt: '...', count: 1722, minDate: '...', maxDate: '...' };
+window.GL_META = { generatedAt: '...', count: 1820, minDate: '...', maxDate: '...' };
 window.GL_DATA = [ /* ... */ ];
 ```
 
@@ -311,6 +312,8 @@ gh repo create xyykmkefke/galgame-library --public --source . --remote origin --
 
 ## 8. 验收清单
 
+> 本节是设计期清单；当前自动化验收为 75 项（见第 11 节），其中同步为 mock 覆盖，真实 Gist / 真机 iOS 待线上验证。
+
 数据：
 
 - [ ] 条目数 ≥ 1500，ID 无重复
@@ -362,3 +365,14 @@ PWA / 移动端：
 ## 10. 交接提示词
 
 > 接手 `c:\Users\ASUS\Desktop\音乐\galgame`。先读 `README.md`、`HANDOVER.md`，再读 `../番剧/README.md` 和 `../番剧/index.html` 的对应区段。按第 7 节顺序实现 v1.0.0，每步运行 `check-data` / `verify`，不要修改 `../番剧`。完成后汇报：数据统计、平台与开发商覆盖率、verify 通过数、桌面与移动端截图、线上 URL。若数据字段与本文不符，先停下来说明差异再改。
+
+## 11. 实际落实与计划差异（v1.1.0）
+
+- 数据：已实现 `galgame` + `视觉小说` 双标签抓取与按 ID 合并，共 1820 条（1985-05-31 ~ 2027-02-18）；未并入 `ADV`。
+- 平台归一：在原有映射上补充 Windows 各版本 / `Win 98` / `Window 10以上` → `PC`、`PlayStationVita` → `PSV`、`Nintendo Swtich` → `Switch`、`PC98` → `PC-98`、`ブラウザ` → `Web`，并过滤 `8` / `10 日本語版` / `98用` 等由斜杠拆出的碎片；桶缓存保留 `plr`，改映射后可离线重算。
+- 页面：卡片标题两行截断（列表视图一行）沿用番剧方案，卡片 meta 增加单行省略防溢出；搜索扩展到开发商与平台；详情页平台、开发商改为逐项可点。
+- 云同步：`verify` 通过注入 `Page.addScriptToEvaluateOnNewDocument` mock `api.github.com`，覆盖创建 Gist、双向合并、远端墓碑、401 不重试四类场景；真实 Gist 与真机 iOS 仍未在线验证。
+- PWA：`verify` 增加 Service Worker 缓存检查与 CDP 断网重开验证；`index.html` 内注册 SW，并在 `updatefound` 后提示「新版本已就绪 / 刷新」。
+- 验收：`npm run verify` 由 59 项扩到 75 项，当前 75/75；`npm run check-data` 问题总数 0。
+- 版本：`package.json` 升至 1.1.0（相对 v1.0.0 增加数据源与交互改进）。
+- 部署：受本次任务约束，未执行 commit / push / Pages 开启；部署命令见第 7 节 Step 6。

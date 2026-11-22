@@ -1,6 +1,6 @@
 {
   "name": "galgame-library",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": true,
   "description": "本地优先的 Galgame 浏览与游玩记录，内置 Bangumi galgame 标签条目",
   "license": "MIT",
