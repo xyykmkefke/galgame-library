@@ -1216,14 +1216,15 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v14/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    const swCache = (swText.match(/var CACHE = '([^']+)'/) || [])[1] || '';
+    check('Service Worker 使用独立缓存并预缓存数据', /^yuc-gl-shell-v\d+$/.test(swCache) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText), swCache);
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v14').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      `caches.open(${JSON.stringify(swCache)}).then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))`);
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
@@ -1326,6 +1327,39 @@ async function main() {
     await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
     await sleep(200);
     check('Esc 关闭统计面板', await cdp.evaluate("document.getElementById('statsModal').hidden === true") === true);
+
+    // 我的时长估算：按 VNDB 时长汇总已收藏作品的预计总时长
+    const playIds = await cdp.evaluate(`(() => {
+      const picks = (window.GL_DATA || []).filter((x) => x.vo && x.vo.l > 0).slice(0, 3);
+      const sts = ['done', 'doing', 'want'];
+      const mine = {};
+      picks.forEach((x, i) => { mine[String(x.i)] = { s: sts[i], t: 1000, u: 1000 }; });
+      localStorage.setItem('yuc_gl_mine_v1', JSON.stringify(mine));
+      return {
+        n: picks.length,
+        totalH: Math.round(picks.reduce((a, x) => a + x.vo.l, 0) / 60),
+        doneH: Math.round(picks[0].vo.l / 60)
+      };
+    })()`);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?play=${Date.now()}` });
+    await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'i',bubbles:true}))");
+    await sleep(250);
+    const playSec = await cdp.evaluate(`(() => {
+      const h = [...document.querySelectorAll('#statsBody .stats-sec h3')].find((x) => /我的时长/.test(x.textContent));
+      return {
+        text: h ? h.parentElement.textContent : '',
+        cards: h ? [...h.parentElement.querySelectorAll('.stat-card')].map((c) => c.textContent) : []
+      };
+    })()`);
+    check('统计面板显示我的时长估算', /我的时长/.test(playSec.text) && playSec.cards.length === 3, playSec.cards.join(' / '));
+    check('收藏总时长与已通关时长按 VNDB 时长汇总',
+      playSec.text.includes(playIds.totalH + ' 小时') && playSec.text.includes(playIds.doneH + ' 小时'),
+      playIds.totalH + ' 小时 / 通关 ' + playIds.doneH + ' 小时');
+    check('时长估算备注仅统计已匹配条目', /未匹配/.test(playSec.text) && playSec.text.includes(playIds.n + ' 部'),
+      '覆盖 ' + playIds.n + ' 部');
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
 
     // 最近浏览去重并置顶
     const recentOrder = await cdp.evaluate("(() => { const l=JSON.parse(localStorage.getItem('yuc_gl_recent_v1')||'[]'); return [l.length, new Set(l).size, l[0]]; })()");

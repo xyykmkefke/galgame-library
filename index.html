@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.12.0">
+<meta name="version" content="2.13.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -4867,11 +4867,20 @@
 
     var mineN = 0;
     var statusCounts = { want: 0, doing: 0, done: 0, drop: 0 };
+    // 我的时长估算：只累计收藏中已匹配 VNDB 时长的条目，运行时计算，不写入数据文件
+    var mineMin = 0, mineTimedN = 0, doneMin = 0, todoMin = 0;
     Object.keys(myMap).forEach(function (id) {
       if (!byId.has(id)) return;
       mineN += 1;
       var s = myMap[id] && myMap[id].s;
       if (statusCounts[s] != null) statusCounts[s] += 1;
+      var item = byId.get(id);
+      var minutes = item.vo && typeof item.vo.l === 'number' ? item.vo.l : 0;
+      if (minutes <= 0) return;
+      mineMin += minutes;
+      mineTimedN += 1;
+      if (s === 'done') doneMin += minutes;
+      else if (s === 'want' || s === 'doing') todoMin += minutes;
     });
 
     var decade = {};
@@ -4920,6 +4929,12 @@
         ['想玩', statusCounts.want], ['在玩', statusCounts.doing],
         ['已通关', statusCounts.done], ['弃坑', statusCounts.drop]
       ], mineN || 1) + '</div>' +
+      '<div class="stats-sec"><h3>我的时长（估算）</h3>' + statCards([
+        [mineTimedN ? Math.round(mineMin / 60) + ' 小时' : '—', '收藏总时长'],
+        [mineTimedN ? Math.round(doneMin / 60) + ' 小时' : '—', '已通关'],
+        [mineTimedN ? Math.round(todoMin / 60) + ' 小时' : '—', '想玩 + 在玩']
+      ]) + '<p class="hint">时长来自 VNDB 游玩时长，仅统计已匹配的 ' + mineTimedN +
+        ' 部收藏；未匹配 VNDB 或时长为 0 的作品不计入，因此为下限估算。</p></div>' +
       '<div class="stats-sec"><h3>最近浏览</h3>' + recentHtml + '</div>' +
       '<div class="stats-sec"><h3>数据来源</h3><div class="stats-src">' +
         '<a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 主库 ' + total + ' 条</a>' +
@@ -4940,6 +4955,13 @@
     lines.push('平台 Top5：' + topEntries(platforms, 5).map(function (e) { return e[0] + ' ' + e[1]; }).join(' / '));
     lines.push('开发商 Top5：' + topEntries(devs, 5).map(function (e) { return e[0] + ' ' + e[1]; }).join(' / '));
     lines.push('我的收藏：' + Object.keys(myMap).filter(function (id) { return byId.has(id); }).length + ' 部');
+    var mins = 0, timed = 0;
+    Object.keys(myMap).forEach(function (id) {
+      var x = byId.get(id);
+      var m = x && x.vo && typeof x.vo.l === 'number' ? x.vo.l : 0;
+      if (m > 0) { mins += m; timed += 1; }
+    });
+    if (timed) lines.push('收藏时长估算：约 ' + Math.round(mins / 60) + ' 小时（覆盖 ' + timed + ' 部）');
     return lines.join('\n');
   }
 
