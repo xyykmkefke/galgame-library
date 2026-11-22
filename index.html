@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.1.1">
+<meta name="version" content="2.1.2">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2489,7 +2489,7 @@
           <circle cx="11" cy="11" r="7"></circle>
           <path d="m20 20-3.5-3.5"></path>
         </svg>
-        <input id="search" type="search" placeholder="搜索游戏名、中文名、英文别名或拼音首字母（空格分隔，-词 排除）" autocomplete="off" aria-label="搜索游戏名">
+        <input id="search" type="search" placeholder="搜索游戏名、别名或拼音（空格分隔，-词 排除；可加 开发商:Key / 平台:Switch / 年份:2015）" autocomplete="off" aria-label="搜索游戏名">
         <div class="searchhist" id="searchHist" hidden></div>
       </div>
       <nav class="tabs">
@@ -3584,6 +3584,39 @@
       .filter(function (t) { return t; });
   }
 
+  // 搜索限定语法：开发商:Key / dev:Key、平台:Switch / pl:Switch、年份:2015 / year:2015，前缀 - 表示排除
+  var QUAL_KEYS = { dev: 'dev', '开发商': 'dev', pl: 'pl', '平台': 'pl', year: 'year', '年份': 'year' };
+
+  function splitQualifiers(tokens) {
+    var quals = [];
+    var rest = [];
+    tokens.forEach(function (t) {
+      var neg = t.charAt(0) === '-' && t.length > 1;
+      var body = neg ? t.slice(1) : t;
+      var m = body.match(/^(dev|开发商|pl|平台|year|年份)[:：](.+)$/);
+      if (!m) {
+        rest.push(t);
+        return;
+      }
+      quals.push({ k: QUAL_KEYS[m[1]], v: m[2].trim(), neg: neg });
+    });
+    return { quals: quals, rest: rest };
+  }
+
+  // 限定条件始终按原值严格生效，不参与宽松兜底，避免把失效条件悄悄放宽
+  function matchQualifier(x, qf) {
+    if (!qf.v) return false;
+    var v = qf.v.toLowerCase();
+    if (qf.k === 'dev') {
+      return (x.dev || []).some(function (d) { return String(d).toLowerCase().indexOf(v) >= 0; });
+    }
+    if (qf.k === 'pl') {
+      return (x.pl || []).some(function (p) { return String(p).toLowerCase().indexOf(v) >= 0; });
+    }
+    if (qf.k === 'year') return yearOf(x.d) === v;
+    return false;
+  }
+
   // 跨源别名：VNDB 英文 / 罗马字标题、月幕原名与中文名，运行时拼接参与搜索，不写入主库
   function aliasText(x) {
     var parts = [];
@@ -3684,7 +3717,9 @@
   function filteredList() {
     var list = baseList();
     var q = state.q.trim().toLowerCase();
-    var allTokens = searchTokens(q);
+    // 先摘出限定语法，剩余词条仍走原有的严格 / 宽松匹配
+    var qualParts = splitQualifiers(searchTokens(q));
+    var allTokens = qualParts.rest;
     // 「-词」表示排除：含该词的条目不出现在结果里，可与普通关键词组合
     var tokens = allTokens.filter(function (t) { return t.charAt(0) !== '-' || t.length < 2; });
     var excludes = allTokens.filter(function (t) { return t.charAt(0) === '-' && t.length > 1; })
@@ -3714,6 +3749,15 @@
       }
     } else if (state.tab === 'all' && state.year !== 'all') {
       list = list.filter(function (x) { return yearOf(x.d) === state.year; });
+    }
+
+    // 搜索限定语法独立生效，可与普通关键词及其他筛选叠加；-前缀表示排除
+    if (qualParts.quals.length) {
+      list = list.filter(function (x) {
+        return qualParts.quals.every(function (qf) {
+          return matchQualifier(x, qf) === !qf.neg;
+        });
+      });
     }
 
     // 平台/开发商筛选只在全部列表页可见，切到我的游玩时不应暗中影响结果

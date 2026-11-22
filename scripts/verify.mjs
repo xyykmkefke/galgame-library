@@ -395,6 +395,33 @@ async function main() {
       "(() => { const n=document.querySelectorAll('.card').length; return [n, [...document.querySelectorAll('.card .title')].some((t)=>/性/.test(t.textContent))]; })()");
     check('「-词」排除生效', exclInfo[0] > 0 && exclInfo[1] === false, String(exclInfo));
 
+    // 搜索限定语法：开发商 / 平台 / 年份可写在搜索框里，-前缀表示排除
+    await typeSearch('开发商:' + devToken);
+    const qualDev = await cdp.evaluate(`(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; });
+      const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id));
+      return [ids.length, ids.every((id)=>((map[id]||{}).dev||[]).join(' ').toLowerCase().indexOf(${JSON.stringify(devToken.toLowerCase())})>=0)]; })()`);
+    check('搜索可按开发商限定', qualDev[0] > 0 && qualDev[1] === true, devToken + ' → ' + qualDev[0] + ' 条');
+
+    await typeSearch('平台:Switch');
+    const qualPlat = await cdp.evaluate(`(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; });
+      const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id));
+      return [ids.length, ids.every((id)=>((map[id]||{}).pl||[]).some((p)=>p.toLowerCase().indexOf('switch')>=0))]; })()`);
+    check('搜索可按平台限定', qualPlat[0] > 0 && qualPlat[1] === true, 'Switch → ' + qualPlat[0] + ' 条');
+
+    await typeSearch('年份:2015');
+    const qualYear = await cdp.evaluate(`(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; });
+      const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id));
+      const all=(window.GL_DATA||[]).filter((x)=>String(x.d||'').slice(0,4)==='2015').length;
+      return [ids.length, all, ids.every((id)=>String(((map[id]||{}).d)||'').slice(0,4)==='2015')]; })()`);
+    check('搜索可按年份限定', qualYear[0] === Math.min(qualYear[1], 240) && qualYear[2] === true,
+      '2015 → ' + qualYear[0] + ' / ' + qualYear[1] + ' 条');
+
+    await typeSearch('-平台:PC');
+    const qualNeg = await cdp.evaluate(`(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; });
+      const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id));
+      return [ids.length, ids.every((id)=>((map[id]||{}).pl||[]).indexOf('PC')<0)]; })()`);
+    check('搜索限定支持 - 排除', qualNeg[0] > 0 && qualNeg[1] === true, qualNeg[0] + ' 条');
+
     await typeSearch('时空 轮回');
     let multi = await cdp.evaluate("document.querySelectorAll('.card').length");
     check('多关键词取交集', multi > 0 && multi <= 5, multi + ' 条');
