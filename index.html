@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.7.0">
+<meta name="version" content="2.8.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2770,8 +2770,12 @@
   <div class="help-mask" data-series-close></div>
   <div class="help-panel stats-panel" role="dialog" aria-modal="true" aria-label="系列一览">
     <h2>系列一览 <small id="seriesTotal"></small></h2>
+    <div class="staff-tools">
+      <input class="sync-input" id="seriesSearch" type="search" placeholder="搜索系列名称" autocomplete="off" aria-label="搜索系列">
+    </div>
     <div id="seriesBody"></div>
     <div class="settings-actions">
+      <button class="btn" id="seriesToggleMine" type="button" aria-pressed="false">只看我收藏的系列</button>
       <button class="btn primary" id="seriesClose" type="button">完成</button>
     </div>
   </div>
@@ -4923,27 +4927,44 @@
   // ---- 系列一览：汇总运行时推导出的全部系列，点击即筛选 ----
   var seriesEl = $('seriesModal');
   var lastSeriesFocus = null;
+  var seriesQuery = '';
+  var seriesOnlyMine = false;
 
   function renderSeriesPanel() {
     var names = Object.keys(seriesInfo);
     var total = DATA.length;
     var covered = 0;
     var mineSeries = 0;
-    var entries = names.map(function (name) {
+    var all = names.map(function (name) {
       var info = seriesInfo[name];
       covered += info.n;
       var prog = seriesProgress(name);
       if (prog.c) mineSeries += 1;
       var note = prog.c ? '我的 ' + prog.c + (prog.done ? ' · 通关 ' + prog.done : '') : '';
-      return [name, info.n, name, note];
+      return [name, info.n, name, note, prog.c || 0];
     }).sort(function (a, b) {
       if (b[1] !== a[1]) return b[1] - a[1];
       return a[0].localeCompare(b[0], 'zh-Hans-CN');
     });
 
-    $('seriesTotal').textContent = entries.length + ' 个系列 · ' + covered + ' 部';
+    // 面板内搜索与「只看我收藏」可叠加，仅影响列表，顶部汇总仍按全量统计
+    var entries = all;
+    var q = seriesQuery.trim().toLowerCase();
+    if (q) entries = entries.filter(function (e) { return e[0].toLowerCase().indexOf(q) >= 0; });
+    if (seriesOnlyMine) entries = entries.filter(function (e) { return e[4] > 0; });
+    if (seriesOnlyMine) {
+      entries = entries.slice().sort(function (a, b) {
+        if (b[4] !== a[4]) return b[4] - a[4];
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0], 'zh-Hans-CN');
+      });
+    }
+
+    $('seriesTotal').textContent = all.length + ' 个系列 · ' + covered + ' 部';
+    $('seriesToggleMine').setAttribute('aria-pressed', seriesOnlyMine ? 'true' : 'false');
+    $('seriesToggleMine').textContent = seriesOnlyMine ? '显示全部系列' : '只看我收藏的系列';
     var cards = [
-      [entries.length, '系列数'],
+      [all.length, '系列数'],
       [covered, '覆盖作品'],
       [percent(covered, total) + '%', '系列覆盖']
     ];
@@ -4952,7 +4973,7 @@
     $('seriesBody').innerHTML =
       '<div class="stats-sec">' + statCards(cards) + '</div>' +
       '<p class="hint">同一标题前缀下至少 2 部不同作品才计为系列；点击任意系列即筛出全部作品。</p>' +
-      '<div class="stats-sec"><h3>全部系列</h3>' +
+      '<div class="stats-sec"><h3>系列（' + entries.length + ' / ' + all.length + '）</h3>' +
         barRows(entries, total, 'data-series-pick') + '</div>';
   }
 
@@ -4970,6 +4991,16 @@
     lastSeriesFocus = null;
     if (back && document.contains(back)) back.focus();
   }
+
+  $('seriesSearch').addEventListener('input', function () {
+    seriesQuery = this.value;
+    renderSeriesPanel();
+  });
+
+  $('seriesToggleMine').addEventListener('click', function () {
+    seriesOnlyMine = !seriesOnlyMine;
+    renderSeriesPanel();
+  });
 
   seriesEl.addEventListener('click', function (e) {
     if (e.target.closest('[data-series-close]') || e.target.closest('#seriesClose')) {
