@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.13.0">
+<meta name="version" content="2.14.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2419,6 +2419,45 @@
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
+  /* 我的足迹：按加入月份分组的时间线 */
+  .tl-group { margin: 0 0 14px; }
+  .tl-group h4 {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    margin: 0 0 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted-2);
+    letter-spacing: 0.3px;
+  }
+  .tl-list { display: flex; flex-direction: column; gap: 2px; }
+  .tl-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 9px;
+    align-items: center;
+    width: 100%;
+    padding: 6px 5px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .tl-item:hover { background: rgba(255, 255, 255, 0.05); }
+  .tl-item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-item .s {
+    padding: 1px 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted-2);
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  .tl-item .d { color: var(--muted-2); font-size: 11px; font-variant-numeric: tabular-nums; }
   .recent-list { display: flex; flex-wrap: wrap; gap: 6px; }
   .recent-chip {
     max-width: 220px;
@@ -2525,6 +2564,7 @@
         <button type="button" data-more="staffs">制作人员一览</button>
         <button type="button" data-more="genres">题材一览</button>
         <button type="button" data-more="platforms">平台一览</button>
+        <button type="button" data-more="timeline">我的足迹</button>
         <button type="button" data-more="random">摇一部<kbd>R</kbd></button>
         <button type="button" data-more="recent">最近浏览</button>
         <button type="button" data-more="install">安装到桌面</button>
@@ -2841,6 +2881,17 @@
     <div id="platformBody"></div>
     <div class="settings-actions">
       <button class="btn primary" id="platformClose" type="button">完成</button>
+    </div>
+  </div>
+</div>
+
+<div class="help" id="timelineModal" hidden>
+  <div class="help-mask" data-timeline-close></div>
+  <div class="help-panel stats-panel" role="dialog" aria-modal="true" aria-label="我的足迹">
+    <h2>我的足迹 <small id="timelineTotal"></small></h2>
+    <div id="timelineBody"></div>
+    <div class="settings-actions">
+      <button class="btn primary" id="timelineClose" type="button">完成</button>
     </div>
   </div>
 </div>
@@ -5411,6 +5462,100 @@
     jumpToAll({ platform: name }, '已筛选全部「' + name + '」平台作品');
   });
 
+  // ---- 我的足迹：按加入月份回顾本地收藏，点击条目打开详情 ----
+  var timelineEl = $('timelineModal');
+  var lastTimelineFocus = null;
+
+  function timelineMonthLabel(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月';
+  }
+
+  function renderTimelinePanel() {
+    var rows = [];
+    Object.keys(myMap).forEach(function (id) {
+      var item = byId.get(id);
+      if (!item) return;
+      var rec = myMap[id];
+      rows.push({ g: item, s: rec.s, t: rec.t || rec.u || 0 });
+    });
+    // 按加入时间倒序，同月归为一组
+    rows.sort(function (a, b) { return b.t - a.t; });
+    var groups = [];
+    var groupMap = {};
+    rows.forEach(function (r) {
+      var d = new Date(r.t);
+      var key = d.getFullYear() + '-' + (d.getMonth() + 1);
+      if (!groupMap[key]) {
+        groupMap[key] = { label: timelineMonthLabel(r.t), rows: [] };
+        groups.push(groupMap[key]);
+      }
+      groupMap[key].rows.push(r);
+    });
+    var done = rows.filter(function (r) { return r.s === 'done'; }).length;
+    var now = new Date();
+    var thisMonth = rows.filter(function (r) {
+      var d = new Date(r.t);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }).length;
+
+    $('timelineTotal').textContent = rows.length
+      ? rows.length + ' 部收藏 · ' + groups.length + ' 个月'
+      : '还没有收藏';
+
+    var groupsHtml = groups.map(function (grp) {
+      var items = grp.rows.map(function (r) {
+        var d = new Date(r.t);
+        var md = (d.getMonth() + 1) + '-' + String(d.getDate()).padStart(2, '0');
+        return '<button class="tl-item" type="button" data-timeline-pick="' + escapeHtml(String(r.g.i)) + '">' +
+          '<span class="t">' + escapeHtml(r.g.cn || r.g.n) + '</span>' +
+          '<span class="s">' + escapeHtml(STATUS[r.s] || '想玩') + '</span>' +
+          '<span class="d">' + md + '</span>' +
+          '</button>';
+      }).join('');
+      return '<div class="tl-group"><h4>' + escapeHtml(grp.label) + '<span>' + grp.rows.length + ' 部</span></h4>' +
+        '<div class="tl-list">' + items + '</div></div>';
+    }).join('');
+
+    $('timelineBody').innerHTML =
+      '<div class="stats-sec">' + statCards([
+        [rows.length, '收藏总数'],
+        [done, '已通关'],
+        [thisMonth, '本月新增']
+      ]) + '</div>' +
+      (rows.length
+        ? '<p class="hint">按加入时间倒序列出全部收藏，点击任意条目打开详情。</p>' +
+          '<div class="stats-sec">' + groupsHtml + '</div>'
+        : '<p class="hint">还没有收藏。在卡片长按或打开详情即可加入想玩 / 在玩 / 已通关 / 弃坑，这里会按加入月份列出。</p>');
+  }
+
+  function openTimelinePanel() {
+    if (timelineEl.hidden) lastTimelineFocus = document.activeElement;
+    renderTimelinePanel();
+    timelineEl.hidden = false;
+    $('timelineClose').focus();
+  }
+
+  function closeTimelinePanel() {
+    if (timelineEl.hidden) return;
+    timelineEl.hidden = true;
+    var back = lastTimelineFocus;
+    lastTimelineFocus = null;
+    if (back && document.contains(back)) back.focus();
+  }
+
+  timelineEl.addEventListener('click', function (e) {
+    if (e.target.closest('[data-timeline-close]') || e.target.closest('#timelineClose')) {
+      closeTimelinePanel();
+      return;
+    }
+    var pick = e.target.closest('[data-timeline-pick]');
+    if (!pick) return;
+    var id = pick.dataset.timelinePick;
+    closeTimelinePanel();
+    openDetail(id);
+  });
+
   // ---- 摇一部：从当前筛选结果里随机抽一部 ----
   function randomPick() {
     var pool = filteredList();
@@ -5734,6 +5879,7 @@
     else if (act === 'staffs') openStaffPanel();
     else if (act === 'genres') openGenrePanel();
     else if (act === 'platforms') openPlatformPanel();
+    else if (act === 'timeline') openTimelinePanel();
     else if (act === 'random') randomPick();
     else if (act === 'recent') openStats();
     else if (act === 'install') installApp();
@@ -5854,6 +6000,7 @@
       { name: '制作人员一览', kind: '视图', run: function () { openStaffPanel(); } },
       { name: '题材一览', kind: '视图', run: function () { openGenrePanel(); } },
       { name: '平台一览', kind: '视图', run: function () { openPlatformPanel(); } },
+      { name: '我的足迹', kind: '视图', run: function () { openTimelinePanel(); } },
       { name: '摇一部', kind: '发现', run: function () { randomPick(); } },
       { name: '最近浏览', kind: '发现', run: function () { openStats(); } },
       { name: '安装到桌面', kind: '应用', run: function () { installApp(); } },
@@ -6704,6 +6851,15 @@
         closePlatformPanel();
       } else if (e.key === 'Tab') {
         trapModalTab($('platformModal'), e);
+      }
+      return;
+    }
+    if (!$('timelineModal').hidden) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeTimelinePanel();
+      } else if (e.key === 'Tab') {
+        trapModalTab($('timelineModal'), e);
       }
       return;
     }

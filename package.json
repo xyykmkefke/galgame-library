@@ -1,6 +1,6 @@
 {
   "name": "galgame-library",
-  "version": "2.13.0",
+  "version": "2.14.0",
   "private": true,
   "description": "本地优先的 Galgame 浏览与游玩记录，内置 Bangumi galgame 标签条目与 VNDB、月幕补充数据",
   "license": "MIT",

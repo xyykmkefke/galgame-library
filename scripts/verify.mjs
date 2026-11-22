@@ -1361,6 +1361,57 @@ async function main() {
     await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
     await sleep(200);
 
+    // 我的足迹：按加入月份分组列出收藏，点击条目打开详情
+    const timelineSeed = await cdp.evaluate(`(() => {
+      const picks = (window.GL_DATA || []).slice(0, 3);
+      const now = new Date();
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15).getTime();
+      const mine = {};
+      mine[String(picks[0].i)] = { s: 'done', t: now.getTime(), u: now.getTime() };
+      mine[String(picks[1].i)] = { s: 'want', t: now.getTime() - 3600000, u: now.getTime() - 3600000 };
+      mine[String(picks[2].i)] = { s: 'doing', t: lastMonth, u: lastMonth };
+      localStorage.setItem('yuc_gl_mine_v1', JSON.stringify(mine));
+      return { n: picks.length };
+    })()`);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?tl=${Date.now()}` });
+    await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"timeline\"]').click()");
+    await waitFor("document.getElementById('timelineModal').hidden === false");
+    const timelinePanel = await cdp.evaluate(`(() => {
+      const rows = [...document.querySelectorAll('#timelineBody [data-timeline-pick]')];
+      return {
+        rows: rows.length,
+        groups: document.querySelectorAll('#timelineBody .tl-group').length,
+        total: document.getElementById('timelineTotal').textContent,
+        cards: document.querySelectorAll('#timelineBody .stat-card').length,
+        firstId: rows[0] ? rows[0].dataset.timelinePick : ''
+      };
+    })()`);
+    check('我的足迹按月份分组列出全部收藏', timelinePanel.rows === timelineSeed.n && timelinePanel.groups >= 2 &&
+      /^\d+ 部收藏 · \d+ 个月$/.test(timelinePanel.total) && timelinePanel.cards === 3,
+      timelinePanel.rows + ' 行 / ' + timelinePanel.groups + ' 组 / ' + timelinePanel.total);
+
+    await cdp.evaluate("document.querySelector('#timelineBody [data-timeline-pick]').click()");
+    await waitFor("document.getElementById('modal').hidden === false");
+    const timelineOpen = await cdp.evaluate(
+      "(() => ({ hidden: document.getElementById('timelineModal').hidden, id: location.hash }))()");
+    check('我的足迹点击条目打开详情并关闭面板',
+      timelineOpen.hidden === true && timelineOpen.id.includes('d=' + timelinePanel.firstId),
+      timelineOpen.id);
+    await cdp.evaluate("document.getElementById('modalClose').click()");
+    await sleep(200);
+
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"timeline\"]').click()");
+    await waitFor("document.getElementById('timelineModal').hidden === false");
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+    check('Esc 可关闭我的足迹',
+      await cdp.evaluate("document.getElementById('timelineModal').hidden") === true);
+
     // 最近浏览去重并置顶
     const recentOrder = await cdp.evaluate("(() => { const l=JSON.parse(localStorage.getItem('yuc_gl_recent_v1')||'[]'); return [l.length, new Set(l).size, l[0]]; })()");
     check('最近浏览去重且最新在前', recentOrder[0] === recentOrder[1] && recentOrder[0] > 0, String(recentOrder));
