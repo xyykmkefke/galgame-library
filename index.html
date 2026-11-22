@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.1.2">
+<meta name="version" content="2.2.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2891,6 +2891,46 @@
       .filter(Boolean);
   }
 
+  // ---- 系列聚合：从标题保守推导系列名，仅在运行时计算，不写入数据文件 ----
+  // 规则：取「～ ~ ： :」前的副标题前缀，去掉尾部章节 / 续作编号，纯 ASCII 前缀至少 3 字符
+  var seriesInfo = Object.create(null);
+
+  function seriesKey(item) {
+    var raw = String(item.cn || item.n || '').normalize('NFKC').trim();
+    if (!raw) return '';
+    var base = raw;
+    var parts = raw.split(/[～~：:]/);
+    if (parts.length > 1 && parts[0].trim().length >= 2) base = parts[0].trim();
+    base = base.replace(
+      /\s*(第[0-9０-９一二三四五六七八九十]+[章話话部巻卷]|[0-9０-９]+|FD|ファンディスク|完全版|通常版|体験版|前編|後編|続編|外伝|资料片|重制版)$/i, ''
+    ).trim();
+    if (base.length < 2) return raw;
+    if (/^[\x00-\x7F]+$/.test(base) && base.length < 3) return raw;
+    return base;
+  }
+
+  // 同前缀至少要有 2 部标题不同的作品才算系列，避免把重复条目当成系列
+  function buildSeriesIndex() {
+    var seen = Object.create(null);
+    seriesInfo = Object.create(null);
+    DATA.forEach(function (x) {
+      var k = seriesKey(x);
+      if (!seriesInfo[k]) { seriesInfo[k] = { n: 0, d: 0 }; seen[k] = Object.create(null); }
+      seriesInfo[k].n += 1;
+      seen[k][String(x.cn || x.n || '')] = 1;
+    });
+    Object.keys(seriesInfo).forEach(function (k) {
+      seriesInfo[k].d = Object.keys(seen[k]).length;
+      if (seriesInfo[k].n < 2 || seriesInfo[k].d < 2) delete seriesInfo[k];
+    });
+  }
+  buildSeriesIndex();
+
+  function itemSeries(item) {
+    var k = seriesKey(item);
+    return seriesInfo[k] ? k : '';
+  }
+
   var now = new Date();
   var state = {
     tab: 'all',
@@ -2899,6 +2939,7 @@
     dev: '',
     staff: '',
     staffKind: 'sc',
+    series: '',
     genre: 'all',
     sort: 'score',
     status: 'all',
@@ -3172,6 +3213,9 @@
       if (found) { state.staff = map.sv; state.staffKind = staffKind; }
     }
     if (map.gr === 'all' || Object.prototype.hasOwnProperty.call(GENRE_LABEL, map.gr)) state.genre = map.gr;
+    // 系列筛选：只接受已登记且至少 2 部作品的系列名，避免旧链接留下空结果
+    state.series = '';
+    if (typeof map.se === 'string' && map.se && Object.prototype.hasOwnProperty.call(seriesInfo, map.se)) state.series = map.se;
     if (['score', 'heat', 'date', 'name'].indexOf(map.o) >= 0) state.sort = map.o;
     if (['all'].concat(STATUS_ORDER).indexOf(map.st) >= 0) state.status = map.st;
     if (map.om === '1' || map.om === '0' || typeof map.om === 'boolean') {
@@ -3223,6 +3267,7 @@
         dv: state.dev,
         sk: state.staffKind,
         sv: state.staff,
+        se: state.series,
         gr: state.genre,
         o: state.sort,
         st: state.status,
@@ -3333,6 +3378,7 @@
       'dv=' + encodeURIComponent(state.dev),
       'sk=' + encodeURIComponent(state.staffKind),
       'sv=' + encodeURIComponent(state.staff),
+      'se=' + encodeURIComponent(state.series),
       'gr=' + encodeURIComponent(state.genre),
       'o=' + encodeURIComponent(state.sort),
       'st=' + encodeURIComponent(state.status),
@@ -3774,6 +3820,11 @@
       list = list.filter(function (x) { return staffValues(x, state.staffKind).indexOf(state.staff) >= 0; });
     }
 
+    // 系列筛选：运行时推导的系列名精确匹配
+    if (state.tab === 'all' && state.series) {
+      list = list.filter(function (x) { return seriesKey(x) === state.series; });
+    }
+
     // 题材筛选：构建期已把自由 tag 归一成 tg 数组，这里只做数组包含判断
     if (state.tab === 'all' && state.genre !== 'all') {
       list = list.filter(function (x) { return (x.tg || []).indexOf(state.genre) >= 0; });
@@ -3970,6 +4021,7 @@
     if (state.platform !== 'all') chips.push({ k: 'platform', label: '平台', v: chipLabel('platform') });
     if (state.dev) chips.push({ k: 'dev', label: '开发商', v: state.dev });
     if (state.staff) chips.push({ k: 'staff', label: STAFF_LABEL[state.staffKind] || '制作', v: state.staff });
+    if (state.series) chips.push({ k: 'series', label: '系列', v: state.series });
     if (state.genre !== 'all') chips.push({ k: 'genre', label: '题材', v: GENRE_LABEL[state.genre] || state.genre });
     if (state.sort !== 'score') chips.push({ k: 'sort', label: '排序', v: chipLabel('sort') });
     if (state.status !== 'all') chips.push({ k: 'status', label: '状态', v: STATUS[state.status] || state.status });
@@ -4002,6 +4054,8 @@
     } else if (key === 'staff') {
       state.staff = '';
       state.staffKind = 'sc';
+    } else if (key === 'series') {
+      state.series = '';
     } else if (key === 'genre') {
       state.genre = 'all';
       $('genre').value = 'all';
@@ -4116,6 +4170,7 @@
       name: name,
       tab: state.tab, q: state.q, year: state.year,
       platform: state.platform, dev: state.dev, staff: state.staff, staffKind: state.staffKind,
+      series: state.series,
       genre: state.genre, sort: state.sort,
       status: state.status, onlyMine: state.onlyMine, highScore: state.highScore,
       hideMine: state.hideMine, view: state.view, group: state.group,
@@ -4126,7 +4181,7 @@
     // 复用 hash / 偏好的校验逻辑，避免损坏的视图写入非法 year、platform 等值
     applyStateMap({
       tab: v.tab, y: v.year, f: v.platform, dv: v.dev || '',
-      sk: v.staffKind || 'sc', sv: v.staff || '',
+      sk: v.staffKind || 'sc', sv: v.staff || '', se: v.series || '',
       gr: v.genre || 'all', o: v.sort, st: v.status, om: !!v.onlyMine, hs: !!v.highScore,
       hm: !!v.hideMine, v: v.view, ms: v.mineSort,
       gb: v.group ? v.groupBy : '', q: v.q || ''
@@ -4179,6 +4234,7 @@
     if (state.dev) add('dev', '去掉开发商「' + state.dev + '」', { dev: '' });
     if (state.staff) add('staff', '去掉' + (STAFF_LABEL[state.staffKind] || '制作') + '「' + state.staff + '」',
       { staff: '', staffKind: 'sc' });
+    if (state.series) add('series', '去掉系列「' + state.series + '」', { series: '' });
     if (state.platform !== 'all') add('platform', '去掉平台限制', { platform: 'all' });
     if (state.highScore) add('highScore', '去掉高分限制', { highScore: false });
     if (state.status !== 'all') add('status', '查看全部状态', { status: 'all' });
@@ -4216,7 +4272,7 @@
     $('filterToggle').style.display = state.tab === 'mine' ? 'none' : '';
     // 筛选按钮与「清除筛选」共用一套计数：前者不含状态与搜索，另单独计入排序
     var filterCount = (state.platform !== 'all' ? 1 : 0) + (state.dev ? 1 : 0) +
-      (state.staff ? 1 : 0) +
+      (state.staff ? 1 : 0) + (state.series ? 1 : 0) +
       (state.genre !== 'all' ? 1 : 0) +
       (state.status !== 'all' ? 1 : 0) + (state.onlyMine ? 1 : 0) +
       (state.highScore ? 1 : 0) + (state.hideMine ? 1 : 0) + (state.q.trim() ? 1 : 0);
@@ -4435,6 +4491,13 @@
         '" title="查看全部「' + escapeHtml(label) + '」游戏"><i>题材</i>' +
         escapeHtml(label) + ' ›</button>';
     }).join('');
+    // 系列：同前缀有 ≥2 部不同作品时才展示，点击筛选整个系列
+    var seriesName = itemSeries(item);
+    var seriesHtml = seriesName
+      ? '<button class="chip chipbtn" type="button" data-jump-series="' + escapeHtml(seriesName) +
+        '" title="查看同系列全部作品"><i>系列</i>' +
+        escapeHtml(seriesName) + ' · ' + seriesInfo[seriesName].n + ' 部 ›</button>'
+      : '';
     // 多值字段逐项可点：点平台 / 开发商 / 制作人员即跳到对应筛选
     function chipGroup(label, values, attr, kind) {
       var inner = values.map(function (v) {
@@ -4467,7 +4530,7 @@
         return chipGroup(p[0], staffValues(item, staffKind), 'jump-staff', staffKind);
       }
       return '<span class="chip"><i>' + p[0] + '</i>' + escapeHtml(p[1]) + '</span>';
-    }).join('') + genreHtml + linkHtml;
+    }).join('') + seriesHtml + genreHtml + linkHtml;
     var opts = $('statusOpts');
     opts.hidden = !collected;
     opts.innerHTML = collected ? STATUS_ORDER.map(function (s) {
@@ -4907,6 +4970,7 @@
     $('developer').value = '';
     state.staff = '';
     state.staffKind = 'sc';
+    state.series = '';
     state.genre = 'all';
     state.status = 'all';
     state.onlyMine = false;
@@ -5872,6 +5936,7 @@
     state.dev = opts.dev || '';
     state.staff = opts.staff || '';
     state.staffKind = opts.staffKind || 'sc';
+    state.series = opts.series || '';
     state.genre = opts.genre || 'all';
     state.q = '';
     searchEl.value = '';
@@ -5911,6 +5976,12 @@
       var gid = genreBtn.dataset.jumpGenre;
       jumpToAll({ genre: gid },
         '已筛选全部「' + (GENRE_LABEL[gid] || gid) + '」游戏');
+      return;
+    }
+    var seriesBtn = e.target.closest('[data-jump-series]');
+    if (seriesBtn && seriesBtn.dataset.jumpSeries) {
+      jumpToAll({ series: seriesBtn.dataset.jumpSeries },
+        '已筛选系列「' + seriesBtn.dataset.jumpSeries + '」全部作品');
     }
   });
 
