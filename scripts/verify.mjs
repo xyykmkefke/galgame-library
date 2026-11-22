@@ -422,6 +422,29 @@ async function main() {
       return [ids.length, ids.every((id)=>((map[id]||{}).pl||[]).indexOf('PC')<0)]; })()`);
     check('搜索限定支持 - 排除', qualNeg[0] > 0 && qualNeg[1] === true, qualNeg[0] + ' 条');
 
+    // 题材与评分限定：题材:恋爱（或 tag:rom）、评分:>=8，支持 - 排除
+    await typeSearch('题材:恋爱');
+    const qualGenre = await cdp.evaluate(`(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; });
+      const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id));
+      const all=(window.GL_DATA||[]).filter((x)=>(x.tg||[]).indexOf('rom')>=0).length;
+      return [ids.length, all, ids.every((id)=>((map[id]||{}).tg||[]).indexOf('rom')>=0)]; })()`);
+    check('搜索可按题材限定', qualGenre[0] === Math.min(qualGenre[1], 240) && qualGenre[2] === true,
+      '恋爱 → ' + qualGenre[0] + ' / ' + qualGenre[1] + ' 条');
+
+    await typeSearch('评分:>=8');
+    const qualScore = await cdp.evaluate(`(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; });
+      const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id));
+      const all=(window.GL_DATA||[]).filter((x)=>(Number(x.s)||0)>=8).length;
+      return [ids.length, all, ids.every((id)=>(Number((map[id]||{}).s)||0)>=8)]; })()`);
+    check('搜索可按评分下限限定', qualScore[0] === Math.min(qualScore[1], 240) && qualScore[2] === true,
+      '≥8 → ' + qualScore[0] + ' / ' + qualScore[1] + ' 条');
+
+    await typeSearch('-评分:>=8');
+    const qualScoreNeg = await cdp.evaluate(`(() => { const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; });
+      const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id));
+      return [ids.length, ids.every((id)=>(Number((map[id]||{}).s)||0)<8)]; })()`);
+    check('评分限定支持 - 排除', qualScoreNeg[0] === 240 && qualScoreNeg[1] === true, qualScoreNeg[0] + ' 条');
+
     await typeSearch('时空 轮回');
     let multi = await cdp.evaluate("document.querySelectorAll('.card').length");
     check('多关键词取交集', multi > 0 && multi <= 5, multi + ' 条');
@@ -1065,14 +1088,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v10/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v11/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v10').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v11').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {

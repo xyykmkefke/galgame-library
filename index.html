@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.8.0">
+<meta name="version" content="2.9.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2502,7 +2502,7 @@
           <circle cx="11" cy="11" r="7"></circle>
           <path d="m20 20-3.5-3.5"></path>
         </svg>
-        <input id="search" type="search" placeholder="搜索游戏名、别名或拼音（空格分隔，-词 排除；可加 开发商:Key / 平台:Switch / 年份:2015）" autocomplete="off" aria-label="搜索游戏名">
+        <input id="search" type="search" placeholder="搜索游戏名、别名或拼音（空格分隔，-词 排除；可加 开发商:Key / 平台:Switch / 题材:恋爱 / 评分:>=8）" autocomplete="off" aria-label="搜索游戏名">
         <div class="searchhist" id="searchHist" hidden></div>
       </div>
       <nav class="tabs">
@@ -2943,7 +2943,8 @@
     { id: 'mec', label: '机战' }
   ];
   var GENRE_LABEL = {};
-  GENRES.forEach(function (g) { GENRE_LABEL[g.id] = g.label; });
+  var GENRE_BY_LABEL = {};
+  GENRES.forEach(function (g) { GENRE_LABEL[g.id] = g.label; GENRE_BY_LABEL[g.label] = g.id; });
 
   // 制作人员字段：详情页可点，按「剧本 / 原画 / 音乐 / 发行」维度筛选全库
   var STAFF_LABEL = { sc: '剧本', ar: '原画', mu: '音乐', pub: '发行' };
@@ -3708,8 +3709,12 @@
       .filter(function (t) { return t; });
   }
 
-  // 搜索限定语法：开发商:Key / dev:Key、平台:Switch / pl:Switch、年份:2015 / year:2015，前缀 - 表示排除
-  var QUAL_KEYS = { dev: 'dev', '开发商': 'dev', pl: 'pl', '平台': 'pl', year: 'year', '年份': 'year' };
+  // 搜索限定语法：开发商:Key / dev:Key、平台:Switch / pl:Switch、年份:2015 / year:2015、
+  // 题材:恋爱 / tag:恋爱、评分:>=8 / score:>=8，前缀 - 表示排除
+  var QUAL_KEYS = {
+    dev: 'dev', '开发商': 'dev', pl: 'pl', '平台': 'pl', year: 'year', '年份': 'year',
+    tag: 'genre', '题材': 'genre', score: 'score', '评分': 'score'
+  };
 
   function splitQualifiers(tokens) {
     var quals = [];
@@ -3717,7 +3722,7 @@
     tokens.forEach(function (t) {
       var neg = t.charAt(0) === '-' && t.length > 1;
       var body = neg ? t.slice(1) : t;
-      var m = body.match(/^(dev|开发商|pl|平台|year|年份)[:：](.+)$/);
+      var m = body.match(/^(dev|开发商|pl|平台|year|年份|tag|题材|score|评分)[:：](.+)$/);
       if (!m) {
         rest.push(t);
         return;
@@ -3738,6 +3743,23 @@
       return (x.pl || []).some(function (p) { return String(p).toLowerCase().indexOf(v) >= 0; });
     }
     if (qf.k === 'year') return yearOf(x.d) === v;
+    // 题材：支持中文标签（恋爱）与内部 id（rom），必须是白名单内的题材
+    if (qf.k === 'genre') {
+      var gid = GENRE_BY_LABEL[qf.v] || (GENRE_LABEL[qf.v] ? qf.v : '');
+      return !!gid && (x.tg || []).indexOf(gid) >= 0;
+    }
+    // 评分：支持 >= / <= / > / < 前缀，省略运算符时按 >= 处理（如 评分:8 即 8 分以上）
+    if (qf.k === 'score') {
+      var sm = qf.v.match(/^(>=|<=|>|<)?\s*(\d+(?:\.\d+)?)$/);
+      if (!sm) return false;
+      var op = sm[1] || '>=';
+      var num = Number(sm[2]);
+      var s = Number(x.s) || 0;
+      if (op === '>=') return s >= num;
+      if (op === '<=') return s <= num;
+      if (op === '>') return s > num;
+      return s < num;
+    }
     return false;
   }
 
