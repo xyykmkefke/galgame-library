@@ -870,6 +870,52 @@ async function main() {
     check('Esc 可关闭题材一览',
       await cdp.evaluate("document.getElementById('genreModal').hidden") === true);
 
+    // 平台一览：列出全部平台，显示汇总卡，点击即筛选，Esc 关闭
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"platforms\"]').click()");
+    await waitFor("document.getElementById('platformModal') && document.getElementById('platformModal').hidden === false");
+    const platformPanel = await cdp.evaluate(`(() => {
+      const names = new Set();
+      (window.GL_DATA || []).forEach((x) => (x.pl || []).forEach((p) => names.add(p)));
+      const rows = [...document.querySelectorAll('#platformBody [data-platform-pick]')];
+      return {
+        rows: rows.length,
+        expected: names.size,
+        first: rows[0] ? rows[0].dataset.platformPick : '',
+        firstCount: rows[0] ? Number((rows[0].querySelector('.num').textContent.match(/^(\\d+)/) || [])[1] || 0) : 0,
+        total: document.getElementById('platformTotal').textContent,
+        cards: document.querySelectorAll('#platformBody .stat-card').length
+      };
+    })()`);
+    check('平台一览列出全部平台', platformPanel.rows === platformPanel.expected && platformPanel.rows >= 20 &&
+      /^\d+ 个平台 · 覆盖 \d+ 部 · \d+ 部支持多平台$/.test(platformPanel.total) && platformPanel.cards === 3,
+      platformPanel.rows + ' 行 / ' + platformPanel.total);
+
+    await cdp.evaluate("document.querySelector('#platformBody [data-platform-pick]').click()");
+    await sleep(500);
+    const platformJump = await cdp.evaluate(
+      "(() => ({ hidden: document.getElementById('platformModal').hidden," +
+      " n: document.querySelectorAll('.card').length," +
+      " chips: document.getElementById('filterChips').textContent," +
+      " hash: location.hash }))()");
+    check('平台一览选择后即筛选该平台',
+      platformJump.hidden === true && platformJump.n === Math.min(platformPanel.firstCount, 240) &&
+      platformJump.chips.includes('平台') && platformJump.chips.includes(platformPanel.first) &&
+      /f=/.test(platformJump.hash),
+      platformPanel.first + ' → ' + platformJump.n + ' 张');
+    await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
+    await sleep(300);
+
+    await cdp.evaluate("document.getElementById('moreBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("document.querySelector('[data-more=\"platforms\"]').click()");
+    await waitFor("document.getElementById('platformModal').hidden === false");
+    await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await sleep(200);
+    check('Esc 可关闭平台一览',
+      await cdp.evaluate("document.getElementById('platformModal').hidden") === true);
+
     // ---------- 加入 / 状态 / 批量 ----------
     const targetId = await cdp.evaluate("document.querySelector('.card').dataset.id");
     await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
@@ -1170,14 +1216,14 @@ async function main() {
     try { mf = JSON.parse(manifest); } catch {}
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
-    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v13/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
+    check('Service Worker 使用独立缓存并预缓存数据', /yuc-gl-shell-v14/.test(swText) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText));
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      "caches.open('yuc-gl-shell-v13').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
+      "caches.open('yuc-gl-shell-v14').then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))");
     check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {

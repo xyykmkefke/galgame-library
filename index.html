@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.11.0">
+<meta name="version" content="2.12.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2524,6 +2524,7 @@
         <button type="button" data-more="devs">开发商一览</button>
         <button type="button" data-more="staffs">制作人员一览</button>
         <button type="button" data-more="genres">题材一览</button>
+        <button type="button" data-more="platforms">平台一览</button>
         <button type="button" data-more="random">摇一部<kbd>R</kbd></button>
         <button type="button" data-more="recent">最近浏览</button>
         <button type="button" data-more="install">安装到桌面</button>
@@ -2829,6 +2830,17 @@
     <div id="genreBody"></div>
     <div class="settings-actions">
       <button class="btn primary" id="genreClose" type="button">完成</button>
+    </div>
+  </div>
+</div>
+
+<div class="help" id="platformModal" hidden>
+  <div class="help-mask" data-platform-close></div>
+  <div class="help-panel stats-panel" role="dialog" aria-modal="true" aria-label="平台一览">
+    <h2>平台一览 <small id="platformTotal"></small></h2>
+    <div id="platformBody"></div>
+    <div class="settings-actions">
+      <button class="btn primary" id="platformClose" type="button">完成</button>
     </div>
   </div>
 </div>
@@ -5305,6 +5317,78 @@
     jumpToAll({ genre: id }, '已筛选题材「' + (GENRE_LABEL[id] || id) + '」全部作品');
   });
 
+  // ---- 平台一览：汇总各平台作品数与我的进度，点击即筛选 ----
+  var platformEl = $('platformModal');
+  var lastPlatformFocus = null;
+
+  function renderPlatformPanel() {
+    var counts = {};
+    var mine = {};
+    var covered = 0;
+    var multi = 0;
+    DATA.forEach(function (x) {
+      var pl = x.pl || [];
+      if (pl.length) covered += 1;
+      if (pl.length > 1) multi += 1;
+      var rec = myMap[String(x.i)];
+      pl.forEach(function (p) {
+        counts[p] = (counts[p] || 0) + 1;
+        if (!rec) return;
+        if (!mine[p]) mine[p] = { n: 0, done: 0 };
+        mine[p].n += 1;
+        if (rec.s === 'done') mine[p].done += 1;
+      });
+    });
+    var platforms = Object.keys(counts).sort(function (a, b) {
+      if (counts[b] !== counts[a]) return counts[b] - counts[a];
+      return a.localeCompare(b, 'zh-Hans-CN');
+    });
+    var minePlats = platforms.filter(function (p) { return mine[p]; }).length;
+    var entries = platforms.map(function (p) {
+      var note = mine[p] ? '我的 ' + mine[p].n + ' · 通关 ' + mine[p].done : '';
+      return [p, counts[p], p, note];
+    });
+
+    $('platformTotal').textContent = platforms.length + ' 个平台 · 覆盖 ' + covered +
+      ' 部 · ' + multi + ' 部支持多平台';
+    $('platformBody').innerHTML =
+      '<div class="stats-sec">' + statCards([
+        [platforms.length, '平台数'],
+        [covered, '覆盖作品'],
+        [minePlats, '我收藏的平台']
+      ]) + '</div>' +
+      '<p class="hint">按收录作品数排序，右侧是我的收藏与通关数量；同一作品可对应多个平台，因此占比之和会超过 100%。点击任意平台即筛出该平台作品。</p>' +
+      '<div class="stats-sec"><h3>平台分布</h3>' +
+        barRows(entries, DATA.length, 'data-platform-pick') + '</div>';
+  }
+
+  function openPlatformPanel() {
+    if (platformEl.hidden) lastPlatformFocus = document.activeElement;
+    renderPlatformPanel();
+    platformEl.hidden = false;
+    $('platformClose').focus();
+  }
+
+  function closePlatformPanel() {
+    if (platformEl.hidden) return;
+    platformEl.hidden = true;
+    var back = lastPlatformFocus;
+    lastPlatformFocus = null;
+    if (back && document.contains(back)) back.focus();
+  }
+
+  platformEl.addEventListener('click', function (e) {
+    if (e.target.closest('[data-platform-close]') || e.target.closest('#platformClose')) {
+      closePlatformPanel();
+      return;
+    }
+    var pick = e.target.closest('[data-platform-pick]');
+    if (!pick) return;
+    var name = pick.dataset.platformPick;
+    closePlatformPanel();
+    jumpToAll({ platform: name }, '已筛选全部「' + name + '」平台作品');
+  });
+
   // ---- 摇一部：从当前筛选结果里随机抽一部 ----
   function randomPick() {
     var pool = filteredList();
@@ -5627,6 +5711,7 @@
     else if (act === 'devs') openDevPanel();
     else if (act === 'staffs') openStaffPanel();
     else if (act === 'genres') openGenrePanel();
+    else if (act === 'platforms') openPlatformPanel();
     else if (act === 'random') randomPick();
     else if (act === 'recent') openStats();
     else if (act === 'install') installApp();
@@ -5746,6 +5831,7 @@
       { name: '开发商一览', kind: '视图', run: function () { openDevPanel(); } },
       { name: '制作人员一览', kind: '视图', run: function () { openStaffPanel(); } },
       { name: '题材一览', kind: '视图', run: function () { openGenrePanel(); } },
+      { name: '平台一览', kind: '视图', run: function () { openPlatformPanel(); } },
       { name: '摇一部', kind: '发现', run: function () { randomPick(); } },
       { name: '最近浏览', kind: '发现', run: function () { openStats(); } },
       { name: '安装到桌面', kind: '应用', run: function () { installApp(); } },
@@ -6587,6 +6673,15 @@
         closeGenrePanel();
       } else if (e.key === 'Tab') {
         trapModalTab($('genreModal'), e);
+      }
+      return;
+    }
+    if (!$('platformModal').hidden) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closePlatformPanel();
+      } else if (e.key === 'Tab') {
+        trapModalTab($('platformModal'), e);
       }
       return;
     }
