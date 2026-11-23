@@ -20,6 +20,7 @@ const OUT_FILE = path.join(ROOT, 'data', 'vndb.js');
 const API = 'https://api.vndb.org/kana/vn';
 const UA = 'galgame-library/2.0 (https://github.com/xyykmkefke/galgame-library)';
 const REFRESH = process.argv.includes('--refresh');
+const PRUNE = process.argv.includes('--prune');
 const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 350;
 const DELAY_MS = 1600;
 const FIELDS = 'id,title,alttitle,titles.title,titles.latin,titles.lang,aliases,rating,votecount,length_minutes,released,developers.name';
@@ -139,7 +140,7 @@ async function main() {
   const byHeat = (a, b) => (b.h || 0) - (a.h || 0);
   const freshPool = unmatched.filter((x) => !cache[String(x.i)]).sort(byHeat);
   const retryPool = unmatched.filter((x) => cache[String(x.i)]).sort(byHeat);
-  const pool = freshPool.concat(retryPool).slice(0, LIMIT);
+  const pool = PRUNE ? [] : freshPool.concat(retryPool).slice(0, LIMIT);
 
   console.log(`待匹配 ${pool.length} 条（新 ${freshPool.length} / 重试 ${retryPool.length}，上限 ${LIMIT}）`);
   let done = 0;
@@ -179,10 +180,11 @@ async function main() {
 
   await writeFile(CACHE_FILE, JSON.stringify(cache), 'utf8');
 
+  const idSet = new Set(data.map((x) => String(x.i)));
   const map = {};
   Object.keys(cache).forEach((id) => {
     const v = cache[id];
-    if (v && v.v) map[id] = v;
+    if (v && v.v && idSet.has(id)) map[id] = v;
   });
 
   const meta = {

@@ -227,7 +227,7 @@ async function main() {
     // ---------- 数据与首屏 ----------
     const total = await cdp.evaluate('(window.GL_DATA || []).length');
     const metaCount = await cdp.evaluate('(window.GL_META || {}).count || 0');
-    check('全库数据加载', total > 2800 && metaCount === total, total + ' 条');
+    check('全库数据加载', total > 2400 && metaCount === total, total + ' 条');
 
     const noCacheFields = await cdp.evaluate(
       "(() => (window.GL_DATA || []).slice(0, 200).every((x) => x.rt === undefined && x.plr === undefined))()");

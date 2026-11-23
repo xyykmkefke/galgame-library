@@ -22,6 +22,7 @@ const API = 'https://www.ymgal.games';
 const CLIENT_ID = process.env.YMGAL_CLIENT_ID || 'ymgal';
 const CLIENT_SECRET = process.env.YMGAL_CLIENT_SECRET || 'luna0327';
 const REFRESH = process.argv.includes('--refresh');
+const PRUNE = process.argv.includes('--prune');
 const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 700;
 const DELAY_MS = 800;
 
@@ -218,7 +219,7 @@ async function main() {
   const byHeat = (a, b) => (b.h || 0) - (a.h || 0);
   const freshPool = unmatched.filter((x) => !cache[String(x.i)]).sort(byHeat);
   const retryPool = unmatched.filter((x) => cache[String(x.i)]).sort(byHeat);
-  const pool = freshPool.concat(retryPool).slice(0, LIMIT);
+  const pool = PRUNE ? [] : freshPool.concat(retryPool).slice(0, LIMIT);
 
   console.log(`待匹配 ${pool.length} 条（新 ${freshPool.length} / 重试 ${retryPool.length}，上限 ${LIMIT}）`);
   let done = 0;
@@ -255,7 +256,7 @@ async function main() {
   await writeFile(CACHE_FILE, JSON.stringify(cache), 'utf8');
 
   // 为已匹配条目补别名：详情接口的 extensionName 参与搜索，列表接口拿不到
-  const aliasTodo = Object.keys(cache)
+  const aliasTodo = PRUNE ? [] : Object.keys(cache)
     .filter((id) => cache[id] && cache[id].g && !Array.isArray(cache[id].al));
   console.log(`别名待补 ${aliasTodo.length} 条`);
   let aliased = 0;
@@ -281,10 +282,11 @@ async function main() {
   }
   await writeFile(CACHE_FILE, JSON.stringify(cache), 'utf8');
 
+  const idSet = new Set(data.map((x) => String(x.i)));
   const map = {};
   Object.keys(cache).forEach((id) => {
     const v = cache[id];
-    if (!v || !v.g) return;
+    if (!v || !v.g || !idSet.has(id)) return;
     const item = Object.assign({}, v);
     if (!Array.isArray(item.al) || !item.al.length) delete item.al;
     map[id] = item;

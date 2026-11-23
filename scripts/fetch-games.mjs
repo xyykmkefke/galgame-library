@@ -25,9 +25,10 @@ const USER_AGENT = 'yuc-galgame-list/1.0';
 const REFRESH = process.argv.includes('--refresh');
 
 const tagArg = (process.argv.find((a) => a.startsWith('--tags=')) || '').slice(7);
+// 默认只收日系 galgame 相关标签：ADV 覆盖大量非 gal 的冒险 / 解谜游戏，不纳入
 const TAGS = tagArg
   ? tagArg.split(',').map((s) => s.trim()).filter(Boolean)
-  : ['galgame', '视觉小说', 'ADV', '乙女向', '百合', 'BL', '拔作'];
+  : ['galgame', '视觉小说', '乙女向', '百合', 'BL', '拔作'];
 const TAG_SLUG = new Map([['galgame', 'g'], ['视觉小说', 'vn'], ['ADV', 'adv']]);
 const tagSlug = (tag) => TAG_SLUG.get(tag) || `t${Buffer.from(tag).toString('hex').slice(0, 8)}`;
 
@@ -386,6 +387,8 @@ async function main() {
 
         for (const item of items) {
           if (!item || !Number.isInteger(item.i)) continue;
+          // 方向是日系 galgame：明确标为欧美作品的条目不收
+          if (Array.isArray(item.rt) && item.rt.some((t) => /^(欧美|欧美系)$/.test(String(t)))) continue;
 
           // 有原始平台碎片时按最新归一遍，调整映射后无需重新联网
           const { rt, plr, ...rest } = item;
