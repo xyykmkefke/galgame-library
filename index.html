@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.15.0">
+<meta name="version" content="2.16.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2715,7 +2715,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.3.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.16.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3863,13 +3863,14 @@
     return false;
   }
 
-  // 跨源别名：VNDB 英文 / 罗马字标题、月幕原名与中文名，运行时拼接参与搜索，不写入主库
+  // 跨源别名：VNDB 英文 / 罗马字标题、月幕原名、中文名与详情别名，运行时拼接参与搜索，不写入主库
   function aliasText(x) {
     var parts = [];
     if (x.vo && x.vo.t) parts.push(x.vo.t);
     if (x.ym) {
       if (x.ym.n) parts.push(x.ym.n);
       if (x.ym.cn) parts.push(x.ym.cn);
+      if (x.ym.al && x.ym.al.length) parts.push(x.ym.al.join(' '));
     }
     return parts.join(' ').toLowerCase();
   }
@@ -4702,10 +4703,13 @@
         pairs.push(['别名', aliasName]);
       }
     }
-    // 第三数据源：月幕评分与中文版标记
+    // 第三数据源：月幕评分、中文版标记与详情别名
     if (item.ym) {
       if (Number(item.ym.s) > 0) pairs.push(['月幕', Number(item.ym.s).toFixed(1)]);
       if (item.ym.hc) pairs.push(['中文版', '有']);
+      if (item.ym.al && item.ym.al.length) {
+        pairs.push(['月幕别名', item.ym.al.slice(0, 3).join(' / ')]);
+      }
     }
     // 收藏后补充加入时间，方便回顾是什么时候开始玩的
     if (collected && myMap[id].t) {

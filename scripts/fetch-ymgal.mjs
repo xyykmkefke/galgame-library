@@ -136,6 +136,53 @@ async function search(keyword) {
   return [];
 }
 
+// 详情接口用于补别名（extensionName）；列表接口不返回这些字段
+async function fetchDetail(gid) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const at = await getToken();
+      const res = await fetch(API + '/open/archive?gid=' + gid, {
+        headers: {
+          Authorization: 'Bearer ' + at,
+          version: '1',
+          Accept: 'application/json;charset=utf-8',
+        },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (res.status === 401) { token = ''; await sleep(1500); continue; }
+      if (res.status === 429) {
+        console.warn('    限流，等待 10s');
+        await sleep(10000);
+        continue;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      if (!json.success) throw new Error('接口返回 success=false code=' + json.code);
+      return (json.data && json.data.game) || null;
+    } catch (err) {
+      if (attempt === 3) throw err;
+      console.warn(`    重试 ${attempt}/2：${err.message}`);
+      await sleep(attempt * 3000);
+    }
+  }
+  return null;
+}
+
+// 取详情里的别名，去掉与原名 / 中文名重复的项，最多保留 5 个
+function aliasNames(game, baseNames) {
+  const seen = new Set((baseNames || []).map(normalizeTitle).filter(Boolean));
+  const out = [];
+  ((game && game.extensionName) || []).forEach((e) => {
+    const name = String((e && e.name) || '').trim();
+    if (!name || name.length > 40) return;
+    const k = normalizeTitle(name);
+    if (!k || seen.has(k)) return;
+    seen.add(k);
+    out.push(name);
+  });
+  return out.slice(0, 5);
+}
+
 async function exists(file) {
   try { await access(file); return true; } catch { return false; }
 }
@@ -205,10 +252,40 @@ async function main() {
 
   await writeFile(CACHE_FILE, JSON.stringify(cache), 'utf8');
 
+  // 为已匹配条目补别名：详情接口的 extensionName 参与搜索，列表接口拿不到
+  const aliasTodo = Object.keys(cache)
+    .filter((id) => cache[id] && cache[id].g && !Array.isArray(cache[id].al));
+  console.log(`别名待补 ${aliasTodo.length} 条`);
+  let aliased = 0;
+  let detailFailed = 0;
+  let detailDone = 0;
+  for (const id of aliasTodo) {
+    const v = cache[id];
+    try {
+      const game = await fetchDetail(v.g);
+      const names = aliasNames(game, [v.n, v.cn]);
+      v.al = names;
+      if (names.length) aliased += 1;
+    } catch (err) {
+      detailFailed += 1;
+      console.warn(`  [${id}] 月幕 gid ${v.g} 详情失败：${err.message}`);
+    }
+    detailDone += 1;
+    if (detailDone % 25 === 0) {
+      await writeFile(CACHE_FILE, JSON.stringify(cache), 'utf8');
+      console.log(`  别名进度 ${detailDone}/${aliasTodo.length}，有别名 ${aliased}，失败 ${detailFailed}`);
+    }
+    await sleep(DELAY_MS);
+  }
+  await writeFile(CACHE_FILE, JSON.stringify(cache), 'utf8');
+
   const map = {};
   Object.keys(cache).forEach((id) => {
     const v = cache[id];
-    if (v && v.g) map[id] = v;
+    if (!v || !v.g) return;
+    const item = Object.assign({}, v);
+    if (!Array.isArray(item.al) || !item.al.length) delete item.al;
+    map[id] = item;
   });
 
   const meta = {
@@ -217,6 +294,8 @@ async function main() {
     total: data.length,
     tried: Object.keys(cache).length,
     matched: Object.keys(map).length,
+    aliased: Object.keys(map).filter((id) => map[id].al).length,
+    detailFailed,
   };
   const content = '// 由 scripts/fetch-ymgal.mjs 生成，请勿手动修改\n' +
     'window.GL_YMGAL = ' + JSON.stringify({ meta, map }) + ';\n';

@@ -193,9 +193,12 @@ try {
     else if (v.d && !/^\d{4}-\d{2}-\d{2}$/.test(String(v.d))) bad.push(`${id}:日期 ${v.d}`);
     else if (v.s !== '' && !(Number(v.s) >= 0 && Number(v.s) <= 10)) bad.push(`${id}:评分 ${v.s}`);
     else if (v.hc !== 0 && v.hc !== 1) bad.push(`${id}:hc ${v.hc}`);
+    else if (v.al !== undefined && (!Array.isArray(v.al) || !v.al.length ||
+      v.al.length > 5 || v.al.some((a) => !String(a || '').trim()))) bad.push(`${id}:别名 ${JSON.stringify(v.al)}`);
   });
   const matched = Object.keys(map).length;
-  console.log(`月幕：匹配 ${matched} 条（尝试 ${ymgal.meta?.tried || 0}），异常 ${bad.length} 条`);
+  const aliased = Object.keys(map).filter((id) => Array.isArray(map[id].al) && map[id].al.length).length;
+  console.log(`月幕：匹配 ${matched} 条（尝试 ${ymgal.meta?.tried || 0}），有别名 ${aliased} 条，异常 ${bad.length} 条`);
   if (matched < 100) {
     console.log(`FAIL 月幕匹配过少：${matched} < 100`);
     total += 1;

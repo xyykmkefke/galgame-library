@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.15.0（数据 1820 条，`npm run verify` 169/169）
+- 当前状态：v2.16.0（数据 1820 条，`npm run verify` 172/172）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -739,6 +739,22 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 - 参考：PotatoVN 的自定义游戏库与手动排序、PaperVN 的「同系列作品一起加入库」、VN Deck 对同系列版本的归组展示。
 - `npm run check-data`：问题总数 0，数据文件未改动，体积仍为 838KB。
 - `npm run verify` 由 166 项扩到 169 项（分组方式包含按系列、同系列收藏聚为一组、hash 写入 `gb=series`），当前 169/169；页面版本 2.15.0，SW 缓存升级 `yuc-gl-shell-v17`。
+
+## 32. 月幕详情别名（2.16.0）
+
+### 32.1 数据
+
+- `scripts/fetch-ymgal.mjs` 在匹配完成后，对有月幕匹配的条目逐条请求 `/open/archive?gid=`，取 `game.extensionName`，去掉与原名 / 中文名重复的项后最多保留 5 个，写入映射值的 `al` 字段。
+- 详情请求与搜索共用 token，同样顺序 800ms 限速、401 刷新 token、429 退避；别名只补一次，缓存 `data/build/ymgal-map.json` 中已存在 `al` 的条目跳过。
+- 输出仍为 `data/ymgal.js`，空别名不写入，元信息新增 `aliased` 与 `detailFailed`。
+- 本次补全后月幕匹配从 441 提升到 659 条，有别名 442 条；数据总体积 904KB（主库 675 + VNDB 71 + 月幕 158）。
+
+### 32.2 页面与验收
+
+- 搜索别名来源新增 `x.ym.al`，严格搜索、宽松兜底与命令面板同步生效；详情页显示「月幕别名」chip（最多 3 个）。
+- `check-data` 新增别名校验（数组、非空、≤5、元素非空），并输出有别名条目数。
+- `npm run verify` 由 169 项扩到 172 项（别名数据量、用别名搜索命中、详情展示别名），当前 172/172；页面版本 2.16.0，SW 缓存升级 `yuc-gl-shell-v18`。
+
 
 
 

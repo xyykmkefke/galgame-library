@@ -1313,6 +1313,26 @@ async function main() {
 
     const ymFooter = await cdp.evaluate("!!document.querySelector('footer a[href*=\"ymgal.games\"]')");
     check('页脚注明月幕 Galgame 数据来源', ymFooter === true);
+
+    const ymAliasInfo = await cdp.evaluate(
+      "(() => { const m=(window.GL_YMGAL||{}).map||{}; const ids=Object.keys(m).filter((id)=>Array.isArray(m[id].al)&&m[id].al.length); const t=ids.find((id)=>m[id].al.some((a)=>String(a).length>=4)); return [ids.length, t||'', t?m[t].al.find((a)=>String(a).length>=4):'']; })()");
+    check('月幕别名数据已加载', ymAliasInfo[0] >= 50, ymAliasInfo[0] + ' 条');
+    if (ymAliasInfo[1]) {
+      await cdp.evaluate(`(() => { const i=document.getElementById('search'); i.value=${JSON.stringify(ymAliasInfo[2])}; i.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+      const aliasHit = await waitFor(`!!document.querySelector('.card[data-id="${ymAliasInfo[1]}"]')`, 4000);
+      check('可用月幕别名搜索到作品', aliasHit === true, ymAliasInfo[2] + ' → ' + ymAliasInfo[1]);
+      await cdp.evaluate("(() => { const i=document.getElementById('search'); i.value=''; i.dispatchEvent(new Event('input',{bubbles:true})); })()");
+      await sleep(250);
+      await cdp.evaluate(`location.hash = '#d=${ymAliasInfo[1]}'`);
+      await waitFor("document.getElementById('modal').hidden === false");
+      const aliasDetail = await cdp.evaluate("document.getElementById('detailMeta').textContent");
+      check('详情展示月幕别名', /月幕别名/.test(aliasDetail), aliasDetail.slice(0, 80));
+      await cdp.evaluate("document.getElementById('modalClose').click()");
+      await sleep(200);
+    } else {
+      check('可用月幕别名搜索到作品', false, '无可用别名');
+      check('详情展示月幕别名', false, '无可用别名');
+    }
     await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'i',bubbles:true}))");
     await sleep(250);
     check('I 键打开数据统计', await cdp.evaluate("document.getElementById('statsModal').hidden === false") === true);
