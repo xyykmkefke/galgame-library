@@ -134,13 +134,14 @@ async function main() {
     console.log(`复用缓存：已记录 ${Object.keys(cache).length} 条`);
   }
 
-  // 只补充有热度的条目：评分高但冷门的作品 VNDB 数据也少
-  const pool = data
-    .filter((x) => (x.cn || x.n) && !(cache[String(x.i)] && cache[String(x.i)].v))
-    .sort((a, b) => (b.h || 0) - (a.h || 0))
-    .slice(0, LIMIT);
+  // 新条目优先：从未尝试过的先补，已知不匹配的排到后面，避免重复消耗限流额度
+  const unmatched = data.filter((x) => (x.cn || x.n) && !(cache[String(x.i)] && cache[String(x.i)].v));
+  const byHeat = (a, b) => (b.h || 0) - (a.h || 0);
+  const freshPool = unmatched.filter((x) => !cache[String(x.i)]).sort(byHeat);
+  const retryPool = unmatched.filter((x) => cache[String(x.i)]).sort(byHeat);
+  const pool = freshPool.concat(retryPool).slice(0, LIMIT);
 
-  console.log(`待匹配 ${pool.length} 条（目标上限 ${LIMIT}）`);
+  console.log(`待匹配 ${pool.length} 条（新 ${freshPool.length} / 重试 ${retryPool.length}，上限 ${LIMIT}）`);
   let done = 0;
   let matched = 0;
   let failed = 0;
