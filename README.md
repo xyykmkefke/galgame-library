@@ -2,13 +2,14 @@
 
 本地优先的 Galgame 浏览与游玩记录 PWA。内置 Bangumi「galgame」「视觉小说」「乙女向」「百合」「BL」「拔作」等日系 galgame 标签条目，并用 VNDB 补充评分、时长、制作人员与 5972 部日系扩展作品（含关系与开发商补全），用 Bangumi 关联条目补同系列乙女 / galgame，用月幕 Galgame 补充中文标题与外链，无账号、无后端。
 
-状态：**v2.23.2**
+状态：**v2.23.3**
 
 ## 功能
 
 - **全库浏览**：8567 部日系作品（2485 部 Bangumi 主库 + 110 部 Bangumi 关联 + 5972 部 VNDB 日系扩展），按年份、平台、开发商、题材、游玩时长筛选，评分 / 热度 / 发售日 / 名称排序
 - **搜索**：多关键词交集、`-词` 排除、拼音首字母、跨源别名（VNDB 英文 / 罗马字标题、月幕原名 / 中文名 / 详情别名）、开发商 / 平台命中、标题高亮、搜索历史；严格无结果时自动忽略空格、标点与全半角差异再搜一次；支持 `开发商:Key`、`平台:Switch`、`年份:2015`、`题材:恋爱`、`评分:>=8` 限定（评分支持 `>=` / `<=` / `>` / `<`，省略运算符按 `>=`），前缀 `-` 表示排除
 - **我的游玩**：想玩 / 在玩 / 已通关 / 弃坑（仅四种状态）
+- **非 gal 标记**：36 条主库误收（逆转裁判、FF、GTA 等）加 `k="off"`，默认隐藏；设置里可切换显示，收藏、详情与旧链接保留
 - **视图**：网格 / 列表 / 看板；按发售年份、加入年份、状态、系列分组
 - **详情**：平台、开发、发行、剧本、原画、音乐、游戏类型、题材、相似推荐；平台、开发商、剧本 / 原画 / 音乐 / 发行逐项可点，点制作人员即筛出该人员参与的全部作品；同前缀作品自动归为系列，详情显示「系列 · N 部」并一键筛选整个系列；Bangumi / VNDB / 月幕三外链
 - **系列一览**：更多菜单汇总全部系列与覆盖作品数，支持按名称搜索与「只看我收藏的系列」，点击任一即筛选该系列；已收藏的系列会显示「我的 N · 通关 M」，并额外给出「我收藏的系列」卡；Esc 关闭
@@ -33,7 +34,7 @@
 - 关联源：Bangumi 关联条目（`/v0/subjects/{id}/subjects`），遍历全部 2485 个主库种子；按游戏类型与恋爱 / 乙女 / BL 标签严格过滤掉 RPG / ACT / 手游 / 开放世界换装，最终保留 110 部真正日系 galgame / 乙女向条目
 - 补充源：VNDB 公共 Kana API，按标题归一 + 年份容差保守匹配，只保留高置信结果；当前匹配 1042 条（已尝试 1840 条）
 - 补充源：月幕 Galgame 开放 API，同样按标题归一 + 年份容差严格匹配；当前匹配 1144 条，其中 577 条有详情别名
-- 规模：8567 条（主库 2485 + Bangumi 关联 110 + VNDB 扩展 5972；1985-05-31 ~ 2027-03-25）
+- 规模：8567 条（主库 2485 含 36 条非 gal 标记 + Bangumi 关联 110 + VNDB 扩展 5972；默认可见 8531 条；1985-05-31 ~ 2027-03-25）
 - 覆盖：日期 99.4%、评分 99.1%、封面 100%、平台 98.8%、开发商 93.4%、题材 85.0%
 - 文件：`data/galgames.js`（主库）、`data/vndb.js`（第二数据源）、`data/ymgal.js`（第三数据源）、`data/vndb-extra.js`（VNDB 扩展）、`data/bgm-extra.js`（Bangumi 关联）
 
@@ -53,6 +54,8 @@ npm run prune-vndb-extra -- --policy=conservative          # 预演裁剪低热�
 npm run prune-vndb-extra -- --policy=balanced --apply      # 执行裁剪，为后续更新释放约 497KB
 npm run apply-blocklist                                    # 预演按 data/blocklist.json 过滤非 gal 扩展条目
 npm run apply-blocklist -- --apply                         # 执行过滤（抓取脚本也会读取同一黑名单）
+npm run mark-non-gal                                       # 预演给主库 36 条非 gal 加 k="off"
+npm run mark-non-gal -- --apply                            # 执行标记；--unmark 撤销
 npm run fetch-ymgal         # 补充月幕（默认热度前 700 条，增量）
 npm run check-data
 ```
@@ -69,7 +72,7 @@ VNDB 匿名限流约 200 次 / 5 分钟，脚本固定 1.6s 间隔并对 429 退
 
 ```bash
 npm start        # 本地静态服务
-npm run verify   # Edge/Chrome + CDP 自动验收（183 项，含 Gist mock、离线重开、统计与五份数据文件）
+npm run verify   # Edge/Chrome + CDP 自动验收（184 项，含 Gist mock、离线重开、统计与五份数据文件）
 ```
 
 CI：`.github/workflows/ci.yml` 在 push / PR 时运行 `check-data` 与 `verify`（Linux 下自动使用系统 Chrome）。

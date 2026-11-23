@@ -71,3 +71,10 @@
 - 新增 `data/blocklist.json`（57 条 VNDB id）与 `scripts/apply-blocklist.mjs`；`fetch-vndb-extra.mjs` 读取同一文件，避免重抓回填。
 - 扩展 6029 → 5972，全库 8624 → 8567，体积 3239KB → 3221KB；题材覆盖 93.5%。
 - `check-data` 0 问题；`verify` 183/183；SW 缓存 `yuc-gl-shell-v28`。
+
+## 8. 主库非 gal 标记（v2.23.3）
+
+- 主库核查：确认误收 36 条（1.45%）、疑似 30 条（1.21%）；根因是 Bangumi `galgame` 单票即可入库。
+- 采用标记而非删除：`data/blocklist-main.json` 的 36 条加 `k:"off"`，默认隐藏；设置里可切换显示，收藏、详情与旧链接保留。
+- 新增 `scripts/mark-non-gal.mjs`；`fetch-games.mjs` 输出前读取同一黑名单，`build-series.mjs` 跳过 `k="off"`。
+- 默认可见 8531；系列 658 → 648；SW `yuc-gl-shell-v29`；`check-data` 0 问题，`verify` 184/184。

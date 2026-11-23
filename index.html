@@ -20,8 +20,8 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.23.2">
-<meta name="description" content="本地优先的 Galgame 浏览与游玩记录：8567 部日系作品（2485 部 Bangumi 主库 + 110 部 Bangumi 关联 + 5972 部 VNDB 扩展），按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
+<meta name="version" content="2.23.3">
+<meta name="description" content="本地优先的 Galgame 浏览与游玩记录：8567 部日系作品（2485 部 Bangumi 主库 + 110 部 Bangumi 关联 + 5972 部 VNDB 扩展，其中 36 部非 gal 默认隐藏），按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Galgame 库">
@@ -2715,7 +2715,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.23.2</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.23.3</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2795,7 +2795,14 @@
         <button type="button" data-motion="reduce">减少</button>
       </div>
     </div>
-    <p class="hint">设置只保存在本机，不参与云同步。</p>
+    <div class="setting-row">
+      <span>非 gal 条目</span>
+      <div class="seg" id="nonGalSeg">
+        <button type="button" data-nongal="hide">隐藏</button>
+        <button type="button" data-nongal="show">显示</button>
+      </div>
+    </div>
+    <p class="hint">非 gal 条目默认隐藏，收藏、详情与旧链接不受影响。设置只保存在本机，不参与云同步。</p>
     <div class="settings-actions">
       <button class="btn" id="settingsReset" type="button">恢复默认</button>
       <button class="btn primary" id="settingsClose" type="button">完成</button>
@@ -2985,8 +2992,8 @@
   var WARN_KEY = 'yuc_gl_backup_warn_v1';
   var DEL_KEY = 'yuc_gl_deleted_v1';
   var SETTINGS_KEY = 'yuc_gl_settings_v1';
-  var SETTINGS_DEFAULT = { font: 'md', density: 'std', motion: 'system' };
-  var settings = { font: 'md', density: 'std', motion: 'system' };
+  var SETTINGS_DEFAULT = { font: 'md', density: 'std', motion: 'system', showNonGal: false };
+  var settings = { font: 'md', density: 'std', motion: 'system', showNonGal: false };
 
   function applySettings() {
     var root = document.documentElement;
@@ -3002,6 +3009,7 @@
         if (['sm', 'md', 'lg'].indexOf(saved.font) >= 0) settings.font = saved.font;
         if (['std', 'compact'].indexOf(saved.density) >= 0) settings.density = saved.density;
         if (['system', 'reduce'].indexOf(saved.motion) >= 0) settings.motion = saved.motion;
+        settings.showNonGal = saved.showNonGal === true;
       }
     } catch (e) { /* 忽略损坏的设置 */ }
     applySettings();
@@ -3094,6 +3102,7 @@
     var seen = Object.create(null);
     seriesInfo = Object.create(null);
     DATA.forEach(function (x) {
+      if (x.k === 'off') return;
       var k = seriesKey(x);
       if (!seriesInfo[k]) { seriesInfo[k] = { n: 0, d: 0 }; seen[k] = Object.create(null); }
       seriesInfo[k].n += 1;
@@ -3115,6 +3124,7 @@
   function seriesProgress(name) {
     var c = 0, done = 0;
     DATA.forEach(function (x) {
+      if (x.k === 'off') return;
       if (seriesKey(x) !== name) return;
       var e = myMap[String(x.i)];
       if (!e) return;
@@ -3817,10 +3827,11 @@
   }
 
   function baseList() {
+    // 我的游玩始终保留已收藏条目（含被标记的非 gal），避免收藏静默消失
     if (state.tab === 'mine') {
       return DATA.filter(function (x) { return myMap[String(x.i)]; });
     }
-    return DATA;
+    return settings.showNonGal ? DATA : DATA.filter(function (x) { return x.k !== 'off'; });
   }
 
   // 搜索分词：按空白拆分，多个关键词取交集（AND），便于用「作品名 + 季数」缩小范围
@@ -5156,7 +5167,7 @@
 
   function renderSeriesPanel() {
     var names = Object.keys(seriesInfo);
-    var total = DATA.length;
+    var total = DATA.filter(function (x) { return x.k !== 'off'; }).length;
     var covered = 0;
     var mineSeries = 0;
     var all = names.map(function (name) {
@@ -6700,6 +6711,14 @@
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
     });
+    var ng = $('nonGalSeg');
+    if (ng) {
+      ng.querySelectorAll('[data-nongal]').forEach(function (btn) {
+        var on = (btn.getAttribute('data-nongal') === 'show') === settings.showNonGal;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
   }
 
   function openSettings() {
@@ -6724,9 +6743,11 @@
       settings.font = SETTINGS_DEFAULT.font;
       settings.density = SETTINGS_DEFAULT.density;
       settings.motion = SETTINGS_DEFAULT.motion;
+      settings.showNonGal = SETTINGS_DEFAULT.showNonGal;
       applySettings();
       saveSettings();
       syncSettingsUI();
+      render();
       toast('已恢复默认设置');
       return;
     }
@@ -6752,6 +6773,15 @@
       applySettings();
       saveSettings();
       syncSettingsUI();
+      return;
+    }
+    var ngBtn = e.target.closest('#nonGalSeg [data-nongal]');
+    if (ngBtn) {
+      settings.showNonGal = ngBtn.getAttribute('data-nongal') === 'show';
+      saveSettings();
+      syncSettingsUI();
+      render();
+      toast(settings.showNonGal ? '已显示非 gal 条目' : '已隐藏非 gal 条目');
     }
   });
 

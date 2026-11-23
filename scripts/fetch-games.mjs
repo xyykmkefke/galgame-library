@@ -417,18 +417,35 @@ async function main() {
   const all = [...byId.values()];
   all.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
 
+  // 主库非 gal 标记：只加 k="off"，不删条目，保证重抓后仍默认隐藏
+  let nonGal = new Set();
+  try {
+    const blockRaw = await readFile(path.join(rootDir, 'data', 'blocklist-main.json'), 'utf8');
+    nonGal = new Set((JSON.parse(blockRaw).items || []).map((x) => Number(x.i)).filter(Boolean));
+  } catch { /* 黑名单可选 */ }
+  let nonGalMarked = 0;
+  if (nonGal.size) {
+    all.forEach((x) => {
+      if (nonGal.has(Number(x.i))) {
+        x.k = 'off';
+        nonGalMarked += 1;
+      }
+    });
+  }
+
   const dates = all.map((x) => x.d).filter(Boolean).sort();
   const meta = {
     generatedAt: new Date().toISOString(),
     count: all.length,
     minDate: dates[0] || '',
     maxDate: dates[dates.length - 1] || '',
+    nonGalMarked,
   };
 
   const content = `// 由 scripts/fetch-games.mjs 生成，请勿手动修改\nwindow.GL_META = ${JSON.stringify(meta)};\nwindow.GL_DATA = ${JSON.stringify(all)};\n`;
   await writeFile(outFile, content, 'utf8');
 
-  console.log(`完成：网络请求 ${requestCount} 次，本次新抓 ${fetched} 个桶，共 ${all.length} 条`);
+  console.log(`完成：网络请求 ${requestCount} 次，本次新抓 ${fetched} 个桶，共 ${all.length} 条（非 gal 标记 ${nonGalMarked} 条）`);
   console.log(`日期范围：${meta.minDate} ~ ${meta.maxDate}`);
   console.log(`输出：${outFile}`);
 }

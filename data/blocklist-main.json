@@ -1,0 +1,223 @@
+{
+  "updatedAt": "2026-11-23",
+  "note": "主库非 gal 黑名单：给 galgames.js 对应条目加 k=\"off\"，默认隐藏但保留收藏、详情与旧链接；不删除条目。",
+  "source": "2026-11-23 主库非 gal 核查（确认误收 36 条）",
+  "items": [
+    {
+      "i": 1111,
+      "title": "逆转裁判",
+      "group": "逆转裁判系",
+      "reason": "法庭辩论 / 推理 ADV"
+    },
+    {
+      "i": 940,
+      "title": "逆转裁判2",
+      "group": "逆转裁判系",
+      "reason": "法庭辩论 / 推理 ADV"
+    },
+    {
+      "i": 943,
+      "title": "逆转裁判3",
+      "group": "逆转裁判系",
+      "reason": "法庭辩论 / 推理 ADV"
+    },
+    {
+      "i": 51602,
+      "title": "逆转裁判5",
+      "group": "逆转裁判系",
+      "reason": "法庭辩论 / 推理 ADV"
+    },
+    {
+      "i": 94463,
+      "title": "逆转裁判123成步堂精选集",
+      "group": "逆转裁判系",
+      "reason": "法庭辩论 / 推理 ADV"
+    },
+    {
+      "i": 490291,
+      "title": "大逆转裁判1&2 成步堂龙之介的冒险与觉悟",
+      "group": "逆转裁判系",
+      "reason": "法庭辩论 / 推理 ADV"
+    },
+    {
+      "i": 499873,
+      "title": "逆转检察官1&2 御剑精选集",
+      "group": "逆转裁判系",
+      "reason": "法庭辩论 / 推理 ADV"
+    },
+    {
+      "i": 684,
+      "title": "最终幻想13",
+      "group": "最终幻想",
+      "reason": "RPG / 格斗"
+    },
+    {
+      "i": 40674,
+      "title": "最终幻想 X-2",
+      "group": "最终幻想",
+      "reason": "RPG / 格斗"
+    },
+    {
+      "i": 59895,
+      "title": "雷霆回归 最终幻想13",
+      "group": "最终幻想",
+      "reason": "RPG / 格斗"
+    },
+    {
+      "i": 11023,
+      "title": "最终幻想纷争012",
+      "group": "最终幻想",
+      "reason": "RPG / 格斗"
+    },
+    {
+      "i": 216537,
+      "title": "最终幻想 纷争NT",
+      "group": "最终幻想",
+      "reason": "RPG / 格斗"
+    },
+    {
+      "i": 329250,
+      "title": "最终幻想7 重制版 Intergrade",
+      "group": "最终幻想",
+      "reason": "RPG / 格斗"
+    },
+    {
+      "i": 254463,
+      "title": "最终幻想16",
+      "group": "最终幻想",
+      "reason": "RPG / 格斗"
+    },
+    {
+      "i": 30448,
+      "title": "侠盗猎车手：自由城之章",
+      "group": "侠盗猎车手",
+      "reason": "动作冒险"
+    },
+    {
+      "i": 84308,
+      "title": "侠盗猎车手4 失落与诅咒",
+      "group": "侠盗猎车手",
+      "reason": "动作冒险"
+    },
+    {
+      "i": 416431,
+      "title": "侠盗猎车手：罪恶都市 决定版",
+      "group": "侠盗猎车手",
+      "reason": "动作冒险"
+    },
+    {
+      "i": 221638,
+      "title": "勇者斗恶龙 创世小玩家2 破坏神席德与空荡岛",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 286110,
+      "title": "海贼无双4",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 233713,
+      "title": "碧蓝幻想 Relink",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 2247,
+      "title": "恶魔之魂",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 4308,
+      "title": "鬼泣2",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 390038,
+      "title": "HARVESTELLA",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 212078,
+      "title": "闪电十一人 英雄们的胜利之路",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 249447,
+      "title": "奈尔克与传说的炼金术士们 ～新大地的工作室～",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 310881,
+      "title": "莱莎的炼金工房2 ～失落传说与秘密妖精～",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 47558,
+      "title": "召唤之夜5",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 67259,
+      "title": "誓血龙骑士3",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 6268,
+      "title": "屠龙战记 英雄传说II",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 3142,
+      "title": "龙士传说 无限 加强版",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 38537,
+      "title": "扩散性百万亚瑟王",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 209563,
+      "title": "死亡爱丽丝",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 219588,
+      "title": "公主连结 Re:Dive",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 8722,
+      "title": "轻音！放学后演唱会！！",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 8374,
+      "title": "魔法少女奈叶As 携带版-王牌之战-",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 18694,
+      "title": "OZ大乱斗 梦想的传说",
+      "group": "其它大厂非 gal",
+      "reason": "RPG / ACT / SRPG / 音游等"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.23.2（数据 8567 条，`npm run verify` 183/183，线上已部署）
+- 当前状态：v2.23.3（数据 8567 条，其中 36 条非 gal 默认隐藏；`npm run verify` 184/184，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -962,7 +962,7 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 - 数据：`data/galgames.js`、`data/vndb.js`、`data/ymgal.js`、`data/vndb-extra.js`、`data/bgm-extra.js`。
 - 抓取：`fetch-games.mjs`、`fetch-vndb.mjs`、`fetch-vndb-extra.mjs`（热度 / relations / producer 三阶段，支持 `--popularity-only`）、`fetch-bgm-related.mjs`、`fetch-ymgal.mjs`。
-- 质量：`check-data.mjs`、`verify.mjs`（183 项）、`enrich-vndb-tags.mjs`、`prune-vndb-extra.mjs`、`vndb-genre-map.mjs`。
+- 质量：`check-data.mjs`、`verify.mjs`（184 项）、`enrich-vndb-tags.mjs`、`prune-vndb-extra.mjs`、`vndb-genre-map.mjs`。
 - 常用：`npm run check-data`、`npm run verify`、`npm run enrich-vndb-tags`、`npm run prune-vndb-extra -- --policy=balanced`（预演）/ 加 `--apply` 执行。
 
 ### 42.4 已知限制与风险
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.23.2 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.2 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.2 |
-| `README.md` | 「状态：**vN**」 | v2.23.2 |
-| `manifest.webmanifest` | `version` | 2.23.2 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v28 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.2 |
+| `package.json` | `version` | 2.23.3 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.3 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.3 |
+| `README.md` | 「状态：**vN**」 | v2.23.3 |
+| `manifest.webmanifest` | `version` | 2.23.3 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v29 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.3 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 8567），数据规模大幅变化时应同步修改。
@@ -1124,7 +1124,35 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - `data/blocklist.json` 收录 57 条高置信非 gal（逆转裁判 / 雷顿教授 / 苍翼默示录 / 女神异闻录4 派生 / Cing 解谜 / 神宫寺三郎 / SEEC 逃脱等），按 VNDB id 过滤。
 - 新增 `scripts/apply-blocklist.mjs`：默认 dry-run，`--apply` 才写回；`fetch-vndb-extra.mjs` 读取同一黑名单，避免下次重抓把条目带回来。
 - 验收：`check-data` 0 问题（扩展 5972、题材 93.5%），`verify` 183/183。
-- 待办：主库 `vndb.js` 中逆转裁判 1/2/3/5/6 是否对应真实主库条目仍在核查；若确认误收，需要独立的 Bangumi 级黑名单，不能复用 VNDB 黑名单。
+- 主库误收已在 v2.23.3 处理：36 条加 `k="off"` 默认隐藏，独立 Bangumi 级黑名单 `data/blocklist-main.json`；详见第 47 节。
+
+## 47. 主库非 gal 标记（v2.23.3）
+
+### 47.1 结论与方案
+
+- 主库确认误收 **36 条（1.45%）**，疑似 30 条（1.21%），另有 10 条确认是 gal（关键词假阳性，勿删）。
+- 采用「标记而非删除」：`data/blocklist-main.json` 的 36 条在 `data/galgames.js` 中加 `k:"off"`；默认隐藏，设置里可切换显示；收藏、详情与旧链接全部保留。
+- 根因：Bangumi `galgame` 单票即可入库，而题材归类要求 3 票；`fetch-games.mjs` 已读取同一黑名单，重抓后会自动补 `k`，不会回填。
+
+### 47.2 数据与页面
+
+- `data/galgames.js`：36 条带 `k:"off"`；`GL_META.count` 仍为 2485（总数不变）。
+- 默认可见 **8531**（8567 − 36）；「我的游玩」不受隐藏影响，已收藏的隐藏条目仍可见。
+- 设置 → 非 gal 条目 → 隐藏 / 显示；写入 `yuc_gl_settings_v1`，不参与云同步。
+- 系列索引、系列进度、`build-series.mjs` 均跳过 `k="off"`；系列从 658 降到 **648**，逆转裁判 / FF / GTA 等错误系列消失。
+
+### 47.3 脚本
+
+- `data/blocklist-main.json`：36 条 Bangumi ID + 标题 + 分组 + 原因。
+- `scripts/mark-non-gal.mjs`：默认 dry-run，`--apply` 写入，`--unmark` 撤销。
+- `scripts/fetch-games.mjs`：输出前读取黑名单并设置 `k`。
+- `scripts/build-series.mjs`：`push()` 跳过 `k === 'off'`。
+- 验收：`check-data` 0 问题；`verify` 184/184（新增「默认隐藏非 gal 条目」断言）。
+
+### 47.4 待办
+
+- 30 条疑似（樱花大战、弹丸论破、Persona、FE、偶像大师等）未处理，仍可见；需先定「乙女 / 悬疑 / 混合类型」口径。
+- 主库仍有 1443 条无 VNDB 匹配，标签噪声盲区（`tg` 空 886 条）仍在，后续可做抽样复核。
 
 
 

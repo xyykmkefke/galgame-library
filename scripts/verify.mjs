@@ -225,12 +225,14 @@ async function main() {
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
 
     // ---------- 数据与首屏 ----------
-    const total = await cdp.evaluate('(window.GL_DATA || []).length');
+    const total = await cdp.evaluate('(window.GL_DATA || []).filter((x) => x.k !== "off").length');
+    const hiddenNonGal = await cdp.evaluate('(window.GL_DATA || []).filter((x) => x.k === "off").length');
+    check('默认隐藏非 gal 条目', hiddenNonGal === 36, '隐藏 ' + hiddenNonGal + ' 部');
     const metaCount = await cdp.evaluate('(window.GL_META || {}).count || 0');
     const extraCount = await cdp.evaluate('((window.GL_VNDB_EXTRA || {}).list || []).length');
     const bgmExtraCount = await cdp.evaluate('((window.GL_BGM_EXTRA || {}).list || []).length');
-    check('全库数据加载', total > 3000 && metaCount + extraCount + bgmExtraCount === total,
-      total + ' 条（主库 ' + metaCount + ' + VNDB ' + extraCount + ' + 关联 ' + bgmExtraCount + '）');
+    check('全库数据加载', total > 3000 && metaCount + extraCount + bgmExtraCount === total + hiddenNonGal,
+      (total + hiddenNonGal) + ' 条（主库 ' + metaCount + ' + VNDB ' + extraCount + ' + 关联 ' + bgmExtraCount + '，默认可见 ' + total + '）');
 
     const noCacheFields = await cdp.evaluate(
       "(() => (window.GL_DATA || []).slice(0, 200).every((x) => x.rt === undefined && x.plr === undefined))()");
