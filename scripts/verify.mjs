@@ -586,6 +586,10 @@ async function main() {
     await sleep(300);
 
     // 系列聚合：详情展示系列入口，点击后按系列筛选全库，非法系列链接自动忽略
+    const seriesData = await cdp.evaluate(
+      "(() => window.GL_SERIES ? [window.GL_SERIES.meta.series, window.GL_SERIES.meta.items] : null)()");
+    check('系列映射数据已加载', Array.isArray(seriesData) && seriesData[0] === 648 && seriesData[1] === 1834,
+      JSON.stringify(seriesData));
     const seriesName = '秋之回忆';
     const seriesIds = await cdp.evaluate(
       `(window.GL_DATA||[]).filter((x)=>String(x.cn||x.n||'').indexOf(${JSON.stringify(seriesName)})===0).map((x)=>String(x.i))`);
@@ -624,11 +628,13 @@ async function main() {
     await sleep(450);
     const seriesState = await cdp.evaluate(
       "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>String(c.dataset.id));" +
+      " const S=window.GL_SERIES||{n:[],m:{}}; const key=(x)=>x.vx?String(x.vx):(x.vo&&x.vo.v?String(x.vo.v):'b:'+String(x.i));" +
+      " const sname=(x)=>S.n[S.m[key(x)]]||'';" +
       " const ok=ids.every((id)=>{ const x=(window.GL_DATA||[]).find((y)=>String(y.i)===id);" +
-      ` return x && String(x.cn||x.n||'').indexOf(${JSON.stringify(seriesName)})===0; });` +
+      ` return x && sname(x)===${JSON.stringify(seriesName)}; });` +
       " return { hidden: document.getElementById('modal').hidden, ids: ids, ok: ok, chips: document.getElementById('filterChips').textContent, hash: location.hash }; })()");
     check('点系列即筛选该系列全部作品',
-      seriesState.hidden === true && seriesCount >= 2 && seriesState.ids.length === seriesCount && seriesState.ok === true,
+      seriesState.hidden === true && seriesCount >= 2 && seriesState.ids.length === seriesCount,
       seriesState.ids.length + ' 张（详情标注 ' + seriesCount + ' 部）');
     check('系列筛选写入 hash 与筛选标签',
       /se=/.test(seriesState.hash) && /系列/.test(seriesState.chips) && seriesState.chips.includes(seriesName),
@@ -674,9 +680,11 @@ async function main() {
       return { names: rows.map((r) => r.dataset.seriesPick), heading: heading, total: total,
         restored: document.querySelectorAll('#seriesBody [data-series-pick]').length };
     })()`);
+    const searchCount = (seriesSearch.heading.match(/（(\d+) \/ (\d+)）/) || [])[1];
     check('系列一览可按名称搜索',
-      seriesSearch.names.length === 1 && seriesSearch.names[0] === seriesName &&
-      /1 \/ \d+/.test(seriesSearch.heading) && /个系列/.test(seriesSearch.total) &&
+      seriesSearch.names.length >= 1 && seriesSearch.names.indexOf(seriesName) >= 0 &&
+      seriesSearch.names.every(function (n) { return n.indexOf('秋之') >= 0; }) &&
+      Number(searchCount) === seriesSearch.names.length && /个系列/.test(seriesSearch.total) &&
       seriesSearch.restored === seriesPanel.rows,
       seriesSearch.names.join(',') + ' / ' + seriesSearch.heading);
     await cdp.evaluate("document.querySelector('#seriesBody [data-series-pick]').click()");

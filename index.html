@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.23.3">
+<meta name="version" content="2.23.4">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：8567 部日系作品（2485 部 Bangumi 主库 + 110 部 Bangumi 关联 + 5972 部 VNDB 扩展，其中 36 部非 gal 默认隐藏），按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2715,7 +2715,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.23.3</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.23.4</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2939,6 +2939,7 @@
 <script src="data/ymgal.js"></script>
 <script src="data/vndb-extra.js"></script>
 <script src="data/bgm-extra.js"></script>
+<script src="data/series.js"></script>
 <script>
 (function () {
   'use strict';
@@ -3079,8 +3080,9 @@
       .filter(Boolean);
   }
 
-  // ---- 系列聚合：从标题保守推导系列名，仅在运行时计算，不写入数据文件 ----
-  // 规则：取「～ ~ ： :」前的副标题前缀，去掉尾部章节 / 续作编号，纯 ASCII 前缀至少 3 字符
+  // ---- 系列聚合：优先用构建期 data/series.js（VNDB 强关系），标题前缀只做兜底 ----
+  // series.js 由 scripts/build-series.mjs 生成，运行时只查表，不在前端跑图算法
+  var SERIES_DATA = window.GL_SERIES && window.GL_SERIES.v === 1 ? window.GL_SERIES : null;
   var seriesInfo = Object.create(null);
 
   function seriesKey(item) {
@@ -3097,16 +3099,45 @@
     return base;
   }
 
-  // 同前缀至少要有 2 部标题不同的作品才算系列，避免把重复条目当成系列
+  // 与 build-series.mjs 的 key 规则保持一致：扩展用 vx，主库有 VNDB 映射用 v，否则用 b:id
+  function seriesItemKey(item) {
+    if (item.vx) return String(item.vx);
+    if (item.vo && item.vo.v) return String(item.vo.v);
+    return 'b:' + String(item.i);
+  }
+
+  function seriesSid(item) {
+    if (!SERIES_DATA || !SERIES_DATA.m) return 0;
+    return SERIES_DATA.m[seriesItemKey(item)] || 0;
+  }
+
+  function seriesNameBySid(sid) {
+    return (SERIES_DATA && SERIES_DATA.n && SERIES_DATA.n[sid]) || '';
+  }
+
+  // 旧 hash / 旧视图可能保存标题前缀名，用 series.js 的 alias 映射到新系列名
+  function resolveSeriesName(raw) {
+    if (!raw) return '';
+    // 已经是当前系列名时直接返回，避免 alias 把「秋之回忆」误映射到「秋之回忆 2」
+    if (SERIES_DATA && SERIES_DATA.n && SERIES_DATA.n.indexOf(raw) > 0) return raw;
+    if (Object.prototype.hasOwnProperty.call(seriesInfo, raw)) return raw;
+    if (SERIES_DATA && SERIES_DATA.a && SERIES_DATA.a[raw]) {
+      return seriesNameBySid(SERIES_DATA.a[raw]) || raw;
+    }
+    return raw;
+  }
+
+  // 同系列至少 2 部标题不同的作品；关系法优先，未命中的条目回落到标题前缀
   function buildSeriesIndex() {
     var seen = Object.create(null);
     seriesInfo = Object.create(null);
     DATA.forEach(function (x) {
       if (x.k === 'off') return;
-      var k = seriesKey(x);
-      if (!seriesInfo[k]) { seriesInfo[k] = { n: 0, d: 0 }; seen[k] = Object.create(null); }
-      seriesInfo[k].n += 1;
-      seen[k][String(x.cn || x.n || '')] = 1;
+      var name = seriesNameBySid(seriesSid(x)) || seriesKey(x);
+      if (!name) return;
+      if (!seriesInfo[name]) { seriesInfo[name] = { n: 0, d: 0 }; seen[name] = Object.create(null); }
+      seriesInfo[name].n += 1;
+      seen[name][String(x.cn || x.n || '')] = 1;
     });
     Object.keys(seriesInfo).forEach(function (k) {
       seriesInfo[k].d = Object.keys(seen[k]).length;
@@ -3116,6 +3147,8 @@
   buildSeriesIndex();
 
   function itemSeries(item) {
+    var name = seriesNameBySid(seriesSid(item));
+    if (name && seriesInfo[name]) return name;
     var k = seriesKey(item);
     return seriesInfo[k] ? k : '';
   }
@@ -3125,7 +3158,7 @@
     var c = 0, done = 0;
     DATA.forEach(function (x) {
       if (x.k === 'off') return;
-      if (seriesKey(x) !== name) return;
+      if (itemSeries(x) !== name) return;
       var e = myMap[String(x.i)];
       if (!e) return;
       c += 1;
@@ -3419,9 +3452,12 @@
     if (map.gr === 'all' || Object.prototype.hasOwnProperty.call(GENRE_LABEL, map.gr)) state.genre = map.gr;
     // 时长筛选：只接受三档标签，旧链接或损坏值回落到全部
     if (['all', 'short', 'mid', 'long'].indexOf(map.ln) >= 0) state.length = map.ln;
-    // 系列筛选：只接受已登记且至少 2 部作品的系列名，避免旧链接留下空结果
+    // 系列筛选：旧链接的标题前缀名先经 alias 映射，再只接受已登记且至少 2 部作品的系列名
     state.series = '';
-    if (typeof map.se === 'string' && map.se && Object.prototype.hasOwnProperty.call(seriesInfo, map.se)) state.series = map.se;
+    if (typeof map.se === 'string' && map.se) {
+      var sname = resolveSeriesName(map.se);
+      if (Object.prototype.hasOwnProperty.call(seriesInfo, sname)) state.series = sname;
+    }
     if (['score', 'heat', 'date', 'name'].indexOf(map.o) >= 0) state.sort = map.o;
     if (['all'].concat(STATUS_ORDER).indexOf(map.st) >= 0) state.status = map.st;
     if (map.om === '1' || map.om === '0' || typeof map.om === 'boolean') {
@@ -4054,7 +4090,7 @@
 
     // 系列筛选：运行时推导的系列名精确匹配
     if (state.tab === 'all' && state.series) {
-      list = list.filter(function (x) { return seriesKey(x) === state.series; });
+      list = list.filter(function (x) { return itemSeries(x) === state.series; });
     }
 
     // 题材筛选：构建期已把自由 tag 归一成 tg 数组，这里只做数组包含判断
@@ -4836,7 +4872,7 @@
     var seriesListHtml = '';
     if (seriesName) {
       var sibs = DATA.filter(function (x) {
-        return String(x.i) !== String(item.i) && seriesKey(x) === seriesName;
+        return String(x.i) !== String(item.i) && itemSeries(x) === seriesName;
       }).sort(function (a, b) {
         var da = String(a.d || '9999-99-99');
         var db = String(b.d || '9999-99-99');

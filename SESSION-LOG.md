@@ -78,3 +78,9 @@
 - 采用标记而非删除：`data/blocklist-main.json` 的 36 条加 `k:"off"`，默认隐藏；设置里可切换显示，收藏、详情与旧链接保留。
 - 新增 `scripts/mark-non-gal.mjs`；`fetch-games.mjs` 输出前读取同一黑名单，`build-series.mjs` 跳过 `k="off"`。
 - 默认可见 8531；系列 658 → 648；SW `yuc-gl-shell-v29`；`check-data` 0 问题，`verify` 184/184。
+
+## 9. 系列聚合上线（v2.23.4）
+
+- `scripts/build-series.mjs` 用 `ser / seq / preq` 强关系生成 `data/series.js`：648 个系列 / 覆盖 1834 部 / 236 个别名 / 约 45KB。
+- 页面优先查表，标题前缀只做兜底；旧 `se=<标题前缀>` 通过 alias 兼容，SW `yuc-gl-shell-v30` 预缓存。
+- `check-data` 0 问题；`verify` 185/185（新增系列映射数据断言）。

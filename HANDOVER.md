@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.23.3（数据 8567 条，其中 36 条非 gal 默认隐藏；`npm run verify` 184/184，线上已部署）
+- 当前状态：v2.23.4（数据 8567 条，其中 36 条非 gal 默认隐藏；`npm run verify` 185/185，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.23.3 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.3 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.3 |
-| `README.md` | 「状态：**vN**」 | v2.23.3 |
-| `manifest.webmanifest` | `version` | 2.23.3 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v29 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.3 |
+| `package.json` | `version` | 2.23.4 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.4 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.4 |
+| `README.md` | 「状态：**vN**」 | v2.23.4 |
+| `manifest.webmanifest` | `version` | 2.23.4 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v30 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.4 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 8567），数据规模大幅变化时应同步修改。
@@ -1055,7 +1055,7 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 ### 44.5 用途
 
 1. 图感知安全裁剪：`prune-vndb-extra.mjs --policy=graph`，分量内有高热 / 新作 / 主库锚点则整组保留；多部件全冷门组留一部代表；孤立单点按 balanced 删除（避免「自己代表自己」导致永不裁剪）。
-2. 真实系列聚合（P2）：用连通分量替代标题前缀推导，提高系列一览、同系列切换、按系列分组的准确性。
+2. 真实系列聚合（v2.23.4 已上线）：用 `ser / seq / preq` 强关系生成 `data/series.js`，标题前缀只做兜底；系列一览、同系列切换、按系列分组均已接入。
 3. 关系校验：检查扩展库是否存在孤立条目、跨系列误连。
 
 ### 44.6 关系强度的使用边界（重要）
@@ -1153,6 +1153,33 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 
 - 30 条疑似（樱花大战、弹丸论破、Persona、FE、偶像大师等）未处理，仍可见；需先定「乙女 / 悬疑 / 混合类型」口径。
 - 主库仍有 1443 条无 VNDB 匹配，标签噪声盲区（`tg` 空 886 条）仍在，后续可做抽样复核。
+
+## 48. 系列聚合上线（v2.23.4）
+
+### 48.1 数据
+
+- `scripts/build-series.mjs` → `data/series.js`（`window.GL_SERIES = { v, meta, n, m, a }`）。
+- 当前 **648 个系列 / 覆盖 1834 部 / 236 个别名 / 约 45KB**；强关系边 2220 条。
+- key 规则：扩展用 `vx`；主库有 VNDB 映射用 `vo.v`；否则 `b:<Bangumi ID>`；`k="off"` 的条目不参与。
+- `n` 为系列名数组（下标即 sid），`m` 为 key→sid，`a` 为旧标题前缀名→sid 的别名表。
+
+### 48.2 页面接入
+
+- `index.html` 在数据脚本之后加载 `data/series.js`；新增 `seriesItemKey / seriesSid / seriesNameBySid / resolveSeriesName`。
+- `buildSeriesIndex()` 优先用 sid 的名称，未命中才回落到标题前缀；`itemSeries()` 统一供筛选、系列进度、详情同系列列表使用。
+- 旧 hash / 旧视图的 `se=<标题前缀>` 先经 alias 解析；若本身已是当前系列名则优先保留，避免「秋之回忆」被误映射到「秋之回忆 2」。
+- SW 缓存升级 `yuc-gl-shell-v30`，SHELL 预缓存 `./data/series.js`。
+
+### 48.3 验收
+
+- `check-data` 0 问题；`verify` **185/185**（新增「系列映射数据已加载」断言，系列面板/搜索/同系列切换/非法系列链接均通过）。
+- 系列数从 658 降到 648：主库 36 条非 gal 被 `k="off"` 排除后，逆转裁判 / FF / GTA 等错误系列消失。
+
+### 48.4 后续
+
+- 新增或删除作品后需重跑 `npm run build-series`；已加入发布清单。
+- 若出现误合并，可在 `scripts/series-blocklist.json` 按标题 / 开发商排除（`build-series.mjs` 已支持）。
+- `verify` 里 648 / 1834 是当前快照，数据变化时需同步更新。
 
 
 
