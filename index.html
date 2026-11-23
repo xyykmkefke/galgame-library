@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.14.0">
+<meta name="version" content="2.15.0">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：1820 部作品，按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2654,6 +2654,7 @@
       <option value="year">按发售年份</option>
       <option value="added">按加入年份</option>
       <option value="status">按游玩状态</option>
+      <option value="series">按系列</option>
     </select>
     <select id="mineSort" aria-label="我的游玩排序">
       <option value="recent">最近加入</option>
@@ -3404,7 +3405,7 @@
     }
     if (map.v === 'grid' || map.v === 'list' || map.v === 'board') state.view = map.v;
     if (['recent', 'name', 'date'].indexOf(map.ms) >= 0) state.mineSort = map.ms;
-    if (map.gb === 'year' || map.gb === 'added' || map.gb === 'status') {
+    if (map.gb === 'year' || map.gb === 'added' || map.gb === 'status' || map.gb === 'series') {
       state.group = true;
       state.groupBy = map.gb;
     }
@@ -4155,9 +4156,10 @@
     '</article>';
   }
 
-  // 按发售年份 / 加入年份 / 状态分组
+  // 按发售年份 / 加入年份 / 状态 / 系列分组
   function timelineHtml(list) {
     var byAdded = state.groupBy === 'added';
+    var bySeries = state.groupBy === 'series';
     var groups = {};
     list.forEach(function (x) {
       var key;
@@ -4165,16 +4167,35 @@
         var entry = myMap[String(x.i)];
         var joined = entry && entry.t ? new Date(entry.t).getFullYear() : 0;
         key = joined ? String(joined) : '0000';
+      } else if (bySeries) {
+        // 未归入任何系列的作品统一放进「未归系列」，便于和系列组区分
+        key = itemSeries(x) || '未归系列';
       } else {
         key = yearOf(x.d) || '0000';
       }
       (groups[key] = groups[key] || []).push(x);
     });
-    return Object.keys(groups).sort().reverse().map(function (key) {
-      var label = key === '0000'
-        ? (byAdded ? '加入时间未知' : '发售日未知')
-        : key + (byAdded ? ' 年加入' : ' 年');
-      return '<section class="tl-group"><h3 class="tl-head">' + label +
+    var keys = Object.keys(groups);
+    if (bySeries) {
+      keys.sort(function (a, b) {
+        var aLoose = a === '未归系列';
+        var bLoose = b === '未归系列';
+        if (aLoose !== bLoose) return aLoose ? 1 : -1;
+        return groups[b].length - groups[a].length || a.localeCompare(b, 'zh-Hans-CN');
+      });
+    } else {
+      keys.sort().reverse();
+    }
+    return keys.map(function (key) {
+      var label;
+      if (bySeries) {
+        label = key === '未归系列' ? key : key + ' · 系列';
+      } else {
+        label = key === '0000'
+          ? (byAdded ? '加入时间未知' : '发售日未知')
+          : key + (byAdded ? ' 年加入' : ' 年');
+      }
+      return '<section class="tl-group"><h3 class="tl-head">' + escapeHtml(label) +
         '<span>' + groups[key].length + ' 部</span></h3>' +
         '<div class="grid">' + groups[key].map(cardHtml).join('') + '</div></section>';
     }).join('');
@@ -4395,7 +4416,7 @@
       gb: v.group ? v.groupBy : '', q: v.q || ''
     });
     state.group = !!v.group;
-    state.groupBy = ['year', 'added', 'status'].indexOf(v.groupBy) >= 0 ? v.groupBy : 'year';
+    state.groupBy = ['year', 'added', 'status', 'series'].indexOf(v.groupBy) >= 0 ? v.groupBy : 'year';
     state.bulk = false;
     bulkSel = Object.create(null);
     // syncControls 会把 tab / 搜索框等控件一并同步到 state
@@ -6217,9 +6238,9 @@
     render();
   });
 
-  // 分组方式：按发售年份、按加入年份或按游玩状态
+  // 分组方式：按发售年份、按加入年份、按游玩状态或按系列
   $('groupBy').addEventListener('change', function () {
-    state.groupBy = ['year', 'added', 'status'].indexOf(this.value) >= 0 ? this.value : 'year';
+    state.groupBy = ['year', 'added', 'status', 'series'].indexOf(this.value) >= 0 ? this.value : 'year';
     render();
   });
 

@@ -989,6 +989,29 @@ async function main() {
     check('同系列头部显示系列进度', /收藏 3/.test(spHead) && /通关 2/.test(spHead), spHead);
     await cdp.evaluate("document.getElementById('modalClose').click()");
     await sleep(250);
+    // 分组方式支持按系列：同系列收藏聚为一组，未归系列单独成组
+    await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find((b)=>b.dataset.tab==='mine'); t.click(); })()");
+    await sleep(250);
+    await cdp.evaluate("document.getElementById('groupBtn').click()");
+    await sleep(250);
+    const seriesOpt = await cdp.evaluate("!!document.querySelector('#groupBy option[value=\"series\"]')");
+    check('分组方式包含按系列', seriesOpt === true);
+    await setSelect('groupBy', 'series');
+    const seriesGroup = await cdp.evaluate(`(() => {
+      const heads = [...document.querySelectorAll('.tl-group .tl-head')].map((h) => h.textContent);
+      return { groups: heads.length, heads: heads, hash: location.hash,
+        by: document.getElementById('groupBy').value };
+    })()`);
+    check('我的游玩可按系列分组',
+      seriesGroup.by === 'series' && seriesGroup.groups === 1 &&
+      seriesGroup.heads.length === 1 && seriesGroup.heads[0].includes(spName) &&
+      /3 部/.test(seriesGroup.heads[0]),
+      seriesGroup.heads.join(' / '));
+    check('系列分组写入 hash', /gb=series/.test(seriesGroup.hash), seriesGroup.hash.slice(0, 90));
+    await cdp.evaluate("document.getElementById('groupBtn').click()");
+    await sleep(150);
+    await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find((b)=>b.dataset.tab==='all'); t.click(); })()");
+    await sleep(250);
     await cdp.evaluate("document.getElementById('moreBtn').click()");
     await sleep(150);
     await cdp.evaluate("document.querySelector('[data-more=\"series\"]').click()");
