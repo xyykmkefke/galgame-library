@@ -2,7 +2,7 @@
 // 用法：
 //   node scripts/fetch-games.mjs            增量：已有桶缓存直接复用
 //   node scripts/fetch-games.mjs --refresh  清空缓存重抓
-//   node scripts/fetch-games.mjs --tags=galgame,视觉小说   指定标签（默认两个都抓）
+//   node scripts/fetch-games.mjs --tags=galgame,视觉小说   指定标签（默认见 TAGS）
 //
 // 镜像单次搜索 offset 上限为 1000（offset >= 1000 返回空数组），所以不能按 total 一路翻页，
 // 必须按发售年份分桶，每桶内部翻页；末尾再用 heat / rank / score 三个排序各取前 1000 条兜底，
@@ -27,7 +27,7 @@ const REFRESH = process.argv.includes('--refresh');
 const tagArg = (process.argv.find((a) => a.startsWith('--tags=')) || '').slice(7);
 const TAGS = tagArg
   ? tagArg.split(',').map((s) => s.trim()).filter(Boolean)
-  : ['galgame', '视觉小说'];
+  : ['galgame', '视觉小说', 'ADV', '乙女向', '百合', 'BL', '拔作'];
 const TAG_SLUG = new Map([['galgame', 'g'], ['视觉小说', 'vn'], ['ADV', 'adv']]);
 const tagSlug = (tag) => TAG_SLUG.get(tag) || `t${Buffer.from(tag).toString('hex').slice(0, 8)}`;
 

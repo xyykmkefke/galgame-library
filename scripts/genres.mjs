@@ -1,4 +1,4 @@
-// 把 Bangumi 的自由标签归一到固定题材（18 个）。
+// 把 Bangumi 的自由标签归一到固定题材（19 个）。
 // 只做精确匹配，避免「非科幻」这类标签被误判；新增同义词直接补在 tags 里。
 export const GENRES = [
   { id: 'sci', label: '科幻', tags: ['科幻', 'sf', 'science fiction', '科学幻想', '赛博朋克', 'cyberpunk'] },
@@ -19,6 +19,7 @@ export const GENRES = [
   { id: 'har', label: '后宫', tags: ['后宫', 'ハーレム'] },
   { id: 'jk', label: '女装', tags: ['女装', '伪娘', '男の娘', 'おとこのこ'] },
   { id: 'mec', label: '机战', tags: ['机战', '机器人', '机甲', 'ロボット'] },
+  { id: 'oto', label: '乙女', tags: ['乙女向', '乙女', '乙女ゲーム', '乙女游戏', '女性向', 'otome'] },
 ];
 
 const TAG_TO_GENRE = new Map();

@@ -227,7 +227,7 @@ async function main() {
     // ---------- 数据与首屏 ----------
     const total = await cdp.evaluate('(window.GL_DATA || []).length');
     const metaCount = await cdp.evaluate('(window.GL_META || {}).count || 0');
-    check('全库数据加载', total > 1722 && metaCount === total, total + ' 条');
+    check('全库数据加载', total > 2800 && metaCount === total, total + ' 条');
 
     const noCacheFields = await cdp.evaluate(
       "(() => (window.GL_DATA || []).slice(0, 200).every((x) => x.rt === undefined && x.plr === undefined))()");
@@ -471,7 +471,7 @@ async function main() {
     await setSelect('platform', 'Android');
     const androidInfo = await cdp.evaluate(
       "(() => ({ n: document.querySelectorAll('.card').length, text: document.getElementById('resultbar').textContent }))()");
-    check('平台筛选生效', androidInfo.n > 0 && androidInfo.n < 240, androidInfo.n + ' 张');
+    check('平台筛选生效', androidInfo.n > 0 && androidInfo.n < 800, androidInfo.n + ' 张');
     await setSelect('platform', 'all');
 
     await cdp.evaluate("(() => { const el=document.getElementById('developer'); el.value='Key'; el.dispatchEvent(new Event('change',{bubbles:true})); })()");
@@ -484,7 +484,14 @@ async function main() {
     await sleep(300);
     await setSelect('genre', 'yur');
     const genreN = await cdp.evaluate("document.querySelectorAll('.card').length");
-    check('题材筛选生效', genreN > 0 && genreN < 240, genreN + ' 张');
+    check('题材筛选生效', genreN > 0 && genreN < 400, genreN + ' 张');
+    await setSelect('genre', 'all');
+
+    const otoOpt = await cdp.evaluate("!!document.querySelector('#genre option[value=\"oto\"]')");
+    check('题材下拉包含乙女', otoOpt === true);
+    await setSelect('genre', 'oto');
+    const otoN = await cdp.evaluate("document.querySelectorAll('.card').length");
+    check('乙女题材筛选生效', otoN > 0 && otoN < 600, otoN + ' 张');
     await setSelect('genre', 'all');
 
     const lengthOptions = await cdp.evaluate("document.querySelectorAll('#length option').length");
@@ -844,7 +851,7 @@ async function main() {
       };
     })()`);
     check('题材一览列出全部有作品的题材', genrePanel.rows === genrePanel.expected && genrePanel.rows >= 15 &&
-      /^\d+ \/ 18 个题材 · 覆盖 \d+ 部$/.test(genrePanel.total) && genrePanel.cards === 3,
+      /^\d+ \/ \d+ 个题材 · 覆盖 \d+ 部$/.test(genrePanel.total) && genrePanel.cards === 3,
       genrePanel.rows + ' 行 / ' + genrePanel.total);
 
     await cdp.evaluate("document.querySelector('#genreBody [data-genre-pick]').click()");
@@ -1508,7 +1515,7 @@ async function main() {
     check('描述、OG 与 canonical 完整', seoMeta.every(Boolean), String(seoMeta));
     const dataSize = await cdp.evaluate(
       "Promise.all(['data/galgames.js','data/vndb.js','data/ymgal.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
-    check('数据体积在预算内（<1.3MB）', dataSize[0] + dataSize[1] + dataSize[2] < 1300000,
+    check('数据体积在预算内（<2MB）', dataSize[0] + dataSize[1] + dataSize[2] < 2000000,
       (dataSize[0] + dataSize[1] + dataSize[2]) + ' 字节');
     const devJunk = await cdp.evaluate(
       "(() => { const bad=[]; (window.GL_DATA||[]).forEach((x)=>(x.dev||[]).forEach((d)=>{ if (/co\\.,?\\s*ltd|株式会社$|有限会社$/i.test(d)) bad.push(d); })); return bad.slice(0, 5); })()");

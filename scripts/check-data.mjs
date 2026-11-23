@@ -228,8 +228,8 @@ try {
 } catch { /* 缺失已在上面报错 */ }
 const totalSize = mainSize + vndbSize + ymgalSize;
 console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB + 月幕 ${(ymgalSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
-if (totalSize > 1300 * 1024) {
-  console.log(`FAIL 数据体积超预算：${(totalSize / 1024).toFixed(0)}KB > 1300KB`);
+if (totalSize > 2000 * 1024) {
+  console.log(`FAIL 数据体积超预算：${(totalSize / 1024).toFixed(0)}KB > 2000KB`);
   total += 1;
 }
 
