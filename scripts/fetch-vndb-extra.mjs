@@ -1,13 +1,16 @@
 // 从 VNDB 公共 Kana API 拉取「日系 galgame 扩展库」，独立成文件，不修改主库
 // 用法：
-//   node scripts/fetch-vndb-extra.mjs                 默认抓 1500 条
-//   node scripts/fetch-vndb-extra.mjs --limit=2000    指定条数
+//   node scripts/fetch-vndb-extra.mjs                 默认抓 1500 条 + 关系补全
+//   node scripts/fetch-vndb-extra.mjs --limit=2000    指定热度条数
 //
-// 方向：只收原始语言为日文（olang=ja）、评分 >= 60、投票数 >= 30 的作品，按热度降序；
+// 两段式：
+//   1) 按热度降序拉取 olang=ja、评分 >= 60、投票 >= 30 的作品，取前 limit 条；
+//   2) 以主库 VNDB 映射 + 扩展库为种子，批量读取 relations，补同系列 / 同设定 / 前传续作等
+//      相关作品（跳过 char / fan 这类同人衍生关系），再补齐完整元数据。
 // 已出现在主库 VNDB 映射里的 id，以及标题与主库 / 月幕别名归一后相同的条目全部跳过，
 // 保证扩展库不与主库重复。输出 data/vndb-extra.js，页面按扩展键合并展示。
 //
-// VNDB 匿名限流约 200 次 / 5 分钟，这里每页间隔 1s，命中 429 时等待 60s 再重试。
+// VNDB 匿名限流约 200 次 / 5 分钟，这里分页间隔 1s、关系查询间隔 1.6s，命中 429 时等待 60s 再重试。
 
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -21,8 +24,13 @@ const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').
 const PAGE_SIZE = 100;
 const MAX_PAGE = 80;
 const DELAY_MS = 1000;
+const BATCH_SIZE = 50;
+const REL_DELAY_MS = 1600;
 const FIELDS = 'id,title,alttitle,titles.title,titles.lang,image.url,released,rating,votecount,developers.name,platforms,tags.name,tags.rating,tags.spoiler';
+const FULL_FIELDS = FIELDS + ',olang';
 const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount', '>=', 30]];
+// 只跟随官方作品关系；char（共用角色）与 fan（同人）会引入大量衍生小游戏
+const RELATION_TYPES = new Set(['seq', 'preq', 'set', 'alt', 'side', 'par', 'ser', 'sub', 'orig']);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -181,6 +189,42 @@ async function queryPage(page) {
   throw new Error('请求失败');
 }
 
+function chunk(list, size) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+// 用 OR 组合批量查 id，避免逐条请求消耗限流额度
+async function queryIds(ids, fields) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+        body: JSON.stringify({
+          filters: ['or'].concat(ids.map((id) => ['id', '=', id])),
+          fields,
+          results: Math.min(100, ids.length),
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+      if (res.status === 429) {
+        console.warn('    限流，等待 60s');
+        await sleep(60000);
+        continue;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (err) {
+      if (attempt === 3) throw err;
+      console.warn(`    重试 ${attempt}/2：${err.message}`);
+      await sleep(attempt * 3000);
+    }
+  }
+  throw new Error('请求失败');
+}
+
 async function main() {
   const raw = await readFile(path.join(ROOT, 'data', 'galgames.js'), 'utf8');
   const m = raw.match(/window\.GL_DATA\s*=\s*(\[[\s\S]*?\]);/);
@@ -258,6 +302,55 @@ async function main() {
     if (list.length < LIMIT) await sleep(DELAY_MS);
   }
 
+  // ---------- 关系补全：以主库映射 + 热度扩展为种子 ----------
+  const seedIds = new Set(usedVndb);
+  list.forEach((x) => seedIds.add(String(x.vx)));
+  const related = new Map();
+  const seedBatches = chunk([...seedIds], BATCH_SIZE);
+  console.log(`关系遍历：${seedIds.size} 个种子 / ${seedBatches.length} 批`);
+  for (let i = 0; i < seedBatches.length; i += 1) {
+    const json = await queryIds(seedBatches[i], 'id,relations{id,relation}');
+    (json.results || []).forEach((c) => {
+      (c.relations || []).forEach((r) => {
+        const id = String(r.id || '');
+        if (!RELATION_TYPES.has(String(r.relation))) return;
+        if (seedIds.has(id) || usedVndb.has(id) || related.has(id)) return;
+        related.set(id, r.relation);
+      });
+    });
+    if ((i + 1) % 10 === 0 || i === seedBatches.length - 1) {
+      console.log(`  种子 ${i + 1}/${seedBatches.length}，候选 ${related.size}`);
+    }
+    await sleep(REL_DELAY_MS);
+  }
+
+  let relAdded = 0;
+  let relSkippedDup = 0;
+  let relSkippedInvalid = 0;
+  console.log(`关系候选 ${related.size} 个，开始补齐元数据`);
+  for (const batch of chunk([...related.keys()], BATCH_SIZE)) {
+    const json = await queryIds(batch, FULL_FIELDS);
+    (json.results || []).forEach((c) => {
+      if (c.olang !== 'ja') { relSkippedInvalid += 1; return; }
+      if (usedVndb.has(String(c.id))) { relSkippedDup += 1; return; }
+      const item = buildItem(c);
+      // 关系条目也要求关键字段完整，避免把长尾空壳带进页面
+      if (!item || !item.d || !item.s || !item.img || !item.dev || !item.pl) {
+        relSkippedInvalid += 1;
+        return;
+      }
+      const keys = candidateKeys(c);
+      let dup = false;
+      keys.forEach((k) => { if (mainKeys.has(k) || extraKeys.has(k)) dup = true; });
+      if (dup) { relSkippedDup += 1; return; }
+      list.push(item);
+      relAdded += 1;
+      keys.forEach((k) => extraKeys.add(k));
+    });
+    await sleep(REL_DELAY_MS);
+  }
+  console.log(`关系补全：新增 ${relAdded} 条（候选 ${related.size}，字段不全 ${relSkippedInvalid}，重名 ${relSkippedDup}）`);
+
   list.sort((a, b) => (b.h || 0) - (a.h || 0));
 
   const meta = {
@@ -271,12 +364,19 @@ async function main() {
     skippedUsed,
     skippedDup,
     skippedInvalid,
+    related: {
+      seeds: seedIds.size,
+      candidates: related.size,
+      added: relAdded,
+      skippedDup: relSkippedDup,
+      skippedInvalid: relSkippedInvalid,
+    },
   };
   const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
     'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
   await writeFile(OUT_FILE, content, 'utf8');
 
-  console.log(`完成：扩展 ${list.length} 条，请求 ${page} 页 / ${fetched} 条候选，跳过 主库 ${skippedUsed}、重名 ${skippedDup}、无效 ${skippedInvalid}`);
+  console.log(`完成：扩展 ${list.length} 条（其中关系补全 ${relAdded} 条），请求 ${page} 页 / ${fetched} 条候选，跳过 主库 ${skippedUsed}、重名 ${skippedDup}、无效 ${skippedInvalid}`);
   console.log(`输出：${OUT_FILE}`);
 }
 

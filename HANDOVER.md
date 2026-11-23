@@ -827,6 +827,23 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 - `npm run verify` 由 174 项扩到 179 项（全库 3985 条、扩展加载 1500、独立 id 段、并入浏览、详情只提供 VNDB 外链、来源标注），当前 179/179。
 - SW 预缓存新增 `./data/vndb-extra.js`，缓存升级 `yuc-gl-shell-v22`；页面版本 2.20.0。
 
+## 37. VNDB 关系补全与 ErogameScape 尝试（2.20.1）
+
+### 37.1 关系补全
+
+- `fetch-vndb-extra.mjs` 改为两段式：先按热度取 1500 条，再以主库 VNDB 映射 1042 + 扩展 1500（去重后 2533）为种子，按 50 个 id 一批用 `filters: ['or', ...]` 查询 `relations{id,relation}`。
+- 只跟随官方作品关系 `seq / preq / set / alt / side / par / ser / sub / orig`，跳过 `char`（共用角色）与 `fan`（同人）以免引入大量衍生小游戏。
+- 关系候选 1304 个，补齐元数据后新增 439 条；其余 582 条字段不全（无评分 / 封面 / 平台等）、283 条与主库或扩展重名。关系条目同样要求日期、评分、封面、开发商、平台齐全，核心字段覆盖率保持 100%。
+- 扩展库由 1500 扩到 1939 条，全库 4424 条；meta 新增 `related` 统计（seeds / candidates / added / skippedDup / skippedInvalid）。
+- `check-data` 0 问题，总体积 1679KB（主库 941 + VNDB 118 + 月幕 214 + 扩展 406）；`verify` 179/179；SW 缓存升级 `yuc-gl-shell-v23`，页面版本 2.20.1。
+
+### 37.2 ErogameScape 尝试结果（未接入）
+
+- 目标：`erogamescape.dyndns.org` / `erogamescape.org` 的 galgame 评分、发售日、品牌与 dump。
+- 实测 DNS 可解析（`erogamescape.dyndns.org → 162.43.79.37`），但 80 / 443 端口均连接超时；`erogamescape.org` 同样超时。
+- 公共代理 `api.allorigins.win` 返回 522（上游连接超时），WebFetch 返回空内容；当前网络亦无法访问 archive.org 的 Wayback 快照。
+- 结论：站点 / 出口网络不可达，无法稳定获取数据，本次不写入任何 ErogameScape 内容。后续若具备日本出口或官方 dump，可再补评分、品牌、声优维度。
+
 
 
 
