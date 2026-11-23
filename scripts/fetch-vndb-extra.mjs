@@ -14,7 +14,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { GENRES } from './genres.mjs';
+import { mapVndbGenres } from './vndb-genre-map.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT_FILE = path.join(ROOT, 'data', 'vndb-extra.js');
@@ -89,40 +89,6 @@ function mapPlatforms(codes) {
   return out;
 }
 
-// VNDB 英文标签 -> 现有 19 个题材 id；只做精确匹配，避免「非科幻」类误判
-const TAG_GENRE = {
-  'science fiction': 'sci', 'sci-fi': 'sci', cyberpunk: 'sci',
-  fantasy: 'fan', magic: 'fan',
-  romance: 'rom', 'pure love story': 'rom',
-  school: 'sch', 'high school': 'sch', 'school life': 'sch',
-  'slice of life': 'sli',
-  mystery: 'mys', crime: 'mys', suspense: 'mys',
-  detective: 'det',
-  nakige: 'nak',
-  utsuge: 'dep', tragedy: 'dep', dark: 'dep',
-  horror: 'hor',
-  gore: 'gru', guro: 'gru', denpa: 'gru', grotesque: 'gru',
-  battle: 'bat', action: 'bat',
-  adventure: 'adv', exploration: 'adv',
-  yuri: 'yur', 'girls love': 'yur',
-  'boys love': 'bl', yaoi: 'bl',
-  harem: 'har',
-  'cross-dressing': 'jk', trap: 'jk', otokonoko: 'jk',
-  mecha: 'mec', 'mecha combat': 'mec',
-  otome: 'oto', 'otome game': 'oto',
-};
-
-function mapGenres(tags) {
-  const hit = new Set();
-  (tags || []).forEach((t) => {
-    if (!t || t.spoiler) return;
-    if (Number(t.rating) < 1.5) return;
-    const id = TAG_GENRE[String(t.name || '').trim().toLowerCase()];
-    if (id) hit.add(id);
-  });
-  return GENRES.filter((g) => hit.has(g.id)).map((g) => g.id);
-}
-
 function cleanDevs(list) {
   const out = [];
   (list || []).forEach((d) => {
@@ -175,7 +141,7 @@ function buildItem(c) {
   if (dev.length) item.dev = dev;
   const pl = mapPlatforms(c.platforms);
   if (pl.length) item.pl = pl;
-  const tg = mapGenres(c.tags);
+  const tg = mapVndbGenres(c.tags);
   if (tg.length) item.tg = tg;
   Object.assign(item, mapStaff(c.staff));
   return item;

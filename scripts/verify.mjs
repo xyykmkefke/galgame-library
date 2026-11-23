@@ -254,7 +254,7 @@ async function main() {
 
     const genreCover = await cdp.evaluate(
       "(() => { const d=window.GL_DATA||[]; return d.length ? d.filter((x)=>x.tg&&x.tg.length).length/d.length : 0; })()");
-    check('题材覆盖率 ≥48%', genreCover >= 0.48, (genreCover * 100).toFixed(1) + '%');
+    check('题材覆盖率 ≥80%', genreCover >= 0.80, (genreCover * 100).toFixed(1) + '%');
 
     const metaHelp = await cdp.evaluate('JSON.stringify(window.GL_META || {})');
     check('数据元信息含生成时间与日期范围', /generatedAt/.test(metaHelp) && /minDate/.test(metaHelp), metaHelp.slice(0, 80));

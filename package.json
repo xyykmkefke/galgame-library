@@ -1,6 +1,6 @@
 {
   "name": "galgame-library",
-  "version": "2.22.0",
+  "version": "2.23.0",
   "private": true,
   "description": "本地优先的 Galgame 浏览与游玩记录，内置 Bangumi galgame 标签条目、VNDB 日系扩展库与月幕补充数据",
   "license": "MIT",
@@ -10,6 +10,8 @@
     "fetch-vndb": "node scripts/fetch-vndb.mjs",
     "fetch-vndb-extra": "node scripts/fetch-vndb-extra.mjs",
     "fetch-bgm-related": "node scripts/fetch-bgm-related.mjs",
+    "enrich-vndb-tags": "node scripts/enrich-vndb-tags.mjs",
+    "prune-vndb-extra": "node scripts/prune-vndb-extra.mjs",
     "fetch-ymgal": "node scripts/fetch-ymgal.mjs",
     "build-pinyin": "node scripts/build-pinyin.mjs",
     "check-data": "node scripts/check-data.mjs",
