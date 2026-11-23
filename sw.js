@@ -1,14 +1,20 @@
 // 应用壳离线缓存：首页网络优先并带超时回退，其余同源资源缓存优先、后台更新
-var CACHE = 'yuc-gl-shell-v34';
+var CACHE = 'yuc-gl-shell-v35';
 var SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './data/galgames.js', './data/vndb.js', './data/ymgal.js', './data/vndb-extra.js', './data/bgm-extra.js', './data/series.js', './data/dev-alias.js'];
+
+var CORE = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
+var DATA = ['./data/galgames.js', './data/vndb.js', './data/ymgal.js', './data/vndb-extra.js', './data/bgm-extra.js', './data/series.js', './data/dev-alias.js'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE).then(function (cache) {
-      // 强制走网络，避免 HTTP 缓存让新版本壳继续用旧文件
-      return cache.addAll(SHELL.map(function (url) {
-        return new Request(url, { cache: 'reload' });
-      }));
+      // 壳文件强制走网络，确保新版本生效；数据优先复用刚加载的 HTTP 缓存，避免首访重复下载 2.8MB
+      return Promise.all([
+        cache.addAll(CORE.map(function (url) {
+          return new Request(url, { cache: 'reload' });
+        })),
+        cache.addAll(DATA),
+      ]);
     }).then(function () {
       return self.skipWaiting();
     })

@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.25.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 186/186，线上已部署）
+- 当前状态：v2.26.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 186/186，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -986,12 +986,12 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.25.0 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.25.0 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.25.0 |
-| `README.md` | 「状态：**vN**」 | v2.25.0 |
-| `manifest.webmanifest` | `version` | 2.25.0 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v34 |
+| `package.json` | `version` | 2.26.0 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.26.0 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.26.0 |
+| `README.md` | 「状态：**vN**」 | v2.26.0 |
+| `manifest.webmanifest` | `version` | 2.26.0 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v35 |
 | `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.4 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
@@ -1284,3 +1284,16 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 
 
 
+
+## 54. 首屏加载优化（v2.26.0）
+
+- 线上基线（v2.25.0，缓存禁用）：首张卡片 **8.7s**；`vndb-extra.js` 3.8s、`galgames.js` 1.16s、`ymgal.js` 1.06s。
+- 本地基线：首卡 294ms，DOMContentLoaded 289ms。
+- 改动：
+  - 主库脚本 `galgames / vndb / ymgal / series` 在 `<head>` 预加载，提前启动下载。
+  - `vndb-extra.js`（1.8MB）与 `bgm-extra.js` 不再阻塞首屏；首屏渲染后经 `requestIdleCallback` 动态加载，加载完成再合并、重建系列索引并重渲染。
+  - 扩展库加载期间结果栏显示「扩展库加载中…」，失败时主库仍可用。
+  - SW 安装只对壳文件强制 `cache:'reload'`；数据用默认缓存模式，复用首访已下载的 HTTP 缓存，避免重复拉 2.8MB。
+  - 深链指向扩展库条目时，合并完成后再打开详情。
+- 本地复测：首卡 **231ms**（-21%），DOMContentLoaded **227ms**。
+- 验收：`check-data` 0；`verify` 186/186；SW `yuc-gl-shell-v35`。

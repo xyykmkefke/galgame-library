@@ -20,7 +20,11 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.25.0">
+<meta name="version" content="2.26.0">
+<link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
+<link rel="preload" as="script" href="data/vndb.js">
+<link rel="preload" as="script" href="data/ymgal.js">
+<link rel="preload" as="script" href="data/series.js">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：7732 部日系作品（1972 部 Bangumi 主库 + 18 部 Bangumi 关联 + 5742 部 VNDB 扩展，其中 35 部非 gal 默认隐藏；不含乙女向），按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -381,6 +385,7 @@
 
   .resultbar b { color: var(--pink); font-size: 14px; }
   .resultbar span { font-size: 12.5px; color: var(--muted); }
+  .resultbar .extra-status { font-size: 11.5px; opacity: .75; }
 
   /* 我的游玩：继续系列 */
   .continue-series { margin: 0 0 14px; }
@@ -2727,7 +2732,7 @@
   <div class="continue-series" id="continueSeries" hidden></div>
 
   <div class="resultbar" id="resultbar">
-    <b id="resultCount">0</b><span id="resultLabel"></span>
+    <b id="resultCount">0</b><span id="resultLabel"></span><span class="extra-status" id="extraStatus" hidden></span>
     <select class="viewselect" id="viewSelect" aria-label="视图" title="切换视图">
       <option value="grid">网格</option>
       <option value="list">列表</option>
@@ -2749,7 +2754,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.25.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.26.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2972,8 +2977,6 @@
 <script src="data/galgames.js"></script>
 <script src="data/vndb.js"></script>
 <script src="data/ymgal.js"></script>
-<script src="data/vndb-extra.js"></script>
-<script src="data/bgm-extra.js"></script>
 <script src="data/series.js"></script>
 <script src="data/dev-alias.js"></script>
 <script>
@@ -2994,24 +2997,15 @@
   var BGM_EXTRA = window.GL_BGM_EXTRA || null;
   var BGM_EXTRA_LIST = (BGM_EXTRA && BGM_EXTRA.list) || [];
   // 数据量约 7000 条，一次加载，无需分层
-  var fullReady = true;
+  var fullReady = false;
   var DATA = [];
   var byId = new Map();
 
   var DEV_ALIAS_MAP = (window.GL_DEV_ALIAS && window.GL_DEV_ALIAS.map) || {};
 
-  function adoptData() {
-    DATA = (window.GL_DATA || []).slice();
-    BGM_EXTRA_LIST.forEach(function (x) {
-      x.bg = 1;
-      DATA.push(x);
-    });
-    EXTRA_LIST.forEach(function (x) {
-      x.ex = 1;
-      DATA.push(x);
-    });
-    // 开发商别名归一：显示与筛选统一用 canonical，原名保留在 dva 供搜索
-    DATA.forEach(function (x) {
+  // 开发商别名归一 + VNDB / 月幕映射：主库与扩展库共用同一套装饰逻辑
+  function decorateData(list) {
+    list.forEach(function (x) {
       if (!x.dev || !x.dev.length) return;
       x.dva = x.dev.slice();
       var seen = Object.create(null);
@@ -3024,19 +3018,97 @@
       });
       x.dev = out;
     });
-    DATA.forEach(function (x) {
+    list.forEach(function (x) {
       var v = VNDB_MAP[String(x.i)];
       if (v && v.v) x.vo = v;
       var y = YMGAL_MAP[String(x.i)];
       if (y && y.g) x.ym = y;
     });
+  }
+
+  function adoptData() {
+    DATA = (window.GL_DATA || []).slice();
+    BGM_EXTRA_LIST.forEach(function (x) {
+      x.bg = 1;
+      DATA.push(x);
+    });
+    EXTRA_LIST.forEach(function (x) {
+      x.ex = 1;
+      DATA.push(x);
+    });
+    decorateData(DATA);
     byId = new Map(DATA.map(function (x) { return [String(x.i), x]; }));
     // 验收与外部脚本按「全库」读取，主库原始数组不再单独保留
     window.GL_DATA = DATA;
   }
 
   adoptData();
-  window.__FULL_DATA_READY = true;
+  window.__FULL_DATA_READY = false;
+
+  // 扩展库（1.8MB）不阻塞首屏：先渲染主库，空闲时再加载并合并
+  function loadScriptOnce(src) {
+    return new Promise(function (resolve, reject) {
+      var el = document.createElement('script');
+      el.src = src;
+      el.async = true;
+      el.onload = function () { el.remove(); resolve(); };
+      el.onerror = function () { el.remove(); reject(new Error('加载失败：' + src)); };
+      document.head.appendChild(el);
+    });
+  }
+
+  function mergeExtraData() {
+    if (fullReady) return;
+    var extras = (window.GL_VNDB_EXTRA && window.GL_VNDB_EXTRA.list) || [];
+    var bgms = (window.GL_BGM_EXTRA && window.GL_BGM_EXTRA.list) || [];
+    var added = [];
+    bgms.forEach(function (x) { x.bg = 1; added.push(x); });
+    extras.forEach(function (x) { x.ex = 1; added.push(x); });
+    decorateData(added);
+    DATA = DATA.concat(added);
+    BGM_EXTRA_LIST = bgms;
+    EXTRA_LIST = extras;
+    byId = new Map(DATA.map(function (x) { return [String(x.i), x]; }));
+    window.GL_DATA = DATA;
+    buildSeriesIndex();
+    renderYears();
+    fillFilterOptions();
+    syncControls();
+    render();
+    fullReady = true;
+    window.__FULL_DATA_READY = true;
+    var status = $('extraStatus');
+    if (status) status.hidden = true;
+    // 深链指向扩展库条目时，等合并后再打开
+    if (pendingDetail && byId.has(pendingDetail)) {
+      var deep = pendingDetail;
+      pendingDetail = null;
+      openDetail(deep);
+    }
+  }
+
+  function scheduleExtraData() {
+    var status = $('extraStatus');
+    if (status) {
+      status.hidden = false;
+      status.textContent = '扩展库加载中…';
+    }
+    var start = function () {
+      Promise.all([
+        loadScriptOnce('data/vndb-extra.js'),
+        loadScriptOnce('data/bgm-extra.js'),
+      ]).then(function () {
+        mergeExtraData();
+      }).catch(function () {
+        // 扩展库失败不阻塞主库使用；标记就绪，避免验收/深链一直等待
+        fullReady = true;
+        window.__FULL_DATA_READY = true;
+        if (status) status.textContent = '扩展库加载失败，仅显示主库';
+      });
+    };
+    if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 600 });
+    else setTimeout(start, 60);
+  }
   var STORAGE_KEY = 'yuc_gl_mine_v1';
   var PREFS_KEY = 'yuc_gl_prefs_v1';
   var HIST_KEY = 'yuc_gl_hist_v1';
@@ -7864,6 +7936,7 @@
   pendingDetail = initialDetail && !byId.has(initialDetail) ? initialDetail : null;
   syncControls();
   render();
+  scheduleExtraData();
   if (initialDetail && byId.has(initialDetail)) openDetail(initialDetail);
   updateDataHint();
   renderDataUpdated();
