@@ -365,7 +365,7 @@ PWA / 移动端：
 
 ## 10. 交接提示词
 
-> 接手 `c:\Users\ASUS\Desktop\音乐\galgame`。先读 `README.md`、`HANDOVER.md`，再读 `../番剧/README.md` 和 `../番剧/index.html` 的对应区段。按第 7 节顺序实现 v1.0.0，每步运行 `check-data` / `verify`，不要修改 `../番剧`。完成后汇报：数据统计、平台与开发商覆盖率、verify 通过数、桌面与移动端截图、线上 URL。若数据字段与本文不符，先停下来说明差异再改。
+> 接手 `c:\Users\ASUS\Desktop\collection project\galgame`。先读 `README.md`、`HANDOVER.md`，再读 `../番剧/README.md` 和 `../番剧/index.html` 的对应区段。按第 7 节顺序实现 v1.0.0，每步运行 `check-data` / `verify`，不要修改 `../番剧`。完成后汇报：数据统计、平台与开发商覆盖率、verify 通过数、桌面与移动端截图、线上 URL。若数据字段与本文不符，先停下来说明差异再改。
 
 ## 11. 实际落实与计划差异（v1.1.0）
 
@@ -979,6 +979,32 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 2. 若继续扩量，按 `h` / 年份 / 字段完整度设准入门槛，避免再次逼近 4MB。
 3. 需要系列完整性时，在抓取阶段保存 VNDB relations 映射，再做连通分量裁剪。
 4. 保持 `check-data` 与 `verify` 全绿后再 commit / push；Pages 部署后线上复核版本与条数。
+
+## 43. 发布检查清单（v2.23.1 补齐）
+
+### 43.1 版本号同步点（每次升版本必须逐一核对）
+
+| 文件 | 位置 | 当前值 |
+|---|---|---|
+| `package.json` | `version` | 2.23.1 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.1 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.1 |
+| `README.md` | 「状态：**vN**」 | v2.23.1 |
+| `manifest.webmanifest` | `version` | 2.23.1 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v27 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.1 |
+
+- v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
+- `manifest.webmanifest` 的 `description` 含作品数（当前 8624），数据规模大幅变化时应同步修改。
+- 有数据文件变化时必须升级 `sw.js` 缓存名（vN+1）；仅改文档或元数据可不升。`verify.mjs` 的缓存断言从 `sw.js` 动态读取，升级后无需改测试。
+
+### 43.2 发布流程
+
+1. 按 43.1 表格同步全部版本号与元数据。
+2. `npm run check-data` 与 `npm run verify` 全绿；`verify` 会在项目内写 `.verify` 截图目录。
+3. commit → push `origin/main` → 等 CI（check-data + verify）成功。
+4. Pages 构建完成后线上复核：`https://xyykmkefke.github.io/galgame-library/` 的 meta 版本、全库条数、SW 缓存名。
+5. 线上复核通过后再更新交接文档与会话日志（HEAD、版本、条数、验收结果）。
 
 
 
