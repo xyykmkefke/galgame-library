@@ -223,6 +223,7 @@ async function main() {
     });
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/` });
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
 
     // ---------- 数据与首屏 ----------
     const total = await cdp.evaluate('(window.GL_DATA || []).filter((x) => x.k !== "off").length');
@@ -1168,6 +1169,7 @@ async function main() {
     })()`);
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?sync=${Date.now()}` });
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
 
     const clickSync = async (gistId) => {
       await cdp.evaluate(`(() => {
@@ -1293,6 +1295,7 @@ async function main() {
     });
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?online=${Date.now()}` });
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
 
     await cdp.evaluate("localStorage.clear()");
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?deep=${Date.now()}#d=1126` });
@@ -1469,6 +1472,7 @@ async function main() {
     })()`);
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?play=${Date.now()}` });
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
     await cdp.evaluate("document.dispatchEvent(new KeyboardEvent('keydown',{key:'i',bubbles:true}))");
     await sleep(250);
     const playSec = await cdp.evaluate(`(() => {
@@ -1501,6 +1505,7 @@ async function main() {
     })()`);
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?tl=${Date.now()}` });
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
     await cdp.evaluate("document.getElementById('moreBtn').click()");
     await sleep(150);
     await cdp.evaluate("document.querySelector('[data-more=\"timeline\"]').click()");
