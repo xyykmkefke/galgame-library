@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.24.2（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 185/185，线上已部署）
+- 当前状态：v2.25.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 186/186，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -986,12 +986,12 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.24.2 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.24.2 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.24.2 |
-| `README.md` | 「状态：**vN**」 | v2.24.2 |
-| `manifest.webmanifest` | `version` | 2.24.2 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v33 |
+| `package.json` | `version` | 2.25.0 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.25.0 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.25.0 |
+| `README.md` | 「状态：**vN**」 | v2.25.0 |
+| `manifest.webmanifest` | `version` | 2.25.0 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v34 |
 | `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.4 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
@@ -1254,6 +1254,29 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 ### 52.3 验收
 
 - `check-data` 0 问题；`verify` **185/185**；SW `yuc-gl-shell-v33`；数据/页面已部署。
+
+## 53. 系列路线 + 数据补全（v2.25.0）
+
+### 53.1 系列路线
+
+- **继续系列**：我的游玩顶部最多 3 张卡，候选条件为「该系列有收藏且存在下一部」；排序为 `在玩 > 想玩 > 未收藏`，同档按收藏数、发售日。
+- 下一部规则：在玩优先，其次想玩，最后未收藏；已通关 / 弃坑不作为下一部；同档按发售日升序。
+- **系列面板**：显示「我的 N · 通关 M · 未玩 K」，新增「只看有未玩的」筛选；`seriesProgress()` 一并返回 `unplayed`。
+- **详情**：同系列列表中自动给下一部加 `next` 高亮与「下一部」标记。
+- 当前排序按发售日，不是剧情顺序；`series.js` 仍只有分组，没有 `seq/preq` 边。后续若要做真正剧情顺序，需要把关系边写入 series.js。
+- 验收新增「我的游玩显示继续系列」断言；`verify` 186/186。
+
+### 53.2 数据补全
+
+- 用 `vndb.dv` 为主库补 **154 条**缺失开发商（跳过含 `/`、`&` 的联合署名）；主库开发商覆盖 74.3% → **82.2%**，全库 93.3% → **95.3%**。
+- 清理 41 条 `Co., Ltd. / Inc. / 株式会社` 等后缀；运行时别名归一后开发商 **2087 个 / ≥2 部 898 个**。
+- 剩余 714 条主库无题材、344 条无开发商；题材没有可靠数据源，不再强行补。
+- 主库体积 728KB → **731KB**；五文件合计 2823KB → **2826KB**；`GL_META.devFilled = 154`。
+- 工具：`scripts/fill-main-devs.mjs`，支持 dry-run、`--apply`、`--clean`（只清后缀）。
+
+### 53.3 验收
+
+- `check-data` 0 问题；`verify` **186/186**；SW `yuc-gl-shell-v34`；数据/页面已部署。
 
 
 

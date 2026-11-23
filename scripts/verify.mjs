@@ -1017,6 +1017,12 @@ async function main() {
     // 分组方式支持按系列：同系列收藏聚为一组，未归系列单独成组
     await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find((b)=>b.dataset.tab==='mine'); t.click(); })()");
     await sleep(250);
+    const contSeries = await cdp.evaluate(`(() => {
+      const el = document.getElementById('continueSeries');
+      return { hidden: el.hidden, cards: el.querySelectorAll('[data-continue-id]').length, text: el.textContent };
+    })()`);
+    check('我的游玩显示继续系列', contSeries.hidden === false && contSeries.cards >= 1 &&
+      contSeries.text.includes(spName), contSeries.cards + ' 张 / ' + contSeries.text.slice(0, 40));
     await cdp.evaluate("document.getElementById('groupBtn').click()");
     await sleep(250);
     const seriesOpt = await cdp.evaluate("!!document.querySelector('#groupBy option[value=\"series\"]')");
