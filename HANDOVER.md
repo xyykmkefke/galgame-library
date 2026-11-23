@@ -1296,4 +1296,5 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
   - SW 安装只对壳文件强制 `cache:'reload'`；数据用默认缓存模式，复用首访已下载的 HTTP 缓存，避免重复拉 2.8MB。
   - 深链指向扩展库条目时，合并完成后再打开详情。
 - 本地复测：首卡 **231ms**（-21%），DOMContentLoaded **227ms**。
+- 线上复测：首卡 **3.0s**（网络较慢一次 4.8s），基线 8.7s；扩展库后台合并慢网约 13s，主库浏览与搜索不受阻。
 - 验收：`check-data` 0；`verify` 186/186；SW `yuc-gl-shell-v35`。
