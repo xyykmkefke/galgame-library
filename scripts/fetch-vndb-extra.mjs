@@ -18,6 +18,7 @@ import { mapVndbGenres } from './vndb-genre-map.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT_FILE = path.join(ROOT, 'data', 'vndb-extra.js');
+const BLOCK_FILE = path.join(ROOT, 'data', 'blocklist.json');
 const API = 'https://api.vndb.org/kana/vn';
 const UA = 'galgame-library/2.0 (https://github.com/xyykmkefke/galgame-library)';
 const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 3000;
@@ -37,6 +38,16 @@ const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount'
 const RELATION_TYPES = new Set(['seq', 'preq', 'set', 'alt', 'side', 'par', 'ser', 'sub', 'orig']);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// 非 gal 黑名单（按 VNDB id）；缺失时返回空集，不阻塞抓取
+async function loadBlockSet() {
+  try {
+    const data = JSON.parse(await readFile(BLOCK_FILE, 'utf8'));
+    return new Set((data.items || []).map((x) => String(x.vx)).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
 
 // 标题归一：全角转半角、去空格与标点、小写；保留中日英文字符与数字
 function normalizeTitle(value) {
@@ -288,6 +299,8 @@ async function main() {
     }
   } catch { /* 同上 */ }
 
+  const blockSet = await loadBlockSet();
+  let blockRemoved = 0;
   let list = [];
   const extraKeys = new Set();
   let baseMeta = null;
@@ -348,6 +361,12 @@ async function main() {
 
   // 热度补全模式：只追加候选页，保留现有关系 / 开发商条目，直接落盘
   if (POP_ONLY) {
+    if (blockSet.size) {
+      const before = list.length;
+      list = list.filter((x) => !blockSet.has(String(x.vx)));
+      blockRemoved = before - list.length;
+      console.log(`黑名单过滤：${before} → ${list.length}（配置 ${blockSet.size} 条）`);
+    }
     list.sort((a, b) => (b.h || 0) - (a.h || 0));
     const meta = Object.assign({}, baseMeta || {}, {
       generatedAt: new Date().toISOString(),
@@ -361,6 +380,7 @@ async function main() {
         skippedDup,
         skippedInvalid,
       },
+      blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
     });
     const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
       'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
@@ -486,6 +506,12 @@ async function main() {
   }
   console.log(`开发商补全：新增 ${devAdded} 条（producer ${producers.size}，请求 ${devPages} 页，重名 ${devSkippedDup}，无效 ${devSkippedInvalid}）`);
 
+  if (blockSet.size) {
+    const before = list.length;
+    list = list.filter((x) => !blockSet.has(String(x.vx)));
+    blockRemoved = before - list.length;
+    console.log(`黑名单过滤：${before} → ${list.length}（配置 ${blockSet.size} 条）`);
+  }
   list.sort((a, b) => (b.h || 0) - (a.h || 0));
 
   const meta = {
@@ -513,6 +539,7 @@ async function main() {
       skippedDup: devSkippedDup,
       skippedInvalid: devSkippedInvalid,
     },
+    blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
   };
   const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
     'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';

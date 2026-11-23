@@ -1,0 +1,406 @@
+{
+  "updatedAt": "2026-11-23",
+  "note": "非 gal 条目黑名单（按 VNDB id）。仅用于构建期过滤扩展库，不删除抓取缓存；新增条目请附 reason 与来源。",
+  "source": "2026-11-23 非 gal 审计（高置信 57 条）",
+  "items": [
+    {
+      "vx": "v717",
+      "title": "逆転裁判4",
+      "date": "2007-04-12",
+      "h": 4289,
+      "reason": "CAPCOM/逆转裁判4/法庭ADV"
+    },
+    {
+      "vx": "v1719",
+      "title": "逆転検事",
+      "date": "2009-05-28",
+      "h": 2943,
+      "reason": "CAPCOM/逆转检事/法庭搜查ADV"
+    },
+    {
+      "vx": "v15125",
+      "title": "大逆転裁判 ‐成歩堂龍ノ介の冒険‐",
+      "date": "2015-07-09",
+      "h": 2091,
+      "reason": "CAPCOM/大逆转裁判"
+    },
+    {
+      "vx": "v6639",
+      "title": "逆転検事2",
+      "date": "2011-02-03",
+      "h": 1972,
+      "reason": "CAPCOM/逆转检事2"
+    },
+    {
+      "vx": "v19987",
+      "title": "大逆転裁判2 -成歩堂龍ノ介の覺悟-",
+      "date": "2017-08-03",
+      "h": 1712,
+      "reason": "CAPCOM/大逆转裁判2"
+    },
+    {
+      "vx": "v5381",
+      "title": "BLAZBLUE CALAMITY TRIGGER",
+      "date": "2008-11-19",
+      "h": 981,
+      "reason": "ArcSystem/苍翼默示录/格斗"
+    },
+    {
+      "vx": "v15119",
+      "title": "レイトン教授VS逆転裁判",
+      "date": "2012-11-29",
+      "h": 974,
+      "reason": "CAPCOM×Level-5/雷顿VS逆转/解谜×法庭"
+    },
+    {
+      "vx": "v6572",
+      "title": "BLAZBLUE CONTINUUM SHIFT",
+      "date": "2009-11-20",
+      "h": 742,
+      "reason": "ArcSystem/苍翼CS/格斗"
+    },
+    {
+      "vx": "v45634",
+      "title": "超探偵事件簿 レインコード",
+      "date": "2023-06-30",
+      "h": 601,
+      "reason": "SpikeChunsoft/超侦探事件簿RainCode"
+    },
+    {
+      "vx": "v22728",
+      "title": "シルバー事件25区",
+      "date": "2005-10-03",
+      "h": 560,
+      "reason": "Grasshopper/银色事件25区"
+    },
+    {
+      "vx": "v718",
+      "title": "アナザーコード ２つの記憶",
+      "date": "2005-02-24",
+      "h": 540,
+      "reason": "Cing/AnotherCode/点触解谜"
+    },
+    {
+      "vx": "v4617",
+      "title": "ラストウィンドウ 真夜中の約束",
+      "date": "2010-01-14",
+      "h": 482,
+      "reason": "Cing/LastWindow"
+    },
+    {
+      "vx": "v19238",
+      "title": "ペルソナ4 ダンシング・オールナイト",
+      "date": "2015-06-25",
+      "h": 407,
+      "reason": "Atlus/P4D/音游"
+    },
+    {
+      "vx": "v295",
+      "title": "ファミコン探偵倶楽部PartII うしろに立つ少女",
+      "date": "1989-05-23",
+      "h": 397,
+      "reason": "任天堂/FC侦探俱乐部PartII/指令ADV"
+    },
+    {
+      "vx": "v1305",
+      "title": "SNATCHER",
+      "date": "1988-11-26",
+      "h": 381,
+      "reason": "Konami/SNATCHER"
+    },
+    {
+      "vx": "v19951",
+      "title": "ペルソナ4 ジ・アルティメット イン マヨナカアリーナ",
+      "date": "2012-07-26",
+      "h": 325,
+      "reason": "Atlus/P4U/格斗"
+    },
+    {
+      "vx": "v2528",
+      "title": "ポリスノーツ",
+      "date": "1994-07-29",
+      "h": 307,
+      "reason": "Konami/Policenauts"
+    },
+    {
+      "vx": "v20164",
+      "title": "ペルソナ4 ジ・アルティマックス ウルトラス―プレックスホールド",
+      "date": "2014-08-28",
+      "h": 279,
+      "reason": "Atlus/P4U2/格斗"
+    },
+    {
+      "vx": "v35280",
+      "title": "デジモンサヴァイブ",
+      "date": "2022-07-27",
+      "h": 225,
+      "reason": "DigimonSurvive/SRPG-ADV"
+    },
+    {
+      "vx": "v3333",
+      "title": "ディスガイア インフィニット",
+      "date": "2009-11-01",
+      "h": 188,
+      "reason": "日本一/DisgaeaInfinite"
+    },
+    {
+      "vx": "v23403",
+      "title": "UNDER NIGHT IN-BIRTH",
+      "date": "2012-09-20",
+      "h": 184,
+      "reason": "UNIB/格斗"
+    },
+    {
+      "vx": "v48",
+      "title": "RADICAL DREAMERS -盗めない宝石-",
+      "date": "1996-06-01",
+      "h": 177,
+      "reason": "Square/RadicalDreamers"
+    },
+    {
+      "vx": "v2124",
+      "title": "アナザーコード: R 記憶の扉",
+      "date": "2009-02-09",
+      "h": 143,
+      "reason": "Cing/AnotherCodeR"
+    },
+    {
+      "vx": "v30317",
+      "title": "探偵撲滅",
+      "date": "2021-05-27",
+      "h": 133,
+      "reason": "日本一/侦探扑灭"
+    },
+    {
+      "vx": "v25616",
+      "title": "誰ソ彼ホテル",
+      "date": "2017-12-19",
+      "h": 108,
+      "reason": "SEEC/誰ソ彼ホテル/Puzzle+HiddenObject"
+    },
+    {
+      "vx": "v15891",
+      "title": "XBLAZE LOST:MEMORIES",
+      "date": "2015-04-09",
+      "h": 96,
+      "reason": "ArcSystem/XBLAZE/格斗衍生"
+    },
+    {
+      "vx": "v19271",
+      "title": "超科学脱出ストーリー ～絶海の豪華客船～",
+      "date": "2014-07-09",
+      "h": 91,
+      "reason": "NTENSE/超科学脱出/逃脱解谜"
+    },
+    {
+      "vx": "v36067",
+      "title": "冤罪執行遊戯ユルキル",
+      "date": "2022-05-26",
+      "h": 85,
+      "reason": "ESQUADRA/Yurukill/射击ADV"
+    },
+    {
+      "vx": "v876",
+      "title": "メタルスレイダーグローリー",
+      "date": "1991-08-30",
+      "h": 78,
+      "reason": "HAL/MetalSladerGlory"
+    },
+    {
+      "vx": "v10856",
+      "title": "タイムトラベラーズ",
+      "date": "2012-07-12",
+      "h": 67,
+      "reason": "Level-5/TimeTravelers"
+    },
+    {
+      "vx": "v8182",
+      "title": "ナナシ ノ ゲエム",
+      "date": "2008-07-03",
+      "h": 65,
+      "reason": "SE/ナナシ ノ ゲエム/NoRomance"
+    },
+    {
+      "vx": "v21475",
+      "title": "監獄少年",
+      "date": "2017-04-04",
+      "h": 61,
+      "reason": "SEEC/監獄少年/mysteryADV"
+    },
+    {
+      "vx": "v3964",
+      "title": "Play Novel: Silent Hill",
+      "date": "2001-03-21",
+      "h": 58,
+      "reason": "KCET/PlayNovel SilentHill"
+    },
+    {
+      "vx": "v18428",
+      "title": "魔都紅色幽撃隊 Tokyo Twilight Ghosthunters",
+      "date": "2014-04-10",
+      "h": 56,
+      "reason": "Toybox/魔都紅色幽撃隊/SRPG-ADV"
+    },
+    {
+      "vx": "v33133",
+      "title": "トワイライトシンドローム ～探索編～",
+      "date": "1996-03-01",
+      "h": 55,
+      "reason": "Human/TwilightSyndrome"
+    },
+    {
+      "vx": "v877",
+      "title": "ジーザス",
+      "date": "1987-04-28",
+      "h": 52,
+      "reason": "Chunsoft/ジーザス"
+    },
+    {
+      "vx": "v1574",
+      "title": "探偵 神宮寺三郎DS いにしえの記憶",
+      "date": "2007-07-19",
+      "h": 48,
+      "reason": "WorkJam/神宫寺三郎DS"
+    },
+    {
+      "vx": "v22699",
+      "title": "アリスの精神裁判",
+      "date": "2015-10-22",
+      "h": 45,
+      "reason": "SEEC/アリスの精神裁判/Courtroom谜题"
+    },
+    {
+      "vx": "v4080",
+      "title": "AGAIN FBI 超心理捜査官",
+      "date": "2009-12-10",
+      "h": 39,
+      "reason": "Cing/AGAIN FBI/推理ADV"
+    },
+    {
+      "vx": "v5962",
+      "title": "探偵 神宮寺三郎 Series No.01 新宿中央公園殺人事件",
+      "date": "2003-11-26",
+      "h": 39,
+      "reason": "WorkJam/神宫寺三郎No.1"
+    },
+    {
+      "vx": "v11988",
+      "title": "アイドル八犬伝",
+      "date": "1989-09-14",
+      "h": 34,
+      "reason": "Natsume/Idol八犬伝"
+    },
+    {
+      "vx": "v53035",
+      "title": "ミステリーの歩き方",
+      "date": "2024-12-12",
+      "h": 32,
+      "reason": "Toybox/ミステリーの歩き方/NoRomance"
+    },
+    {
+      "vx": "v9522",
+      "title": "サラダの国のトマト姫",
+      "date": "1984-03-31",
+      "h": 30,
+      "reason": "Hudson/番茄姬"
+    },
+    {
+      "vx": "v5724",
+      "title": "研修医 天堂独太2～命の天秤～",
+      "date": "2005-10-20",
+      "h": 28,
+      "reason": "Spike/研修医天堂独太2"
+    },
+    {
+      "vx": "v18456",
+      "title": "真 流行り神",
+      "date": "2014-08-07",
+      "h": 27,
+      "reason": "日本一/真流行神/恐怖ADV"
+    },
+    {
+      "vx": "v5607",
+      "title": "J.B.ハロルドの事件簿 - 殺人倶楽部",
+      "date": "1986-08-01",
+      "h": 27,
+      "reason": "Riverhill/J.B.哈罗德事件簿"
+    },
+    {
+      "vx": "v745",
+      "title": "学校であった怖い話",
+      "date": "1995-08-04",
+      "h": 25,
+      "reason": "PandoraBox/学校であった怖い話"
+    },
+    {
+      "vx": "v5963",
+      "title": "探偵 神宮寺三郎 Series No.02 横浜港連続殺人事件",
+      "date": "2004-04-21",
+      "h": 24,
+      "reason": "WorkJam/神宫寺三郎No.2"
+    },
+    {
+      "vx": "v27637",
+      "title": "紡ロジック",
+      "date": "2018-12-05",
+      "h": 24,
+      "reason": "SEEC/紡ロジック/mysteryADV"
+    },
+    {
+      "vx": "v26834",
+      "title": "籠庭のクックロビン",
+      "date": "2017-12-26",
+      "h": 22,
+      "reason": "SEEC/籠庭のクックロビン/mysteryADV"
+    },
+    {
+      "vx": "v5966",
+      "title": "探偵 神宮寺三郎 Series No.03 危険な二人",
+      "date": "2004-06-23",
+      "h": 20,
+      "reason": "WorkJam/神宫寺三郎No.3"
+    },
+    {
+      "vx": "v4529",
+      "title": "ファンタシースターアドベンチャー",
+      "date": "1992-03-13",
+      "h": 20,
+      "reason": "SEGA/PhantasyStarAdventure"
+    },
+    {
+      "vx": "v18943",
+      "title": "ネットハイ",
+      "date": "2015-11-26",
+      "h": 13,
+      "reason": "Marvelous/NetHigh"
+    },
+    {
+      "vx": "v24957",
+      "title": "レイギガント",
+      "date": "2015-07-30",
+      "h": 8,
+      "reason": "Experience/RayGigant/DRPG"
+    },
+    {
+      "vx": "v30116",
+      "title": "伊勢志摩ミステリー案内 偽りの黒真珠",
+      "date": "2019-01-24",
+      "h": 8,
+      "reason": "Happymeal/伊勢志摩ミステリー案内/推理ADV"
+    },
+    {
+      "vx": "v52502",
+      "title": "かまいたちのヨル",
+      "date": "2024-09-03",
+      "h": 6,
+      "reason": "SpikeChunsoft/かまいたちのヨル"
+    },
+    {
+      "vx": "v51689",
+      "title": "キングダムハーツ ユニオンクロス",
+      "date": "2015-09-03",
+      "h": 6,
+      "reason": "SE/KH UnionCross/手游RPG"
+    }
+  ]
+}

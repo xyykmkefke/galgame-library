@@ -64,3 +64,10 @@
 - 第二 / 第三数据源：VNDB 匹配 1042，月幕匹配 1144（577 别名）。
 - 验收：`check-data` 0 问题，`verify` 183/183；CI 通过，Pages 已部署。
 - 风险与后续：见 HANDOVER 42.4 / 42.5；老系列整组裁剪风险已记录，后续可保存 relations 再做图连通裁剪。
+
+## 7. 非 gal 黑名单（v2.23.2）
+
+- 审计：高置信非 gal 57 条（0.95%）、中置信 43 条（0.71%）；污染是条目级，不是关系分量级。
+- 新增 `data/blocklist.json`（57 条 VNDB id）与 `scripts/apply-blocklist.mjs`；`fetch-vndb-extra.mjs` 读取同一文件，避免重抓回填。
+- 扩展 6029 → 5972，全库 8624 → 8567，体积 3239KB → 3221KB；题材覆盖 93.5%。
+- `check-data` 0 问题；`verify` 183/183；SW 缓存 `yuc-gl-shell-v28`。

@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.23.1（数据 8624 条，`npm run verify` 183/183，线上已部署）
+- 当前状态：v2.23.2（数据 8567 条，`npm run verify` 183/183，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.23.1（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、balanced 裁剪）
+- 本次会话：v2.19.0 → v2.23.2（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、balanced 裁剪、非 gal 黑名单）
 
 ## 1. 目标与边界
 
@@ -986,16 +986,16 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.23.1 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.1 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.1 |
-| `README.md` | 「状态：**vN**」 | v2.23.1 |
-| `manifest.webmanifest` | `version` | 2.23.1 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v27 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.1 |
+| `package.json` | `version` | 2.23.2 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.2 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.2 |
+| `README.md` | 「状态：**vN**」 | v2.23.2 |
+| `manifest.webmanifest` | `version` | 2.23.2 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v28 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.2 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
-- `manifest.webmanifest` 的 `description` 含作品数（当前 8624），数据规模大幅变化时应同步修改。
+- `manifest.webmanifest` 的 `description` 含作品数（当前 8567），数据规模大幅变化时应同步修改。
 - 有数据文件变化时必须升级 `sw.js` 缓存名（vN+1）；仅改文档或元数据可不升。`verify.mjs` 的缓存断言从 `sw.js` 动态读取，升级后无需改测试。
 
 ### 43.2 发布流程
@@ -1029,7 +1029,7 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 }
 ```
 
-- 种子来自 `data/vndb.js` 的主库匹配（1042）与 `data/vndb-extra.js` 的扩展（6029），去重后 7062 个 VNDB id。
+- 种子来自 `data/vndb.js` 的主库匹配（1042）与 `data/vndb-extra.js` 的扩展（抓取时为 6029；v2.23.2 黑名单后为 5972，缓存仍保留历史边），去重后 7062 个 VNDB id。
 - 只保留官方作品关系（seq / preq / set / alt / side / par / ser / sub / orig），跳过 char / fan。
 - 边可视为无向；目标 id 可能不在库内，构图时只取两端都在库内的边。
 
@@ -1115,8 +1115,16 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 
 ### 45.3 当前状态
 
-- 本次审计只读，未改任何数据；扩展库仍 6029 条。
-- 若执行方案 A，需要：新增 blocklist 文件 → 构建期过滤 → 重新生成 `data/vndb-extra.js` → `check-data` / `verify` → 升 SW 缓存与版本号。属于独立的数据变更，需单独确认。
+- 审计时为只读，未改数据；v2.23.2 已按方案 A 应用 57 条，扩展库 6029 → 5972。
+- 应用方式：新增 `data/blocklist.json` → `scripts/apply-blocklist.mjs` 过滤 → `fetch-vndb-extra.mjs` 读取同一黑名单，避免下次重抓回填 → `check-data` / `verify` → 升 SW 与版本号。
+
+## 46. v2.23.2 非 gal 黑名单发布（2026-11-23）
+
+- 版本 **2.23.2**，SW `yuc-gl-shell-v28`；扩展库 6029 → **5972**，全库 8624 → **8567**，体积 3239KB → **3221KB**。
+- `data/blocklist.json` 收录 57 条高置信非 gal（逆转裁判 / 雷顿教授 / 苍翼默示录 / 女神异闻录4 派生 / Cing 解谜 / 神宫寺三郎 / SEEC 逃脱等），按 VNDB id 过滤。
+- 新增 `scripts/apply-blocklist.mjs`：默认 dry-run，`--apply` 才写回；`fetch-vndb-extra.mjs` 读取同一黑名单，避免下次重抓把条目带回来。
+- 验收：`check-data` 0 问题（扩展 5972、题材 93.5%），`verify` 183/183。
+- 待办：主库 `vndb.js` 中逆转裁判 1/2/3/5/6 是否对应真实主库条目仍在核查；若确认误收，需要独立的 Bangumi 级黑名单，不能复用 VNDB 黑名单。
 
 
 
