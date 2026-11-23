@@ -71,6 +71,8 @@ npm run verify   # Edge/Chrome + CDP 自动验收（183 项，含 Gist mock、�
 
 CI：`.github/workflows/ci.yml` 在 push / PR 时运行 `check-data` 与 `verify`（Linux 下自动使用系统 Chrome）。
 
+交接与会话记录：[HANDOVER.md](./HANDOVER.md)（字段、数据源、风险与后续建议）、[SESSION-LOG.md](./SESSION-LOG.md)（v2.19.0 → v2.23.1 会话过程与提交）。
+
 ## 部署
 
 GitHub Pages：<https://xyykmkefke.github.io/galgame-library/>

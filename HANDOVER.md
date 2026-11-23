@@ -1,10 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.19.0（数据 2485 条，`npm run verify` 174/174）
+- 当前状态：v2.23.1（数据 8624 条，`npm run verify` 183/183，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
+- 本次会话：v2.19.0 → v2.23.1（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、balanced 裁剪）
 
 ## 1. 目标与边界
 
@@ -933,6 +934,51 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 - `check-data` 0 问题；`verify` 183/183（全库 8624、扩展 6029、关系库 110、拔作题材 240 张、离线缓存均正常）。
 - 页面版本 2.23.1，SW `yuc-gl-shell-v27`。
 - 已知风险：没有 relation/series 字段，极老的冷门系列若全系列 h<20 会被整组移除；当前接受该风险，后续如需要可在抓取阶段保存 relations 表，再做图连通裁剪。
+
+## 42. 会话交接总结（2026-11-23）
+
+### 42.1 当前状态
+
+- 版本：**v2.23.1**；HEAD `d23493b`；线上 <https://xyykmkefke.github.io/galgame-library/>。
+- 全库 **8624 条**：Bangumi 主库 2485 + Bangumi 关联 110 + VNDB 扩展 6029。
+- 覆盖率：日期 99.4% · 评分 99.1% · 封面 100% · 平台 98.8% · 开发商 93.4% · 题材 85.0%。
+- 数据体积 3239KB（主库 941 + VNDB 118 + 月幕 261 + VNDB 扩展 1873 + 关联 46），4MB 预算余量约 0.78MB。
+- 第二 / 第三数据源：VNDB 匹配 1042 条，月幕匹配 1144 条（577 条有别名）。
+- 验收：`check-data` 0 问题，`verify` 183/183；CI 成功；Pages 已部署；SW `yuc-gl-shell-v27`。
+- 题材：20 个分类（新增「拔作」），下拉 21 项（含全部）。
+
+### 42.2 版本轨迹
+
+| 版本 | 提交 | 主要变化 | 全库 |
+|---|---|---|---:|
+| v2.20.0 | `0554e08` | VNDB 日系扩展 1500 条 | 3985 |
+| v2.20.1 | `9e94c89` | VNDB relations 补全 +439 | 4424 |
+| v2.21.0 | `fa18c94` | VNDB 字段 / 3452 条、Bangumi 关联、月幕 +235 | 5955 |
+| v2.22.0 | `c5b7dfe` | 开发商补全 +3626、关联全量 110、热度扩到 6000 | 10474 |
+| v2.23.0 | `f6b7260` | 题材覆盖 43.7% → 90.1%，新增拔作 | 10474 |
+| v2.23.1 | `d23493b` | balanced 裁剪 -1850 条 / -497KB | 8624 |
+
+### 42.3 关键文件与命令
+
+- 数据：`data/galgames.js`、`data/vndb.js`、`data/ymgal.js`、`data/vndb-extra.js`、`data/bgm-extra.js`。
+- 抓取：`fetch-games.mjs`、`fetch-vndb.mjs`、`fetch-vndb-extra.mjs`（热度 / relations / producer 三阶段，支持 `--popularity-only`）、`fetch-bgm-related.mjs`、`fetch-ymgal.mjs`。
+- 质量：`check-data.mjs`、`verify.mjs`（183 项）、`enrich-vndb-tags.mjs`、`prune-vndb-extra.mjs`、`vndb-genre-map.mjs`。
+- 常用：`npm run check-data`、`npm run verify`、`npm run enrich-vndb-tags`、`npm run prune-vndb-extra -- --policy=balanced`（预演）/ 加 `--apply` 执行。
+
+### 42.4 已知限制与风险
+
+- ErogameScape / Getchu 等日本站点在当前网络不可达；未使用需要日本出口或代理的方案。
+- VNDB 匿名限流约 200 次 / 5 分钟；全量重抓耗时长，优先用 `--popularity-only`、`enrich-vndb-tags` 等增量脚本。
+- balanced 裁剪按 `h<20 且 2015 年前`，保留全部 2015+ 与 `h>=20`；极老冷门系列可能整组消失，若系列完整性优先需先保存 relations 再做图连通裁剪。
+- 扩展库仍有约 399 条无题材（93.4% 覆盖），主要缺少标签；可继续补同义词或标题规则，但收益递减。
+- 数据体积已回到 3.2MB，仍建议每次新增数据后跑 `check-data` 与 `verify`，并在数据变化时升级 SW 缓存版本。
+
+### 42.5 后续建议
+
+1. 新数据优先走增量脚本，新增前先跑 `prune-vndb-extra` 预演评估空间。
+2. 若继续扩量，按 `h` / 年份 / 字段完整度设准入门槛，避免再次逼近 4MB。
+3. 需要系列完整性时，在抓取阶段保存 VNDB relations 映射，再做连通分量裁剪。
+4. 保持 `check-data` 与 `verify` 全绿后再 commit / push；Pages 部署后线上复核版本与条数。
 
 
 
