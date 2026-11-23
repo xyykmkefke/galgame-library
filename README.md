@@ -1,12 +1,12 @@
 # Galgame 库 · 游玩记录
 
-本地优先的 Galgame 浏览与游玩记录 PWA。内置 Bangumi「galgame」「视觉小说」「乙女向」「百合」「BL」「拔作」等日系 galgame 标签条目，并用 VNDB 补充评分、时长，用月幕 Galgame 补充中文标题与外链，无账号、无后端。
+本地优先的 Galgame 浏览与游玩记录 PWA。内置 Bangumi「galgame」「视觉小说」「乙女向」「百合」「BL」「拔作」等日系 galgame 标签条目，并用 VNDB 补充评分、时长与 1500 部日系扩展作品，用月幕 Galgame 补充中文标题与外链，无账号、无后端。
 
-状态：**v2.19.0**
+状态：**v2.20.0**
 
 ## 功能
 
-- **全库浏览**：2485 部日系作品，按年份、平台、开发商、题材、游玩时长筛选，评分 / 热度 / 发售日 / 名称排序
+- **全库浏览**：3985 部日系作品（2485 部 Bangumi 主库 + 1500 部 VNDB 日系扩展），按年份、平台、开发商、题材、游玩时长筛选，评分 / 热度 / 发售日 / 名称排序
 - **搜索**：多关键词交集、`-词` 排除、拼音首字母、跨源别名（VNDB 英文 / 罗马字标题、月幕原名 / 中文名 / 详情别名）、开发商 / 平台命中、标题高亮、搜索历史；严格无结果时自动忽略空格、标点与全半角差异再搜一次；支持 `开发商:Key`、`平台:Switch`、`年份:2015`、`题材:恋爱`、`评分:>=8` 限定（评分支持 `>=` / `<=` / `>` / `<`，省略运算符按 `>=`），前缀 `-` 表示排除
 - **我的游玩**：想玩 / 在玩 / 已通关 / 弃坑（仅四种状态）
 - **视图**：网格 / 列表 / 看板；按发售年份、加入年份、状态、系列分组
@@ -29,11 +29,12 @@
 ## 数据
 
 - 主源：Bangumi（bgm.tv），`type=4` 游戏，`tag=galgame` / `视觉小说` / `乙女向` / `百合` / `BL` / `拔作` 按 ID 合并去重；不收 ADV（混入大量非 gal 的冒险 / 解谜游戏），也不收标为欧美的作品
+- 扩展源：VNDB 公共 Kana API，只收原始语言为日文（`olang=ja`）、评分 ≥ 60、投票数 ≥ 30 的作品，按热度降序取 1500 部；与主库 VNDB 映射、主库标题、月幕别名去重后独立写入 `data/vndb-extra.js`，运行时并入全库（`ex=1`），详情只提供 VNDB 外链
 - 补充源：VNDB 公共 Kana API，按标题归一 + 年份容差保守匹配，只保留高置信结果；当前匹配 1042 条（已尝试 1840 条）
 - 补充源：月幕 Galgame 开放 API，同样按标题归一 + 年份容差严格匹配；当前匹配 909 条，其中 577 条有详情别名
-- 规模：2485 条（1985-05-31 ~ 2027-03-25）
-- 覆盖：日期 97.8%、评分 97.5%、封面 99.9%、平台 95.9%、开发商 77.3%、题材 64.3%
-- 文件：`data/galgames.js`（主库）、`data/vndb.js`（第二数据源）、`data/ymgal.js`（第三数据源），后两者按 Bangumi ID 关联
+- 规模：3985 条（主库 2485 + 扩展 1500；1985-05-31 ~ 2027-03-25）
+- 覆盖：日期 98.6%、评分 98.4%、封面 100%、平台 97.4%、开发商 85.8%、题材 63.9%
+- 文件：`data/galgames.js`（主库）、`data/vndb.js`（第二数据源）、`data/ymgal.js`（第三数据源）、`data/vndb-extra.js`（日系扩展库），后三者按 Bangumi ID 或独立 ID 段关联
 
 抓取按发售年份分桶（镜像 offset 上限 1000），再用 heat / rank / score 三个排序各取前 1000 条兜底：
 
@@ -42,6 +43,7 @@ npm run fetch-data          # 增量，已有分桶缓存直接复用
 node scripts/fetch-games.mjs --refresh   # 清空缓存重抓
 node scripts/fetch-games.mjs --tags=galgame,视觉小说,乙女向   # 指定标签
 npm run fetch-vndb          # 补充 VNDB（默认热度前 350 条，增量）
+npm run fetch-vndb-extra    # 抓取 VNDB 日系扩展库（默认 1500 条，整包重抓）
 npm run fetch-ymgal         # 补充月幕（默认热度前 700 条，增量）
 npm run check-data
 ```
@@ -50,13 +52,15 @@ npm run check-data
 
 VNDB 匿名限流约 200 次 / 5 分钟，脚本固定 1.6s 间隔并对 429 退避；匹配结果落 `data/build/vndb-map.json`，重复运行只补未匹配条目。
 
+扩展库脚本按热度降序分页拉取（每页 100 条、间隔 1s），22 页即可取满 1500 条；标题 / 别名归一后与主库和月幕去重，输出独立文件，不写主库。
+
 月幕使用官方公开的公共凭据（`client_id=ymgal`，供学习 / 实验），构建期顺序请求、800ms 间隔并对 429 退避，匹配结果落 `data/build/ymgal-map.json`；有匹配的条目再逐条取详情补 `extensionName` 别名（同样 800ms 限速）。也可用环境变量 `YMGAL_CLIENT_ID` / `YMGAL_CLIENT_SECRET` 覆盖。数据非商业用途，本站已在页脚与文档标注月幕 Galgame 来源。
 
 ## 开发
 
 ```bash
 npm start        # 本地静态服务
-npm run verify   # Edge/Chrome + CDP 自动验收（174 项，含 Gist mock、离线重开、统计与三数据源）
+npm run verify   # Edge/Chrome + CDP 自动验收（179 项，含 Gist mock、离线重开、统计与四份数据文件）
 ```
 
 CI：`.github/workflows/ci.yml` 在 push / PR 时运行 `check-data` 与 `verify`（Linux 下自动使用系统 Chrome）。

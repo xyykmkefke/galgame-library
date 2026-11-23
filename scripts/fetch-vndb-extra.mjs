@@ -1,0 +1,286 @@
+// 从 VNDB 公共 Kana API 拉取「日系 galgame 扩展库」，独立成文件，不修改主库
+// 用法：
+//   node scripts/fetch-vndb-extra.mjs                 默认抓 1500 条
+//   node scripts/fetch-vndb-extra.mjs --limit=2000    指定条数
+//
+// 方向：只收原始语言为日文（olang=ja）、评分 >= 60、投票数 >= 30 的作品，按热度降序；
+// 已出现在主库 VNDB 映射里的 id，以及标题与主库 / 月幕别名归一后相同的条目全部跳过，
+// 保证扩展库不与主库重复。输出 data/vndb-extra.js，页面按扩展键合并展示。
+//
+// VNDB 匿名限流约 200 次 / 5 分钟，这里每页间隔 1s，命中 429 时等待 60s 再重试。
+
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { GENRES } from './genres.mjs';
+
+const ROOT = path.resolve(import.meta.dirname, '..');
+const OUT_FILE = path.join(ROOT, 'data', 'vndb-extra.js');
+const API = 'https://api.vndb.org/kana/vn';
+const UA = 'galgame-library/2.0 (https://github.com/xyykmkefke/galgame-library)';
+const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 1500;
+const PAGE_SIZE = 100;
+const MAX_PAGE = 80;
+const DELAY_MS = 1000;
+const FIELDS = 'id,title,alttitle,titles.title,titles.lang,image.url,released,rating,votecount,developers.name,platforms,tags.name,tags.rating,tags.spoiler';
+const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount', '>=', 30]];
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// 标题归一：全角转半角、去空格与标点、小写；保留中日英文字符与数字
+function normalizeTitle(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s\u3000]+/g, '')
+    .replace(/[!-/:-@[-`{-~！-／：-＠［-｀｛-～・、。…‥「」『』【】《》（）〈〉〔〕~～〜]/g, '');
+}
+
+// 整名与「分隔符前的头名」都入键集，覆盖副标题差异
+function addKeys(set, value) {
+  const full = normalizeTitle(value);
+  if (full) set.add(full);
+  const head = normalizeTitle(String(value || '').split(/[~～〜:：\-—–]/)[0]);
+  if (head && head.length >= 2) set.add(head);
+}
+
+function candidateKeys(c) {
+  const keys = new Set();
+  addKeys(keys, c.title);
+  addKeys(keys, c.alttitle);
+  (c.titles || []).forEach((t) => addKeys(keys, t.title));
+  return keys;
+}
+
+// 发售日补齐到 YYYY-MM-DD；无法识别时留空
+function fullDate(value) {
+  const m = String(value || '').match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/);
+  if (!m) return '';
+  return `${m[1]}-${m[2] || '01'}-${m[3] || '01'}`;
+}
+
+const PLATFORM = {
+  win: 'PC', lin: 'Linux', mac: 'macOS', ios: 'iOS', and: 'Android', web: 'Web', dos: 'DOS',
+  ps1: 'PS', ps2: 'PS2', ps3: 'PS3', ps4: 'PS4', ps5: 'PS5', psp: 'PSP', psv: 'PSV',
+  swi: 'Switch', wii: 'Wii', wiiu: 'WiiU', gc: 'GC', n64: 'N64', sfc: 'SFC', nes: 'FC', fc: 'FC',
+  gb: 'GB', gbc: 'GBC', gba: 'GBA', nds: 'NDS', '3ds': '3DS', n3d: '3DS',
+  xbo: 'Xbox', x360: 'Xbox 360', xb1: 'Xbox One', xsx: 'Xbox Series X/S',
+  sat: 'SS', dc: 'DC', pce: 'PCE', pcfx: 'PC-FX', pc88: 'PC-88', pc98: 'PC-98',
+  x68: 'X68000', fm7: 'FM-7', fm8: 'FM-8', msx: 'MSX', fmt: 'FM Towns',
+};
+
+function mapPlatforms(codes) {
+  const out = [];
+  (codes || []).forEach((code) => {
+    const name = PLATFORM[String(code).toLowerCase()];
+    if (name && out.indexOf(name) < 0) out.push(name);
+  });
+  return out;
+}
+
+// VNDB 英文标签 -> 现有 19 个题材 id；只做精确匹配，避免「非科幻」类误判
+const TAG_GENRE = {
+  'science fiction': 'sci', 'sci-fi': 'sci', cyberpunk: 'sci',
+  fantasy: 'fan', magic: 'fan',
+  romance: 'rom', 'pure love story': 'rom',
+  school: 'sch', 'high school': 'sch', 'school life': 'sch',
+  'slice of life': 'sli',
+  mystery: 'mys', crime: 'mys', suspense: 'mys',
+  detective: 'det',
+  nakige: 'nak',
+  utsuge: 'dep', tragedy: 'dep', dark: 'dep',
+  horror: 'hor',
+  gore: 'gru', guro: 'gru', denpa: 'gru', grotesque: 'gru',
+  battle: 'bat', action: 'bat',
+  adventure: 'adv', exploration: 'adv',
+  yuri: 'yur', 'girls love': 'yur',
+  'boys love': 'bl', yaoi: 'bl',
+  harem: 'har',
+  'cross-dressing': 'jk', trap: 'jk', otokonoko: 'jk',
+  mecha: 'mec', 'mecha combat': 'mec',
+  otome: 'oto', 'otome game': 'oto',
+};
+
+function mapGenres(tags) {
+  const hit = new Set();
+  (tags || []).forEach((t) => {
+    if (!t || t.spoiler) return;
+    if (Number(t.rating) < 1.5) return;
+    const id = TAG_GENRE[String(t.name || '').trim().toLowerCase()];
+    if (id) hit.add(id);
+  });
+  return GENRES.filter((g) => hit.has(g.id)).map((g) => g.id);
+}
+
+function cleanDevs(list) {
+  const out = [];
+  (list || []).forEach((d) => {
+    const name = String((d && d.name) || '')
+      .replace(/\s*(?:co\.,?\s*ltd\.?|inc\.?|llc|ltd\.?|株式会社|有限会社)\s*$/i, '')
+      .trim();
+    if (name && out.indexOf(name) < 0) out.push(name);
+  });
+  return out;
+}
+
+function buildItem(c) {
+  const titles = c.titles || [];
+  const ja = (titles.find((t) => t.lang === 'ja') || {}).title || '';
+  const zhHans = (titles.find((t) => t.lang === 'zh-Hans') || {}).title || '';
+  const zhHant = (titles.find((t) => t.lang === 'zh-Hant') || {}).title || '';
+  const n = String(ja || c.alttitle || c.title || '').trim();
+  if (!n) return null;
+  const item = {
+    i: 1000000 + Number(String(c.id || '').slice(1)),
+    n,
+    d: fullDate(c.released),
+    s: c.rating ? Number((Number(c.rating) / 10).toFixed(1)) : 0,
+    h: Number(c.votecount) || 0,
+    vx: c.id,
+  };
+  const cn = String(zhHans || zhHant || '').trim();
+  if (cn) item.cn = cn;
+  if (c.image && c.image.url) item.img = c.image.url;
+  const dev = cleanDevs(c.developers);
+  if (dev.length) item.dev = dev;
+  const pl = mapPlatforms(c.platforms);
+  if (pl.length) item.pl = pl;
+  const tg = mapGenres(c.tags);
+  if (tg.length) item.tg = tg;
+  return item;
+}
+
+async function queryPage(page) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+        body: JSON.stringify({
+          filters: FILTERS,
+          sort: 'votecount',
+          reverse: true,
+          fields: FIELDS,
+          results: PAGE_SIZE,
+          page,
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+      if (res.status === 429) {
+        console.warn('    限流，等待 60s');
+        await sleep(60000);
+        continue;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (err) {
+      if (attempt === 3) throw err;
+      console.warn(`    重试 ${attempt}/2：${err.message}`);
+      await sleep(attempt * 3000);
+    }
+  }
+  throw new Error('请求失败');
+}
+
+async function main() {
+  const raw = await readFile(path.join(ROOT, 'data', 'galgames.js'), 'utf8');
+  const m = raw.match(/window\.GL_DATA\s*=\s*(\[[\s\S]*?\]);/);
+  if (!m) throw new Error('未找到 window.GL_DATA');
+  const main = JSON.parse(m[1]);
+
+  // 主库已用 VNDB id
+  const usedVndb = new Set();
+  try {
+    const vraw = await readFile(path.join(ROOT, 'data', 'vndb.js'), 'utf8');
+    const vm = vraw.match(/window\.GL_VNDB\s*=\s*(\{[\s\S]*\});/);
+    if (vm) {
+      const map = (JSON.parse(vm[1]).map) || {};
+      Object.keys(map).forEach((id) => {
+        if (map[id] && map[id].v) usedVndb.add(String(map[id].v));
+      });
+    }
+  } catch { /* 没有第二数据源时仍可生成扩展库 */ }
+
+  // 主库标题键：中文名、原名、VNDB 英文标题、月幕原名 / 中文名 / 别名
+  const mainKeys = new Set();
+  main.forEach((x) => { addKeys(mainKeys, x.cn); addKeys(mainKeys, x.n); });
+  try {
+    const vraw = await readFile(path.join(ROOT, 'data', 'vndb.js'), 'utf8');
+    const vm = vraw.match(/window\.GL_VNDB\s*=\s*(\{[\s\S]*\});/);
+    if (vm) {
+      const map = (JSON.parse(vm[1]).map) || {};
+      Object.keys(map).forEach((id) => { if (map[id] && map[id].t) addKeys(mainKeys, map[id].t); });
+    }
+  } catch { /* 同上 */ }
+  try {
+    const yraw = await readFile(path.join(ROOT, 'data', 'ymgal.js'), 'utf8');
+    const ym = yraw.match(/window\.GL_YMGAL\s*=\s*(\{[\s\S]*\});/);
+    if (ym) {
+      const map = (JSON.parse(ym[1]).map) || {};
+      Object.keys(map).forEach((id) => {
+        const y = map[id] || {};
+        addKeys(mainKeys, y.n);
+        addKeys(mainKeys, y.cn);
+        (y.al || []).forEach((a) => addKeys(mainKeys, a));
+      });
+    }
+  } catch { /* 同上 */ }
+
+  const list = [];
+  const extraKeys = new Set();
+  let page = 0;
+  let fetched = 0;
+  let skippedUsed = 0;
+  let skippedDup = 0;
+  let skippedInvalid = 0;
+
+  while (list.length < LIMIT && page < MAX_PAGE) {
+    page += 1;
+    const json = await queryPage(page);
+    const results = Array.isArray(json.results) ? json.results : [];
+    if (!results.length) break;
+    fetched += results.length;
+
+    results.forEach((c) => {
+      if (list.length >= LIMIT) return;
+      if (usedVndb.has(String(c.id))) { skippedUsed += 1; return; }
+      const keys = candidateKeys(c);
+      let dup = false;
+      keys.forEach((k) => { if (mainKeys.has(k) || extraKeys.has(k)) dup = true; });
+      if (dup) { skippedDup += 1; return; }
+      const item = buildItem(c);
+      if (!item) { skippedInvalid += 1; return; }
+      list.push(item);
+      keys.forEach((k) => extraKeys.add(k));
+    });
+
+    console.log(`  第 ${page} 页：累计 ${list.length}/${LIMIT} 条（已跳过 主库 ${skippedUsed} / 重名 ${skippedDup} / 无效 ${skippedInvalid}）`);
+    if (!json.more) break;
+    if (list.length < LIMIT) await sleep(DELAY_MS);
+  }
+
+  list.sort((a, b) => (b.h || 0) - (a.h || 0));
+
+  const meta = {
+    generatedAt: new Date().toISOString(),
+    source: 'vndb',
+    filter: { olang: 'ja', ratingMin: 60, voteMin: 30 },
+    limit: LIMIT,
+    count: list.length,
+    pages: page,
+    fetched,
+    skippedUsed,
+    skippedDup,
+    skippedInvalid,
+  };
+  const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
+    'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
+  await writeFile(OUT_FILE, content, 'utf8');
+
+  console.log(`完成：扩展 ${list.length} 条，请求 ${page} 页 / ${fetched} 条候选，跳过 主库 ${skippedUsed}、重名 ${skippedDup}、无效 ${skippedInvalid}`);
+  console.log(`输出：${OUT_FILE}`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

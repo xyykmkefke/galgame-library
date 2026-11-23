@@ -802,6 +802,31 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 - `check-data` 0 问题；`npm run verify` 174/174；页面版本 2.19.0，SW 缓存升级 `yuc-gl-shell-v21`。
 
+## 36. VNDB 日系扩展库（2.20.0）
+
+### 36.1 数据源与筛选
+
+- 新增 `scripts/fetch-vndb-extra.mjs`，直接用 VNDB Kana API 拉取 `olang=ja`、`rating>=60`、`votecount>=30` 的作品，`sort=votecount` + `reverse=true` 按热度降序，每页 100 条、间隔 1s，最多 80 页。
+- 只保留日系 galgame 方向，不引入 ADV / 欧美条目；与主库 VNDB 映射 id、主库标题、VNDB 英文标题、月幕原名 / 中文名 / 别名归一后去重，扩展库内部也按标题去重。
+- 本次请求 22 页 / 2200 条候选，跳过主库已有 378 条、重名 266 条，最终写入 1500 条。
+- 字段：`i`（1000000 + VNDB 数字 id）、`n`（日文标题优先）、`cn`（简繁中文标题，有则写）、`d`（补齐到 YYYY-MM-DD）、`s`（rating / 10）、`h`（votecount）、`img`、`dev`、`pl`（平台码映射到现有平台名）、`tg`（VNDB 英文标签映射到 19 个题材）、`vx`（VNDB 编号）。
+- 输出独立文件 `data/vndb-extra.js`（`window.GL_VNDB_EXTRA`，meta 含筛选条件、页数、跳过统计），不改主库；本次 319KB。
+- 覆盖率：日期 / 评分 / 封面 / 平台 / 开发商均 100%，题材 63.1%。
+
+### 36.2 页面接入
+
+- `index.html` 引入 `data/vndb-extra.js`，`adoptData()` 把扩展条目并入全库并标记 `ex=1`；`window.GL_DATA` 同步指向合并后的全库，供统计与验收读取。
+- 扩展条目沿用现有卡片 / 筛选 / 搜索 / 系列 / 统计逻辑；详情新增「来源 VNDB」chip，链接区只出现 VNDB（无 Bangumi），底部主链接按钮文字改为 VNDB。
+- Markdown 导出对扩展条目使用 `https://vndb.org/vX`，主库仍用 Bangumi。
+- 统计面板「数据来源」拆分为 Bangumi 主库 2485、VNDB 匹配 1042、VNDB 日系扩展 1500、月幕匹配 909。
+
+### 36.3 验收
+
+- `check-data` 新增扩展库校验：独立 id 段、与主库不冲突、VNDB 编号唯一、日期 / 评分 / 平台 / 题材格式、覆盖率底线（≥95%，题材 ≥50%）、元信息数量一致；体积预算提升到 4MB。
+- 本次 `check-data` 0 问题，总体积 1593KB（主库 941 + VNDB 118 + 月幕 214 + 扩展 319）。
+- `npm run verify` 由 174 项扩到 179 项（全库 3985 条、扩展加载 1500、独立 id 段、并入浏览、详情只提供 VNDB 外链、来源标注），当前 179/179。
+- SW 预缓存新增 `./data/vndb-extra.js`，缓存升级 `yuc-gl-shell-v22`；页面版本 2.20.0。
+
 
 
 

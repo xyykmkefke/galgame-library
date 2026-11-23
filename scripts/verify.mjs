@@ -227,7 +227,9 @@ async function main() {
     // ---------- 数据与首屏 ----------
     const total = await cdp.evaluate('(window.GL_DATA || []).length');
     const metaCount = await cdp.evaluate('(window.GL_META || {}).count || 0');
-    check('全库数据加载', total > 2400 && metaCount === total, total + ' 条');
+    const extraCount = await cdp.evaluate('((window.GL_VNDB_EXTRA || {}).list || []).length');
+    check('全库数据加载', total > 3000 && metaCount + extraCount === total,
+      total + ' 条（主库 ' + metaCount + ' + 扩展 ' + extraCount + '）');
 
     const noCacheFields = await cdp.evaluate(
       "(() => (window.GL_DATA || []).slice(0, 200).every((x) => x.rt === undefined && x.plr === undefined))()");
@@ -1247,15 +1249,15 @@ async function main() {
     check('manifest 名称与快捷方式正确', mf && mf.name.includes('Galgame') && mf.short_name === 'Galgame' && mf.display === 'standalone', mf && mf.name);
     const swText = await cdp.evaluate("fetch('sw.js').then((r)=>r.text())");
     const swCache = (swText.match(/var CACHE = '([^']+)'/) || [])[1] || '';
-    check('Service Worker 使用独立缓存并预缓存数据', /^yuc-gl-shell-v\d+$/.test(swCache) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText), swCache);
+    check('Service Worker 使用独立缓存并预缓存数据', /^yuc-gl-shell-v\d+$/.test(swCache) && /data\/galgames\.js/.test(swText) && /data\/vndb\.js/.test(swText) && /data\/ymgal\.js/.test(swText) && /data\/vndb-extra\.js/.test(swText), swCache);
     const iconsOk = await cdp.evaluate("Promise.all(['icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'].map((u)=>fetch(u).then((r)=>r.ok)))");
     check('PWA 图标可访问', Array.isArray(iconsOk) && iconsOk.every(Boolean), String(iconsOk));
 
     // 离线：等 Service Worker 接管并缓存数据后断网重开
     await waitFor("!!(navigator.serviceWorker && navigator.serviceWorker.controller)", 15000);
     const cachedData = await cdp.evaluate(
-      `caches.open(${JSON.stringify(swCache)}).then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js')])).then((a)=>a.every(Boolean))`);
-    check('Service Worker 已缓存全库数据与第二、第三数据源', cachedData === true);
+      `caches.open(${JSON.stringify(swCache)}).then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js'), c.match('./data/vndb-extra.js')])).then((a)=>a.every(Boolean))`);
+    check('Service Worker 已缓存全库数据、第二 / 第三数据源与扩展库', cachedData === true);
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
       offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
@@ -1295,6 +1297,34 @@ async function main() {
 
     const recentSaved = await cdp.evaluate("JSON.parse(localStorage.getItem('yuc_gl_recent_v1')||'[]')");
     check('最近浏览写入 yuc_gl_recent_v1', Array.isArray(recentSaved) && recentSaved[0] === vId, JSON.stringify(recentSaved.slice(0, 3)));
+    await cdp.evaluate("document.getElementById('modalClose').click()");
+    await sleep(200);
+
+    // ---------- VNDB 日系扩展库 ----------
+    const extraInfo = await cdp.evaluate(
+      "(() => { const e=window.GL_VNDB_EXTRA||{}; const l=e.list||[]; const x=l[0]||{}; return [l.length, (e.meta||{}).count||0, x.i||0, x.vx||'', x.n||'']; })()");
+    check('VNDB 日系扩展库已加载', extraInfo[0] > 500 && extraInfo[0] === extraInfo[1],
+      extraInfo[0] + ' 条 / 元信息 ' + extraInfo[1]);
+    check('扩展库使用独立 ID 段并带 VNDB 编号', Number(extraInfo[2]) >= 1000000 && /^v\d+$/.test(extraInfo[3]),
+      extraInfo[2] + ' → ' + extraInfo[3]);
+    const extraMerged = await cdp.evaluate(
+      "(() => { const main=(window.GL_META||{}).count||0; const ex=((window.GL_VNDB_EXTRA||{}).list||[]).length; return [(window.GL_DATA||[]).length, main, ex]; })()");
+    check('扩展库已并入全库浏览', extraMerged[0] === extraMerged[1] + extraMerged[2], extraMerged.join(' / '));
+
+    await cdp.evaluate(`location.hash = '#d=${extraInfo[2]}'`);
+    await waitFor("document.getElementById('modal').hidden === false");
+    const extraDetail = await cdp.evaluate(`(() => {
+      const m=document.getElementById('detailMeta'); const a=m.querySelector('a[href*="vndb.org"]');
+      const link=document.getElementById('detailLink');
+      return { text: m.textContent, bgm: m.querySelector('a[href*="bgm.tv"]') ? 1 : 0,
+        vndb: a ? a.getAttribute('href') : '', href: link.getAttribute('href'), label: link.textContent };
+    })()`);
+    check('扩展条目详情只提供 VNDB 外链',
+      extraDetail.bgm === 0 && /^https:\/\/vndb\.org\/v\d+$/.test(extraDetail.vndb) &&
+      extraDetail.href === extraDetail.vndb && extraDetail.label === 'VNDB',
+      extraDetail.vndb + ' / ' + extraDetail.label);
+    check('扩展条目详情标注来源与 VNDB 数据', /来源/.test(extraDetail.text) && /VNDB/.test(extraDetail.text),
+      extraDetail.text.slice(0, 60));
     await cdp.evaluate("document.getElementById('modalClose').click()");
     await sleep(200);
 
@@ -1514,9 +1544,9 @@ async function main() {
       "(() => { const q=(s)=>!!document.querySelector(s); return [q('meta[name=\"description\"]'), q('meta[property=\"og:title\"]'), q('meta[property=\"og:image\"]'), q('link[rel=\"canonical\"]')]; })()");
     check('描述、OG 与 canonical 完整', seoMeta.every(Boolean), String(seoMeta));
     const dataSize = await cdp.evaluate(
-      "Promise.all(['data/galgames.js','data/vndb.js','data/ymgal.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
-    check('数据体积在预算内（<2MB）', dataSize[0] + dataSize[1] + dataSize[2] < 2000000,
-      (dataSize[0] + dataSize[1] + dataSize[2]) + ' 字节');
+      "Promise.all(['data/galgames.js','data/vndb.js','data/ymgal.js','data/vndb-extra.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
+    check('数据体积在预算内（<4MB）', dataSize[0] + dataSize[1] + dataSize[2] + dataSize[3] < 4000000,
+      (dataSize[0] + dataSize[1] + dataSize[2] + dataSize[3]) + ' 字节');
     const devJunk = await cdp.evaluate(
       "(() => { const bad=[]; (window.GL_DATA||[]).forEach((x)=>(x.dev||[]).forEach((d)=>{ if (/co\\.,?\\s*ltd|株式会社$|有限会社$/i.test(d)) bad.push(d); })); return bad.slice(0, 5); })()");
     check('开发商名已归一（无公司后缀）', devJunk.length === 0, devJunk.join(' / '));
