@@ -46,6 +46,7 @@ node scripts/fetch-games.mjs --tags=galgame,视觉小说,乙女向   # 指定标
 npm run fetch-vndb          # 补充 VNDB（默认热度前 350 条，增量）
 npm run fetch-vndb-extra    # 抓取 VNDB 日系扩展（默认 3000 条 + 关系 + 开发商，整包重抓）
 node scripts/fetch-vndb-extra.mjs --limit=6000 --popularity-only   # 只补热度页，保留现有关系 / 开发商条目
+npm run fetch-vndb-relations # 保存库内 VNDB 官方关系边表（构建缓存，供裁剪与系列聚合复用）
 npm run fetch-bgm-related   # 从主库关联条目补同系列 galgame / 乙女向（默认 500 种子）
 npm run enrich-vndb-tags    # 只重抓缺失题材的扩展条目标签，补 tg
 npm run prune-vndb-extra -- --policy=conservative          # 预演裁剪低热度老作（不写文件）

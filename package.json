@@ -9,6 +9,7 @@
     "fetch-data": "node scripts/fetch-games.mjs",
     "fetch-vndb": "node scripts/fetch-vndb.mjs",
     "fetch-vndb-extra": "node scripts/fetch-vndb-extra.mjs",
+    "fetch-vndb-relations": "node scripts/fetch-vndb-relations.mjs",
     "fetch-bgm-related": "node scripts/fetch-bgm-related.mjs",
     "enrich-vndb-tags": "node scripts/enrich-vndb-tags.mjs",
     "prune-vndb-extra": "node scripts/prune-vndb-extra.mjs",
