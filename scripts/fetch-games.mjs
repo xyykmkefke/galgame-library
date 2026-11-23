@@ -13,7 +13,7 @@
 import { mkdir, writeFile, readFile, access, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { initials } from './build-pinyin.mjs';
-import { genreIdsFromNames, rawTagNames } from './genres.mjs';
+import { genreIdsFromNames, rawTagNames, tagVotes } from './genres.mjs';
 
 const BASE = 'https://bgmapi.anibt.net';
 const START_YEAR = 1980;
@@ -258,6 +258,7 @@ async function requestPage(payload, offset) {
 function slim(item) {
   // rt / plr 只写入桶缓存，便于以后离线重算题材与平台归一；不会进入 galgames.js
   const tagNames = rawTagNames(item.meta_tags, item.tags);
+  const votes = tagVotes(item.tags);
   const infobox = item.infobox || [];
   const pieces = platformPieces(infobox);
   const out = {
@@ -281,6 +282,8 @@ function slim(item) {
     gt: joinValues(infoValues(infobox, '游戏类型')),
     ns: Boolean(item.nsfw),
     rt: tagNames,
+    gc: votes.galgame,
+    wc: votes.whitelist,
   };
   if (!out.pl.length) delete out.pl;
   if (!out.dev.length) delete out.dev;
@@ -367,6 +370,7 @@ async function main() {
   const byId = new Map();
   const otomeMain = await loadOtomeMainIds();
   let fetched = 0;
+  let thresholdSkipped = 0;
 
   for (const tag of TAGS) {
     const slug = tagSlug(tag);
@@ -405,11 +409,17 @@ async function main() {
           if (!item || !Number.isInteger(item.i)) continue;
           // 乙女向是明确排除项：黑名单 id 与原始标签双重拦截
           if (otomeMain.has(String(item.i)) || isOtomeRaw(item.rt)) continue;
+          // 标签票数门槛：仅对新缓存（含 gc/wc）生效，老缓存不追溯过滤
+          const hasVotes = Number.isFinite(item.gc) || Number.isFinite(item.wc);
+          if (hasVotes && Number(item.gc || 0) < 3 && Number(item.wc || 0) < 1) {
+            thresholdSkipped += 1;
+            continue;
+          }
           // 方向是日系 galgame：明确标为欧美作品的条目不收
           if (Array.isArray(item.rt) && item.rt.some((t) => /^(欧美|欧美系)$/.test(String(t)))) continue;
 
           // 有原始平台碎片时按最新归一遍，调整映射后无需重新联网
-          const { rt, plr, ...rest } = item;
+          const { rt, plr, gc, wc, ...rest } = item;
           if (Array.isArray(plr) && plr.length) rest.pl = platformsFromPieces(plr);
           if (Array.isArray(rest.pl) && !rest.pl.length) delete rest.pl;
 
@@ -459,12 +469,13 @@ async function main() {
     minDate: dates[0] || '',
     maxDate: dates[dates.length - 1] || '',
     nonGalMarked,
+    thresholdSkipped,
   };
 
   const content = `// 由 scripts/fetch-games.mjs 生成，请勿手动修改\nwindow.GL_META = ${JSON.stringify(meta)};\nwindow.GL_DATA = ${JSON.stringify(all)};\n`;
   await writeFile(outFile, content, 'utf8');
 
-  console.log(`完成：网络请求 ${requestCount} 次，本次新抓 ${fetched} 个桶，共 ${all.length} 条（非 gal 标记 ${nonGalMarked} 条）`);
+  console.log(`完成：网络请求 ${requestCount} 次，本次新抓 ${fetched} 个桶，共 ${all.length} 条（非 gal 标记 ${nonGalMarked} 条，票数门槛跳过 ${thresholdSkipped} 条）`);
   console.log(`日期范围：${meta.minDate} ~ ${meta.maxDate}`);
   console.log(`输出：${outFile}`);
 }

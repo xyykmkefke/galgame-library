@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.24.1（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 185/185，线上已部署）
+- 当前状态：v2.24.2（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 185/185，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -986,12 +986,12 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.24.1 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.24.1 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.24.1 |
-| `README.md` | 「状态：**vN**」 | v2.24.1 |
-| `manifest.webmanifest` | `version` | 2.24.1 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v32 |
+| `package.json` | `version` | 2.24.2 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.24.2 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.24.2 |
+| `README.md` | 「状态：**vN**」 | v2.24.2 |
+| `manifest.webmanifest` | `version` | 2.24.2 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v33 |
 | `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.4 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
@@ -1215,7 +1215,7 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - **不合并**母子公司与子品牌：Nitro+CHiRAL、Black Lilith、Anime Lilith、AKABEiSOFT3、SILKY'S 各子品牌、Purple Software Delight、Navel 各子品牌等保持独立。
 - 验收新增「开发商别名已归一」断言；`check-data` 0、`verify` 185/185；SW `yuc-gl-shell-v32`。
 
-## 51. 题材补齐与标签票数门槛评估（未落盘）
+## 51. 题材补齐与标签票数门槛（v2.24.2 已落地）
 
 ### 51.1 主库题材补齐 dry-run
 
@@ -1224,7 +1224,7 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 补不出 **79 条**：其中 7 条 VNDB 完全无标签，72 条只有 ADV / Female Protagonist / Gambling 等非题材标签。
 - 若应用：主库无题材 862 → **712**（44.5% → 36.8%），全库题材覆盖 83.4% → **85.3%**，体积约 +5KB。
 - 工具：`scripts/enrich-main-genres.mjs`，默认 dry-run，`--apply` 才写入；VNDB 单次 `or` 最多 10 条，脚本已按 10 条/批、2s 间隔。
-- 建议：只应用 150 条高置信结果，不强行给 79 条补题材（标题兜底会引入误判）。
+- 落地：v2.24.2 应用 **148 条**（跳过 `185804 苍翼默示录：神观之梦`、`12056 月姬格斗` 两个格斗衍生），剩余 79 条不强行补；主库无题材 862 → **714**，全库题材覆盖 83.4% → **85.3%**。
 
 ### 51.2 标签票数门槛评估
 
@@ -1233,7 +1233,27 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 规则 C（`>=10`）会排除约 550 条，误杀过高；规则 A（`>=5`）与 B 接近。
 - Y 层 221 条「Galgame=0 但命中白名单标签」无法靠票数拦；B' 精确候选 369 条（gcd=1、gr=0），可离线二次判断。
 - **结论：门槛只用于未来抓取，不做追溯删除**；否则会误删大量冷门 gal。追溯清理如需做，应走「标记隐藏」而不是删除。
-- 实现要点：搜索 API 的 `item.tags` 已带 `count`，抓取时可保留 `gc`/`wc` 再过滤；当前 `data/build` 缓存没有票数，追溯评估需重新请求详情。
+- 落地：`scripts/genres.mjs` 新增 `GAL_WHITELIST` / `tagVotes`；`fetch-games` 在 `slim()` 保留 `gc`/`wc`，新缓存按 `galgame >=3 或白名单 >=1` 过滤，老缓存无票数不追溯；`meta.thresholdSkipped` 记录跳过数。
+
+## 52. 题材补齐与票数门槛落地（v2.24.2）
+
+### 52.1 题材补齐
+
+- 实际应用 **148 条**（229 目标 − 2 个格斗衍生 − 79 条无可用标签）；跳过 `185804`、`12056`，避免把 FTG 标成泣系/郁系。
+- 主库可见 1937 条中，无题材 862 → **714（36.9%）**；主库题材覆盖 63.1%，全库 83.4% → **85.3%**。
+- 主库体积 725KB → **728KB**；五文件合计 2820KB → **2823KB**；`GL_META.genreFilled = 148`。
+- 工具：`scripts/enrich-main-genres.mjs --apply --skip=<id,id>`；VNDB 原始标签缓存在 `data/build/main-vndb-tags.json`（可重复运行，不重复请求）。
+
+### 52.2 票数门槛
+
+- `scripts/genres.mjs`：`GAL_WHITELIST`（视觉小说 / 百合 / BL / 拔作 / ビジュアルノベル / yuri / ボーイズラブ）、`tagVotes()` 取 `Galgame` 与白名单最高票数。
+- `scripts/fetch-games.mjs`：`slim()` 把 `gc`/`wc` 写入桶缓存；主循环仅对含 `gc/wc` 的新缓存执行 `gc >=3 或 wc >=1`，老缓存不回溯；输出前剥离 `gc/wc`。
+- `meta.thresholdSkipped` 记录本次被门槛跳过的条数；`check-data` 与 `verify` 均检查 `gc/wc` 不泄漏。
+- 门槛不能替代 `blocklist-main.json`：35 条非 gal 中约 24 条可被自动拦，逆转裁判系、FF7R、GBF Relink、闪电十一人、莱莎2、公主连结等 11 条仍需黑名单。
+
+### 52.3 验收
+
+- `check-data` 0 问题；`verify` **185/185**；SW `yuc-gl-shell-v33`；数据/页面已部署。
 
 
 

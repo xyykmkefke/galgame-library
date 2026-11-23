@@ -235,7 +235,7 @@ async function main() {
       (total + hiddenNonGal) + ' 条（主库 ' + metaCount + ' + VNDB ' + extraCount + ' + 关联 ' + bgmExtraCount + '，默认可见 ' + total + '）');
 
     const noCacheFields = await cdp.evaluate(
-      "(() => (window.GL_DATA || []).slice(0, 200).every((x) => x.rt === undefined && x.plr === undefined))()");
+      "(() => (window.GL_DATA || []).slice(0, 200).every((x) => x.rt === undefined && x.plr === undefined && x.gc === undefined && x.wc === undefined))()");
     check('最终数据无缓存字段泄漏', noCacheFields === true);
 
     const platsClean = await cdp.evaluate(

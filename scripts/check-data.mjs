@@ -1,4 +1,4 @@
-// 数据质量校验：重复 ID、非法日期、评分越界、题材越界、平台数组异常、标题缺失、rt 泄漏
+// 数据质量校验：重复 ID、非法日期、评分越界、题材越界、平台数组异常、标题缺失、rt/gc/wc 泄漏
 // 用法：node scripts/check-data.mjs
 // 退出码 0 表示数据干净，1 表示存在问题
 
@@ -48,7 +48,7 @@ data.forEach((x, idx) => {
 
   if (!String(x.cn || '').trim() && !String(x.n || '').trim()) issues.title.push(String(x.i));
 
-  if (x.rt) issues.leak.push(String(x.i));
+  if (x.rt || x.gc !== undefined || x.wc !== undefined) issues.leak.push(String(x.i));
 
   if (x.tg != null) {
     if (!Array.isArray(x.tg) || !x.tg.length) {
@@ -262,7 +262,7 @@ try {
       else cover.tg += 1;
     }
     if (x.bg !== 1) bad.push(`${at}:缺少 bg 标记`);
-    if (x.rt) bad.push(`${at}:缓存字段泄漏`);
+    if (x.rt || x.gc !== undefined || x.wc !== undefined) bad.push(`${at}:缓存字段泄漏`);
   });
   const ratio = (n) => (list.length ? n / list.length : 0);
   console.log(`Bangumi 关联扩展：${list.length} 条（种子 ${bgmExtra.meta?.seeds || 0}，候选 ${bgmExtra.meta?.candidates || 0}），异常 ${bad.length} 条`);
@@ -348,7 +348,7 @@ try {
     ['sc', 'ar', 'mu'].forEach((k) => {
       if (x[k] != null && !String(x[k]).trim()) bad.push(`${at}:${k} 为空`);
     });
-    if (x.rt) bad.push(`${at}:缓存字段泄漏`);
+    if (x.rt || x.gc !== undefined || x.wc !== undefined) bad.push(`${at}:缓存字段泄漏`);
   });
   const ratio = (n) => (list.length ? n / list.length : 0);
   console.log(`VNDB 日系扩展：${list.length} 条（请求 ${extra.meta?.pages || 0} 页），异常 ${bad.length} 条`);

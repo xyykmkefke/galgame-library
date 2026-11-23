@@ -61,3 +61,20 @@ export function genreIdsFromNames(names = []) {
 export function genreIdsOf(metaTags, tags) {
   return genreIdsFromNames(rawTagNames(metaTags, tags));
 }
+
+// 入选白名单：即使 galgame 票数低，只要命中这些标签就保留（视觉小说/百合/BL/拔作）
+export const GAL_WHITELIST = /^(视觉小说|百合|BL|拔作|ビジュアルノベル|yuri|ボーイズラブ)$/i;
+
+// 从 Bangumi 搜索结果的 tags（含 count）里取最高票数，供抓取时做门槛判断
+export function tagVotes(tags = []) {
+  let galgame = 0;
+  let whitelist = 0;
+  (Array.isArray(tags) ? tags : []).forEach((t) => {
+    if (!t || !t.name) return;
+    const name = String(t.name).trim();
+    const count = Number(t.count) || 0;
+    if (/^galgame$/i.test(name)) galgame = Math.max(galgame, count);
+    else if (GAL_WHITELIST.test(name)) whitelist = Math.max(whitelist, count);
+  });
+  return { galgame, whitelist };
+}

@@ -18,6 +18,8 @@ const CACHE = path.join(ROOT, 'data', 'build', 'main-vndb-tags.json');
 const API = 'https://api.vndb.org/kana/vn';
 const UA = 'galgame-library/2.0 (https://github.com/xyykmkefke/galgame-library)';
 const APPLY = process.argv.includes('--apply');
+const SKIP = new Set((process.argv.find((a) => a.startsWith('--skip=')) || '').slice(7)
+  .split(',').map((s) => s.trim()).filter(Boolean));
 const BATCH = 10;
 const DELAY = 2000;
 
@@ -30,6 +32,7 @@ const vmap = JSON.parse((await readFile(VNDB, 'utf8')).match(/window\.GL_VNDB\s*
 
 const targets = all
   .filter((x) => x.k !== 'off' && (!x.tg || !x.tg.length) && vmap[String(x.i)] && vmap[String(x.i)].v)
+  .filter((x) => !SKIP.has(String(x.i)))
   .map((x) => ({ item: x, vx: String(vmap[String(x.i)].v) }));
 console.log(`无题材且可查 VNDB 的主库条目：${targets.length} 条`);
 

@@ -99,3 +99,9 @@
 - 题材补齐 dry-run：229 条目标，150 条可补（65.5%），79 条无可用标签；未落盘。
 - 标签票数门槛：推荐规则 B（`galgame >=3` 或白名单任一），仅用于未来抓取，不做追溯删除。
 - `check-data` 0；`verify` 185/185；SW `yuc-gl-shell-v32`。
+
+## 12. 题材补齐与票数门槛落地（v2.24.2）
+
+- 应用 148 条题材（跳过 2 个格斗衍生），主库无题材 862 → 714，全库题材覆盖 83.4% → 85.3%。
+- `genres.mjs` 新增 `GAL_WHITELIST` / `tagVotes`；`fetch-games` 保留 `gc`/`wc`，仅对新缓存执行 `galgame >=3 或白名单 >=1`，老数据不追溯。
+- `check-data` 0；`verify` 185/185；SW `yuc-gl-shell-v33`；体积 2823KB。
