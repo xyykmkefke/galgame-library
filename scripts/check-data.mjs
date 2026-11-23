@@ -216,6 +216,84 @@ try {
   total += 1;
 }
 
+// ---------- 扩展库（Bangumi 关联，独立文件） ----------
+let bgmExtraSize = 0;
+try {
+  const braw = await readFile(path.join(ROOT, 'data', 'bgm-extra.js'), 'utf8');
+  bgmExtraSize = Buffer.byteLength(braw, 'utf8');
+  const bm = braw.match(/window\.GL_BGM_EXTRA\s*=\s*(\{[\s\S]*\});/);
+  if (!bm) throw new Error('未找到 window.GL_BGM_EXTRA');
+  const bgmExtra = JSON.parse(bm[1]);
+  const list = Array.isArray(bgmExtra.list) ? bgmExtra.list : [];
+  const mainIds = new Set(data.map((x) => String(x.i)));
+  const ids = new Set();
+  const bad = [];
+  const cover = { date: 0, score: 0, img: 0, pl: 0, dev: 0, tg: 0 };
+  list.forEach((x, idx) => {
+    const at = `${idx}:${x.i}`;
+    if (!Number.isInteger(Number(x.i)) || Number(x.i) <= 0 || Number(x.i) >= 1000000) bad.push(`${at}:非法 i`);
+    else if (mainIds.has(String(x.i))) bad.push(`${at}:与主库冲突`);
+    else if (ids.has(String(x.i))) bad.push(`${at}:重复 i`);
+    ids.add(String(x.i));
+    if (!String(x.n || '').trim() && !String(x.cn || '').trim()) bad.push(`${at}:缺少标题`);
+    if (x.d) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(x.d))) bad.push(`${at}:日期 ${x.d}`);
+      else cover.date += 1;
+    }
+    if (Number(x.s) > 0 && Number(x.s) <= 10) cover.score += 1;
+    else if (Number(x.s) < 0 || Number(x.s) > 10) bad.push(`${at}:评分 ${x.s}`);
+    if (x.img) {
+      if (!/^https:\/\//.test(String(x.img))) bad.push(`${at}:封面 ${x.img}`);
+      else cover.img += 1;
+    }
+    if (x.pl != null) {
+      if (!Array.isArray(x.pl) || !x.pl.length || x.pl.some((p) => !String(p || '').trim()) ||
+        new Set(x.pl).size !== x.pl.length) bad.push(`${at}:平台 ${JSON.stringify(x.pl)}`);
+      else cover.pl += 1;
+    }
+    if (x.dev != null) {
+      if (!Array.isArray(x.dev) || !x.dev.length || x.dev.some((d) => !String(d || '').trim()) ||
+        new Set(x.dev).size !== x.dev.length) bad.push(`${at}:开发商 ${JSON.stringify(x.dev)}`);
+      else cover.dev += 1;
+    }
+    if (x.tg != null) {
+      if (!Array.isArray(x.tg) || !x.tg.length || new Set(x.tg).size !== x.tg.length ||
+        x.tg.some((g) => !GENRE_IDS.has(g))) bad.push(`${at}:题材 ${JSON.stringify(x.tg)}`);
+      else cover.tg += 1;
+    }
+    if (x.bg !== 1) bad.push(`${at}:缺少 bg 标记`);
+    if (x.rt) bad.push(`${at}:缓存字段泄漏`);
+  });
+  const ratio = (n) => (list.length ? n / list.length : 0);
+  console.log(`Bangumi 关联扩展：${list.length} 条（种子 ${bgmExtra.meta?.seeds || 0}，候选 ${bgmExtra.meta?.candidates || 0}），异常 ${bad.length} 条`);
+  console.log(`关联覆盖：日期 ${(ratio(cover.date) * 100).toFixed(1)}% · 评分 ${(ratio(cover.score) * 100).toFixed(1)}% · ` +
+    `封面 ${(ratio(cover.img) * 100).toFixed(1)}% · 平台 ${(ratio(cover.pl) * 100).toFixed(1)}% · ` +
+    `开发商 ${(ratio(cover.dev) * 100).toFixed(1)}% · 题材 ${(ratio(cover.tg) * 100).toFixed(1)}%`);
+  if (list.length < 10) {
+    console.log(`FAIL Bangumi 关联扩展过少：${list.length} < 10`);
+    total += 1;
+  }
+  if (Number(bgmExtra.meta?.count) !== list.length) {
+    console.log(`FAIL 关联元信息数量不一致：${bgmExtra.meta?.count} != ${list.length}`);
+    total += 1;
+  }
+  [['日期', cover.date, 0.95], ['评分', cover.score, 0.5], ['封面', cover.img, 0.95],
+    ['平台', cover.pl, 0.95], ['开发商', cover.dev, 0.95], ['题材', cover.tg, 0.2]]
+    .forEach(([name, n, min]) => {
+      if (ratio(n) < min) {
+        console.log(`FAIL 关联覆盖率不足：${name} ${(ratio(n) * 100).toFixed(1)}% < ${(min * 100).toFixed(0)}%`);
+        total += 1;
+      }
+    });
+  if (bad.length) {
+    console.log(`FAIL 关联条目异常：${bad.slice(0, 5).join(', ')}`);
+    total += bad.length;
+  }
+} catch (err) {
+  console.log(`FAIL Bangumi 关联扩展不可用：${err.message}`);
+  total += 1;
+}
+
 // ---------- 扩展库（VNDB 日系，独立文件） ----------
 let extraSize = 0;
 try {
@@ -266,6 +344,10 @@ try {
         x.tg.some((g) => !GENRE_IDS.has(g))) bad.push(`${at}:题材 ${JSON.stringify(x.tg)}`);
       else cover.tg += 1;
     }
+    if (x.l != null && !(Number(x.l) > 0)) bad.push(`${at}:时长 ${x.l}`);
+    ['sc', 'ar', 'mu'].forEach((k) => {
+      if (x[k] != null && !String(x[k]).trim()) bad.push(`${at}:${k} 为空`);
+    });
     if (x.rt) bad.push(`${at}:缓存字段泄漏`);
   });
   const ratio = (n) => (list.length ? n / list.length : 0);
@@ -309,8 +391,8 @@ try {
 try {
   ymgalSize = Buffer.byteLength(await readFile(path.join(ROOT, 'data', 'ymgal.js'), 'utf8'), 'utf8');
 } catch { /* 缺失已在上面报错 */ }
-const totalSize = mainSize + vndbSize + ymgalSize + extraSize;
-console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB + 月幕 ${(ymgalSize / 1024).toFixed(0)}KB + 扩展 ${(extraSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
+const totalSize = mainSize + vndbSize + ymgalSize + extraSize + bgmExtraSize;
+console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB + 月幕 ${(ymgalSize / 1024).toFixed(0)}KB + 扩展 ${(extraSize / 1024).toFixed(0)}KB + 关联 ${(bgmExtraSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
 if (totalSize > 4000 * 1024) {
   console.log(`FAIL 数据体积超预算：${(totalSize / 1024).toFixed(0)}KB > 4000KB`);
   total += 1;

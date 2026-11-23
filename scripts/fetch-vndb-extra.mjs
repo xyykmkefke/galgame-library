@@ -1,10 +1,10 @@
 // 从 VNDB 公共 Kana API 拉取「日系 galgame 扩展库」，独立成文件，不修改主库
 // 用法：
-//   node scripts/fetch-vndb-extra.mjs                 默认抓 1500 条 + 关系补全
+//   node scripts/fetch-vndb-extra.mjs                 默认热度 3000 条 + 关系补全
 //   node scripts/fetch-vndb-extra.mjs --limit=2000    指定热度条数
 //
 // 两段式：
-//   1) 按热度降序拉取 olang=ja、评分 >= 60、投票 >= 30 的作品，取前 limit 条；
+//   1) 按热度降序拉取 olang=ja、评分 >= 60、投票 >= 10 的作品，取前 limit 条；
 //   2) 以主库 VNDB 映射 + 扩展库为种子，批量读取 relations，补同系列 / 同设定 / 前传续作等
 //      相关作品（跳过 char / fan 这类同人衍生关系），再补齐完整元数据。
 // 已出现在主库 VNDB 映射里的 id，以及标题与主库 / 月幕别名归一后相同的条目全部跳过，
@@ -20,15 +20,15 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT_FILE = path.join(ROOT, 'data', 'vndb-extra.js');
 const API = 'https://api.vndb.org/kana/vn';
 const UA = 'galgame-library/2.0 (https://github.com/xyykmkefke/galgame-library)';
-const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 1500;
+const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 3000;
 const PAGE_SIZE = 100;
-const MAX_PAGE = 80;
+const MAX_PAGE = 120;
 const DELAY_MS = 1000;
 const BATCH_SIZE = 50;
 const REL_DELAY_MS = 1600;
-const FIELDS = 'id,title,alttitle,titles.title,titles.lang,image.url,released,rating,votecount,developers.name,platforms,tags.name,tags.rating,tags.spoiler';
+const FIELDS = 'id,title,alttitle,titles.title,titles.lang,image.url,released,rating,votecount,length_minutes,developers.name,platforms,staff{id,name,role},tags.name,tags.rating,tags.spoiler';
 const FULL_FIELDS = FIELDS + ',olang';
-const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount', '>=', 30]];
+const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount', '>=', 10]];
 // 只跟随官方作品关系；char（共用角色）与 fan（同人）会引入大量衍生小游戏
 const RELATION_TYPES = new Set(['seq', 'preq', 'set', 'alt', 'side', 'par', 'ser', 'sub', 'orig']);
 
@@ -130,6 +130,24 @@ function cleanDevs(list) {
   return out;
 }
 
+// VNDB staff 角色 -> 主库展示字段；场景 / 原画 / 音乐各保留前 8 位
+const STAFF_ROLE = { scenario: 'sc', art: 'ar', chardesign: 'ar', music: 'mu', songs: 'mu' };
+
+function mapStaff(staff) {
+  const out = { sc: [], ar: [], mu: [] };
+  (staff || []).forEach((s) => {
+    const key = STAFF_ROLE[s && s.role];
+    const name = String((s && s.name) || '').trim();
+    if (!key || !name || out[key].indexOf(name) >= 0) return;
+    out[key].push(name);
+  });
+  const result = {};
+  ['sc', 'ar', 'mu'].forEach((k) => {
+    if (out[k].length) result[k] = out[k].slice(0, 8).join('、');
+  });
+  return result;
+}
+
 function buildItem(c) {
   const titles = c.titles || [];
   const ja = (titles.find((t) => t.lang === 'ja') || {}).title || '';
@@ -145,6 +163,7 @@ function buildItem(c) {
     h: Number(c.votecount) || 0,
     vx: c.id,
   };
+  if (Number(c.length_minutes) > 0) item.l = Number(c.length_minutes);
   const cn = String(zhHans || zhHant || '').trim();
   if (cn) item.cn = cn;
   if (c.image && c.image.url) item.img = c.image.url;
@@ -154,6 +173,7 @@ function buildItem(c) {
   if (pl.length) item.pl = pl;
   const tg = mapGenres(c.tags);
   if (tg.length) item.tg = tg;
+  Object.assign(item, mapStaff(c.staff));
   return item;
 }
 
@@ -292,7 +312,10 @@ async function main() {
       keys.forEach((k) => { if (mainKeys.has(k) || extraKeys.has(k)) dup = true; });
       if (dup) { skippedDup += 1; return; }
       const item = buildItem(c);
-      if (!item) { skippedInvalid += 1; return; }
+      if (!item || !item.d || !item.s || !item.img || !item.dev || !item.pl) {
+        skippedInvalid += 1;
+        return;
+      }
       list.push(item);
       keys.forEach((k) => extraKeys.add(k));
     });
@@ -356,7 +379,7 @@ async function main() {
   const meta = {
     generatedAt: new Date().toISOString(),
     source: 'vndb',
-    filter: { olang: 'ja', ratingMin: 60, voteMin: 30 },
+    filter: { olang: 'ja', ratingMin: 60, voteMin: 10 },
     limit: LIMIT,
     count: list.length,
     pages: page,
