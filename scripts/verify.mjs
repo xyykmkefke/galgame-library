@@ -227,7 +227,7 @@ async function main() {
     // ---------- 数据与首屏 ----------
     const total = await cdp.evaluate('(window.GL_DATA || []).filter((x) => x.k !== "off").length');
     const hiddenNonGal = await cdp.evaluate('(window.GL_DATA || []).filter((x) => x.k === "off").length');
-    check('默认隐藏非 gal 条目', hiddenNonGal === 36, '隐藏 ' + hiddenNonGal + ' 部');
+    check('默认隐藏非 gal 条目', hiddenNonGal === 35, '隐藏 ' + hiddenNonGal + ' 部');
     const metaCount = await cdp.evaluate('(window.GL_META || {}).count || 0');
     const extraCount = await cdp.evaluate('((window.GL_VNDB_EXTRA || {}).list || []).length');
     const bgmExtraCount = await cdp.evaluate('((window.GL_BGM_EXTRA || {}).list || []).length');
@@ -493,11 +493,7 @@ async function main() {
     await setSelect('genre', 'all');
 
     const otoOpt = await cdp.evaluate("!!document.querySelector('#genre option[value=\"oto\"]')");
-    check('题材下拉包含乙女', otoOpt === true);
-    await setSelect('genre', 'oto');
-    const otoN = await cdp.evaluate("document.querySelectorAll('.card').length");
-    check('乙女题材筛选生效', otoN > 0 && otoN < 600, otoN + ' 张');
-    await setSelect('genre', 'all');
+    check('题材下拉不含乙女', otoOpt === false);
 
     const lengthOptions = await cdp.evaluate("document.querySelectorAll('#length option').length");
     check('时长下拉三档可用', lengthOptions === 4, lengthOptions + ' 项');
@@ -588,7 +584,7 @@ async function main() {
     // 系列聚合：详情展示系列入口，点击后按系列筛选全库，非法系列链接自动忽略
     const seriesData = await cdp.evaluate(
       "(() => window.GL_SERIES ? [window.GL_SERIES.meta.series, window.GL_SERIES.meta.items] : null)()");
-    check('系列映射数据已加载', Array.isArray(seriesData) && seriesData[0] === 648 && seriesData[1] === 1834,
+    check('系列映射数据已加载', Array.isArray(seriesData) && seriesData[0] === 601 && seriesData[1] === 1704,
       JSON.stringify(seriesData));
     const seriesName = '秋之回忆';
     const seriesIds = await cdp.evaluate(

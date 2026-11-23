@@ -19,6 +19,7 @@ import { mapVndbGenres } from './vndb-genre-map.mjs';
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT_FILE = path.join(ROOT, 'data', 'vndb-extra.js');
 const BLOCK_FILE = path.join(ROOT, 'data', 'blocklist.json');
+const OTOME_FILE = path.join(ROOT, 'data', 'blocklist-otome.json');
 const API = 'https://api.vndb.org/kana/vn';
 const UA = 'galgame-library/2.0 (https://github.com/xyykmkefke/galgame-library)';
 const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 3000;
@@ -44,6 +45,16 @@ async function loadBlockSet() {
   try {
     const data = JSON.parse(await readFile(BLOCK_FILE, 'utf8'));
     return new Set((data.items || []).map((x) => String(x.vx)).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+// 乙女向黑名单（VNDB id）；同时按 tg=oto 兜底，避免新条目回流
+async function loadOtomeSet() {
+  try {
+    const data = JSON.parse(await readFile(OTOME_FILE, 'utf8'));
+    return new Set((data.vndb || []).map((x) => String(x.vx)).filter(Boolean));
   } catch {
     return new Set();
   }
@@ -300,7 +311,9 @@ async function main() {
   } catch { /* 同上 */ }
 
   const blockSet = await loadBlockSet();
+  const otomeSet = await loadOtomeSet();
   let blockRemoved = 0;
+  let otomeRemoved = 0;
   let list = [];
   const extraKeys = new Set();
   let baseMeta = null;
@@ -367,6 +380,12 @@ async function main() {
       blockRemoved = before - list.length;
       console.log(`黑名单过滤：${before} → ${list.length}（配置 ${blockSet.size} 条）`);
     }
+    if (otomeSet.size) {
+      const before = list.length;
+      list = list.filter((x) => !otomeSet.has(String(x.vx)) && !(x.tg || []).includes('oto'));
+      otomeRemoved = before - list.length;
+      console.log(`乙女向过滤：${before} → ${list.length}（配置 ${otomeSet.size} 条）`);
+    }
     list.sort((a, b) => (b.h || 0) - (a.h || 0));
     const meta = Object.assign({}, baseMeta || {}, {
       generatedAt: new Date().toISOString(),
@@ -381,6 +400,7 @@ async function main() {
         skippedInvalid,
       },
       blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
+      otome: { configured: otomeSet.size, removed: otomeRemoved, source: 'data/blocklist-otome.json' },
     });
     const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
       'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
@@ -512,6 +532,12 @@ async function main() {
     blockRemoved = before - list.length;
     console.log(`黑名单过滤：${before} → ${list.length}（配置 ${blockSet.size} 条）`);
   }
+  if (otomeSet.size) {
+    const before = list.length;
+    list = list.filter((x) => !otomeSet.has(String(x.vx)) && !(x.tg || []).includes('oto'));
+    otomeRemoved = before - list.length;
+    console.log(`乙女向过滤：${before} → ${list.length}（配置 ${otomeSet.size} 条）`);
+  }
   list.sort((a, b) => (b.h || 0) - (a.h || 0));
 
   const meta = {
@@ -540,6 +566,7 @@ async function main() {
       skippedInvalid: devSkippedInvalid,
     },
     blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
+    otome: { configured: otomeSet.size, removed: otomeRemoved, source: 'data/blocklist-otome.json' },
   };
   const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
     'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';

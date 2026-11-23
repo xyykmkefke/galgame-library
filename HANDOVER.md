@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.23.4（数据 8567 条，其中 36 条非 gal 默认隐藏；`npm run verify` 185/185，线上已部署）
+- 当前状态：v2.24.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 184/184，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -986,12 +986,12 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.23.4 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.23.4 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.23.4 |
-| `README.md` | 「状态：**vN**」 | v2.23.4 |
-| `manifest.webmanifest` | `version` | 2.23.4 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v30 |
+| `package.json` | `version` | 2.24.0 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.24.0 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.24.0 |
+| `README.md` | 「状态：**vN**」 | v2.24.0 |
+| `manifest.webmanifest` | `version` | 2.24.0 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v31 |
 | `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.4 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
@@ -1159,7 +1159,7 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 ### 48.1 数据
 
 - `scripts/build-series.mjs` → `data/series.js`（`window.GL_SERIES = { v, meta, n, m, a }`）。
-- 当前 **648 个系列 / 覆盖 1834 部 / 236 个别名 / 约 45KB**；强关系边 2220 条。
+- v2.23.4 时为 **648 个系列 / 覆盖 1834 部 / 236 别名 / 45KB**；v2.24.0 移除乙女后为 **601 / 1704 / 209 / 41.8KB**；强关系边 2220 条。
 - key 规则：扩展用 `vx`；主库有 VNDB 映射用 `vo.v`；否则 `b:<Bangumi ID>`；`k="off"` 的条目不参与。
 - `n` 为系列名数组（下标即 sid），`m` 为 key→sid，`a` 为旧标题前缀名→sid 的别名表。
 
@@ -1173,13 +1173,39 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 ### 48.3 验收
 
 - `check-data` 0 问题；`verify` **185/185**（新增「系列映射数据已加载」断言，系列面板/搜索/同系列切换/非法系列链接均通过）。
-- 系列数从 658 降到 648：主库 36 条非 gal 被 `k="off"` 排除后，逆转裁判 / FF / GTA 等错误系列消失。
+- v2.23.4 时系列数从 658 降到 648：主库 36 条非 gal 被 `k="off"` 排除后，逆转裁判 / FF / GTA 等错误系列消失；v2.24.0 移除乙女后进一步降到 601 / 1704。
 
 ### 48.4 后续
 
 - 新增或删除作品后需重跑 `npm run build-series`；已加入发布清单。
 - 若出现误合并，可在 `scripts/series-blocklist.json` 按标题 / 开发商排除（`build-series.mjs` 已支持）。
-- `verify` 里 648 / 1834 是当前快照，数据变化时需同步更新。
+- `verify` 里 601 / 1704 是当前快照，数据变化时需同步更新。
+
+## 49. 移除全部乙女向（v2.24.0）
+
+### 49.1 决策与范围
+
+- 用户决定：**彻底删除所有乙女向作品**，覆盖主库、VNDB 扩展、Bangumi 关联三个来源，含 6 条与 BL 重叠的条目。
+- 定义沿用现有题材映射：`乙女向 / 乙女 / 乙女ゲーム / 乙女游戏 / 女性向 / otome` → `tg=oto`。
+- 删除：主库 **513**（含 1 条已隐藏）、扩展 **230**、BGM 关联 **92**，合计 **835 条**。
+- 结果：主库 2485 → **1972**；扩展 5972 → **5742**；BGM 110 → **18**；全库 8567 → **7732**；默认可见 **7697**（35 条非 gal 仍隐藏）；体积 3221KB → **2820KB**。
+- 主库删除后清理 `vndb.js` / `ymgal.js` 孤儿映射 256 / 228 条；开发商覆盖率降到 73.8%，质量阈值从 74% 调整为 73%。
+- 系列映射重建：648 / 1834 → **601 / 1704**，别名 209，体积 41.8KB。
+
+### 49.2 防回流
+
+- `data/blocklist-otome.json`：main 513 / vndb 230 / bgm 92，按来源记录 id 与标题。
+- `fetch-games.mjs`：默认 `TAGS` 去掉「乙女向」；跳过黑名单 id、原始标签含「乙女 / otome」、以及映射出 `tg=oto` 的条目。
+- `fetch-vndb-extra.mjs`：跳过 VNDB 黑名单与 `tg=oto`，meta 记录 `otome.removed`。
+- `fetch-bgm-related.mjs`：排除 `tg=oto`，从正向信号里移除「乙女 / 女性向」，并跳过黑名单。
+- `scripts/genres.mjs` 保留 `oto` 映射用于识别与排除；前端题材下拉移除「乙女」选项。
+- `scripts/remove-otome.mjs`：默认 dry-run，`--apply` 删除三源、清理映射、更新 meta 与 `blocklist-main`。
+
+### 49.3 验收与影响
+
+- `check-data` 0 问题；`verify` **184/184**；`data/series.js` 已重建；SW `yuc-gl-shell-v31`。
+- BGM 关联源只剩 18 条（原 110），基本边缘化；若后续不再需要，可评估停用该源。
+- 乙女向的 513 条主库条目删除后，旧收藏与 `?id=` 深链会失效；这是「彻底删除」方案的已知代价。
 
 
 

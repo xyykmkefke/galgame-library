@@ -13,6 +13,7 @@ import { genreIdsFromNames, rawTagNames } from './genres.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT_FILE = path.join(ROOT, 'data', 'bgm-extra.js');
+const OTOME_FILE = path.join(ROOT, 'data', 'blocklist-otome.json');
 const BASE = 'https://bgmapi.anibt.net';
 const UA = 'yuc-galgame-list/1.0';
 const SEEDS = Number((process.argv.find((a) => a.startsWith('--seeds=')) || '').slice(8)) || 500;
@@ -25,13 +26,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // 关联条目里混有同系列 RPG / ACT / 手游，必须按类型与恋爱标签双重过滤
 const GT_ALLOW = /ADV|AVG|アドベンチャー|ノベル|ビジュアルノベル|Visual Novel|视觉小说/i;
 const GT_REJECT = /RPG|ACT|アクション|STG|MUG|FPS|TPS|FTG|SLG|SIM|TCG|RAC|SPG|パズル|PUZ|格闘|シューティング|レース|スポーツ|シミュレーション|育成|塔防|麻将|麻雀|カード|养成|卡牌|竞技|音游|リズム|ボードゲーム|放置|Roguelike|Deckbuilder|サバイバル|ホラー|恐怖|動作|动作|射击|格斗|策略|模拟|体育|竞速|法庭|大法廷|推理|裁判|バトル|対戦|对战|桌面伴侣|换装|開放世界|开放世界|Open World|着せ替え/i;
-const GT_ROMANCE = /恋愛|恋爱|女性向|乙女|ギャル|エロゲ|BL|ボーイズラブ/i;
+const GT_ROMANCE = /恋愛|恋爱|ギャル|エロゲ|BL|ボーイズラブ/i;
 
 function isGalLike(item) {
   const gt = item.gt || '';
   const tg = item.tg || [];
+  if (tg.includes('oto')) return false;
   if (!GT_ALLOW.test(gt) || GT_REJECT.test(gt)) return false;
-  return tg.includes('rom') || tg.includes('oto') || tg.includes('bl') || GT_ROMANCE.test(gt);
+  return tg.includes('rom') || tg.includes('bl') || GT_ROMANCE.test(gt);
 }
 
 // 固定并发池：Bangumi 镜像单请求约 2s，串行 500 条太慢
@@ -218,6 +220,11 @@ function slim(item) {
 }
 
 async function main() {
+  let otomeBgm = new Set();
+  try {
+    const block = JSON.parse(await readFile(OTOME_FILE, 'utf8'));
+    otomeBgm = new Set((block.bgm || []).map((x) => String(x.i)));
+  } catch { /* 黑名单可选 */ }
   const raw = await readFile(path.join(ROOT, 'data', 'galgames.js'), 'utf8');
   const m = raw.match(/window\.GL_DATA\s*=\s*(\[[\s\S]*?\]);/);
   if (!m) throw new Error('未找到 window.GL_DATA');
@@ -270,7 +277,8 @@ async function main() {
       } else {
         const item = slim(full);
         // 评分可以缺失（显示「暂无」）；日期 / 封面 / 平台 / 开发商齐全，且必须像 galgame
-        if (!item.d || !item.img || !item.dev || !item.pl || !isGalLike(item)) {
+        if (!item.d || !item.img || !item.dev || !item.pl ||
+            otomeBgm.has(String(item.i)) || (item.tg || []).includes('oto') || !isGalLike(item)) {
           skippedInvalid += 1;
         } else {
           const keys = new Set();

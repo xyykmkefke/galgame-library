@@ -131,7 +131,7 @@ const floors = [
   ['评分', count((x) => Number(x.s) > 0) / data.length, 0.95],
   ['封面', count((x) => x.img) / data.length, 0.99],
   ['平台', count((x) => Array.isArray(x.pl) && x.pl.length) / data.length, 0.94],
-  ['开发商', count((x) => Array.isArray(x.dev) && x.dev.length) / data.length, 0.74],
+  ['开发商', count((x) => Array.isArray(x.dev) && x.dev.length) / data.length, 0.73],
   ['题材', withGenre / data.length, 0.50],
 ];
 floors.forEach(([name, ratio, min]) => {

@@ -84,3 +84,10 @@
 - `scripts/build-series.mjs` 用 `ser / seq / preq` 强关系生成 `data/series.js`：648 个系列 / 覆盖 1834 部 / 236 个别名 / 约 45KB。
 - 页面优先查表，标题前缀只做兜底；旧 `se=<标题前缀>` 通过 alias 兼容，SW `yuc-gl-shell-v30` 预缓存。
 - `check-data` 0 问题；`verify` 185/185（新增系列映射数据断言）。
+
+## 10. 移除全部乙女向（v2.24.0）
+
+- 删除 835 条：主库 513（含 1 条隐藏）、VNDB 扩展 230、Bangumi 关联 92；全库 8567 → 7732，默认可见 7697，体积 2820KB。
+- `data/blocklist-otome.json` + 三个抓取脚本防回流；前端移除「乙女」题材选项；`remove-otome.mjs` 支持 dry-run / --apply。
+- 清理 `vndb.js` / `ymgal.js` 孤儿映射 256 / 228；系列重建为 601 / 1704；SW `yuc-gl-shell-v31`。
+- `check-data` 0 问题；`verify` 184/184。

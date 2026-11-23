@@ -28,15 +28,30 @@ const tagArg = (process.argv.find((a) => a.startsWith('--tags=')) || '').slice(7
 // 默认只收日系 galgame 相关标签：ADV 覆盖大量非 gal 的冒险 / 解谜游戏，不纳入
 const TAGS = tagArg
   ? tagArg.split(',').map((s) => s.trim()).filter(Boolean)
-  : ['galgame', '视觉小说', '乙女向', '百合', 'BL', '拔作'];
+  : ['galgame', '视觉小说', '百合', 'BL', '拔作'];
 const TAG_SLUG = new Map([['galgame', 'g'], ['视觉小说', 'vn'], ['ADV', 'adv']]);
 const tagSlug = (tag) => TAG_SLUG.get(tag) || `t${Buffer.from(tag).toString('hex').slice(0, 8)}`;
 
 const rootDir = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(rootDir, 'data', 'build');
 const outFile = path.join(rootDir, 'data', 'galgames.js');
+const OTOME_FILE = path.join(rootDir, 'data', 'blocklist-otome.json');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// 乙女向主库黑名单：已确认的 Bangumi id，抓取时直接跳过
+async function loadOtomeMainIds() {
+  try {
+    const data = JSON.parse(await readFile(OTOME_FILE, 'utf8'));
+    return new Set((data.main || []).map((x) => String(x.i)).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+// 原始标签可能是字符串或对象，统一取出名字再判断乙女
+const tagName = (t) => (typeof t === 'string' ? t : String((t && (t.name || t.n)) || ''));
+const isOtomeRaw = (rt) => Array.isArray(rt) && rt.some((t) => /乙女|otome/i.test(tagName(t)));
 const pad = (n) => String(n).padStart(2, '0');
 
 // ---------- 平台归一 ----------
@@ -350,6 +365,7 @@ async function main() {
   }
 
   const byId = new Map();
+  const otomeMain = await loadOtomeMainIds();
   let fetched = 0;
 
   for (const tag of TAGS) {
@@ -387,6 +403,8 @@ async function main() {
 
         for (const item of items) {
           if (!item || !Number.isInteger(item.i)) continue;
+          // 乙女向是明确排除项：黑名单 id 与原始标签双重拦截
+          if (otomeMain.has(String(item.i)) || isOtomeRaw(item.rt)) continue;
           // 方向是日系 galgame：明确标为欧美作品的条目不收
           if (Array.isArray(item.rt) && item.rt.some((t) => /^(欧美|欧美系)$/.test(String(t)))) continue;
 
@@ -395,8 +413,9 @@ async function main() {
           if (Array.isArray(plr) && plr.length) rest.pl = platformsFromPieces(plr);
           if (Array.isArray(rest.pl) && !rest.pl.length) delete rest.pl;
 
-          // 有原始标签时按最新映射重算题材
+          // 有原始标签时按最新映射重算题材；映射出乙女也跳过
           const tg = rt ? genreIdsFromNames(rt) : (rest.tg || []);
+          if (tg.includes('oto')) continue;
           if (tg.length) rest.tg = tg;
           else delete rest.tg;
 
@@ -414,7 +433,7 @@ async function main() {
     await run(fills);
   }
 
-  const all = [...byId.values()];
+  const all = [...byId.values()].filter((x) => !otomeMain.has(String(x.i)) && !(x.tg || []).includes('oto'));
   all.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
 
   // 主库非 gal 标记：只加 k="off"，不删条目，保证重抓后仍默认隐藏
