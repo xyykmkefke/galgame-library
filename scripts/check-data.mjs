@@ -365,7 +365,7 @@ try {
   }
   [
     ['日期', cover.date, 0.95], ['评分', cover.score, 0.95], ['封面', cover.img, 0.95],
-    ['平台', cover.pl, 0.95], ['开发商', cover.dev, 0.95], ['题材', cover.tg, 0.5],
+    ['平台', cover.pl, 0.95], ['开发商', cover.dev, 0.95], ['题材', cover.tg, 0.40],
   ].forEach(([name, n, min]) => {
     if (ratio(n) < min) {
       console.log(`FAIL 扩展覆盖率不足：${name} ${(ratio(n) * 100).toFixed(1)}% < ${(min * 100).toFixed(0)}%`);

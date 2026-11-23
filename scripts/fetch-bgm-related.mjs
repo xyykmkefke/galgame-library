@@ -24,7 +24,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 关联条目里混有同系列 RPG / ACT / 手游，必须按类型与恋爱标签双重过滤
 const GT_ALLOW = /ADV|AVG|アドベンチャー|ノベル|ビジュアルノベル|Visual Novel|视觉小说/i;
-const GT_REJECT = /RPG|ACT|アクション|STG|MUG|FPS|TPS|FTG|SLG|SIM|TCG|RAC|SPG|パズル|PUZ|格闘|シューティング|レース|スポーツ|シミュレーション|育成|塔防|麻将|麻雀|カード|养成|卡牌|竞技|音游|リズム|ボードゲーム|放置|Roguelike|Deckbuilder|サバイバル|ホラー|恐怖|動作|动作|射击|格斗|策略|模拟|体育|竞速|法庭|大法廷|推理|裁判|バトル|対戦|对战|桌面伴侣/i;
+const GT_REJECT = /RPG|ACT|アクション|STG|MUG|FPS|TPS|FTG|SLG|SIM|TCG|RAC|SPG|パズル|PUZ|格闘|シューティング|レース|スポーツ|シミュレーション|育成|塔防|麻将|麻雀|カード|养成|卡牌|竞技|音游|リズム|ボードゲーム|放置|Roguelike|Deckbuilder|サバイバル|ホラー|恐怖|動作|动作|射击|格斗|策略|模拟|体育|竞速|法庭|大法廷|推理|裁判|バトル|対戦|对战|桌面伴侣|换装|開放世界|开放世界|Open World|着せ替え/i;
 const GT_ROMANCE = /恋愛|恋爱|女性向|乙女|ギャル|エロゲ|BL|ボーイズラブ/i;
 
 function isGalLike(item) {

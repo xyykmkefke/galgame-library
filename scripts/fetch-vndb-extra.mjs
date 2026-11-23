@@ -21,11 +21,15 @@ const OUT_FILE = path.join(ROOT, 'data', 'vndb-extra.js');
 const API = 'https://api.vndb.org/kana/vn';
 const UA = 'galgame-library/2.0 (https://github.com/xyykmkefke/galgame-library)';
 const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 3000;
+const POP_ONLY = process.argv.includes('--popularity-only');
 const PAGE_SIZE = 100;
 const MAX_PAGE = 120;
 const DELAY_MS = 1000;
 const BATCH_SIZE = 50;
 const REL_DELAY_MS = 1600;
+const PROD_BATCH = 20;
+const PROD_PAGE_MAX = 3;
+const PROD_DELAY_MS = 2200;
 const FIELDS = 'id,title,alttitle,titles.title,titles.lang,image.url,released,rating,votecount,length_minutes,developers.name,platforms,staff{id,name,role},tags.name,tags.rating,tags.spoiler';
 const FULL_FIELDS = FIELDS + ',olang';
 const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount', '>=', 10]];
@@ -209,6 +213,35 @@ async function queryPage(page) {
   throw new Error('请求失败');
 }
 
+// 一批 producer id 查其全部 VN；release 子过滤器支持 producer OR
+async function queryByProducers(ids, page) {
+  const preds = ids.map((id) => ['producer', '=', ['id', '=', id]]);
+  const filter = ['release', '=', preds.length === 1 ? preds[0] : ['or'].concat(preds)];
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+        body: JSON.stringify({ filters: filter, fields: FULL_FIELDS, results: PAGE_SIZE, page }),
+        signal: AbortSignal.timeout(60000),
+      });
+      if (res.status === 429) {
+        console.warn('    限流，等待 60s');
+        await sleep(60000);
+        continue;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (err) {
+      if (attempt === 3) throw err;
+      console.warn(`    重试 ${attempt}/2：${err.message}`);
+      await sleep(attempt * 3000);
+    }
+  }
+  throw new Error('请求失败');
+}
+
+
 function chunk(list, size) {
   const out = [];
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
@@ -289,15 +322,37 @@ async function main() {
     }
   } catch { /* 同上 */ }
 
-  const list = [];
+  let list = [];
   const extraKeys = new Set();
+  let baseMeta = null;
+  let baseCount = 0;
+  if (POP_ONLY) {
+    try {
+      const eraw = await readFile(OUT_FILE, 'utf8');
+      const em = eraw.match(/window\.GL_VNDB_EXTRA\s*=\s*(\{[\s\S]*\});/);
+      if (!em) throw new Error('未找到 window.GL_VNDB_EXTRA');
+      const existing = JSON.parse(em[1]);
+      list = Array.isArray(existing.list) ? existing.list : [];
+      baseMeta = existing.meta || null;
+      baseCount = list.length;
+      list.forEach((x) => {
+        if (x.vx) usedVndb.add(String(x.vx));
+        addKeys(extraKeys, x.n);
+        addKeys(extraKeys, x.cn);
+      });
+      console.log(`热度补全模式：复用现有 ${list.length} 条扩展，目标抓取前 ${LIMIT} 条候选`);
+    } catch (err) {
+      throw new Error('--popularity-only 需要可读取的 data/vndb-extra.js：' + err.message);
+    }
+  }
   let page = 0;
   let fetched = 0;
   let skippedUsed = 0;
   let skippedDup = 0;
   let skippedInvalid = 0;
 
-  while (list.length < LIMIT && page < MAX_PAGE) {
+  const targetPages = Math.ceil(LIMIT / PAGE_SIZE);
+  while ((POP_ONLY ? page < targetPages : list.length < LIMIT) && page < MAX_PAGE) {
     page += 1;
     const json = await queryPage(page);
     const results = Array.isArray(json.results) ? json.results : [];
@@ -305,7 +360,7 @@ async function main() {
     fetched += results.length;
 
     results.forEach((c) => {
-      if (list.length >= LIMIT) return;
+      if (!POP_ONLY && list.length >= LIMIT) return;
       if (usedVndb.has(String(c.id))) { skippedUsed += 1; return; }
       const keys = candidateKeys(c);
       let dup = false;
@@ -320,9 +375,33 @@ async function main() {
       keys.forEach((k) => extraKeys.add(k));
     });
 
-    console.log(`  第 ${page} 页：累计 ${list.length}/${LIMIT} 条（已跳过 主库 ${skippedUsed} / 重名 ${skippedDup} / 无效 ${skippedInvalid}）`);
+    console.log(`  第 ${page}/${targetPages} 页：累计 ${list.length} 条（本页候选 ${results.length}，已跳过 主库 ${skippedUsed} / 重名 ${skippedDup} / 无效 ${skippedInvalid}）`);
     if (!json.more) break;
-    if (list.length < LIMIT) await sleep(DELAY_MS);
+    await sleep(DELAY_MS);
+  }
+
+  // 热度补全模式：只追加候选页，保留现有关系 / 开发商条目，直接落盘
+  if (POP_ONLY) {
+    list.sort((a, b) => (b.h || 0) - (a.h || 0));
+    const meta = Object.assign({}, baseMeta || {}, {
+      generatedAt: new Date().toISOString(),
+      count: list.length,
+      popularity: {
+        target: LIMIT,
+        pages: page,
+        fetched,
+        added: list.length - baseCount,
+        skippedUsed,
+        skippedDup,
+        skippedInvalid,
+      },
+    });
+    const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
+      'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
+    await writeFile(OUT_FILE, content, 'utf8');
+    console.log(`完成（热度补全）：新增 ${list.length - baseCount} 条，扩展共 ${list.length} 条，请求 ${page} 页 / ${fetched} 条候选`);
+    console.log(`输出：${OUT_FILE}`);
+    return;
   }
 
   // ---------- 关系补全：以主库映射 + 热度扩展为种子 ----------
@@ -374,6 +453,73 @@ async function main() {
   }
   console.log(`关系补全：新增 ${relAdded} 条（候选 ${related.size}，字段不全 ${relSkippedInvalid}，重名 ${relSkippedDup}）`);
 
+  // ---------- 开发商覆盖：按现有作品反查 producer，再拉每个 producer 的全部 VN ----------
+  const currentVx = new Set(list.map((x) => String(x.vx)));
+  const devSeeds = new Set(seedIds);
+  list.forEach((x) => devSeeds.add(String(x.vx)));
+  const producers = new Map();
+  const producerCounts = new Map();
+  const devSeedBatches = chunk([...devSeeds], BATCH_SIZE);
+  console.log(`开发商遍历：${devSeeds.size} 部作品 / ${devSeedBatches.length} 批读取 producer`);
+  for (let i = 0; i < devSeedBatches.length; i += 1) {
+    const json = await queryIds(devSeedBatches[i], 'id,developers{id,name}');
+    (json.results || []).forEach((c) => {
+      (c.developers || []).forEach((d) => {
+        if (!d || !d.id || !d.name) return;
+        const id = String(d.id);
+        producers.set(id, String(d.name));
+        producerCounts.set(id, (producerCounts.get(id) || 0) + 1);
+      });
+    });
+    if ((i + 1) % 20 === 0 || i === devSeedBatches.length - 1) {
+      console.log(`  producer 种子 ${i + 1}/${devSeedBatches.length}，已收集 ${producers.size}`);
+    }
+    await sleep(REL_DELAY_MS);
+  }
+
+  let devAdded = 0;
+  let devSkippedDup = 0;
+  let devSkippedInvalid = 0;
+  let devPages = 0;
+  const prodList = [...producers.keys()]
+    .sort((a, b) => (producerCounts.get(b) || 0) - (producerCounts.get(a) || 0));
+  const prodBatches = chunk(prodList, PROD_BATCH);
+  console.log(`producer ${producers.size} 个 / ${prodBatches.length} 批（每批最多 ${PROD_PAGE_MAX} 页），开始反查作品`);
+  for (let i = 0; i < prodBatches.length; i += 1) {
+    let pageNo = 1;
+    while (pageNo <= PROD_PAGE_MAX) {
+      const json = await queryByProducers(prodBatches[i], pageNo);
+      const results = Array.isArray(json.results) ? json.results : [];
+      if (!results.length) break;
+      devPages += 1;
+      results.forEach((c) => {
+        if (c.olang !== 'ja') { devSkippedInvalid += 1; return; }
+        if (usedVndb.has(String(c.id)) || currentVx.has(String(c.id))) { devSkippedDup += 1; return; }
+        const item = buildItem(c);
+        if (!item || !item.d || !item.s || !item.img || !item.dev || !item.pl) {
+          devSkippedInvalid += 1;
+          return;
+        }
+        const keys = candidateKeys(c);
+        let dup = false;
+        keys.forEach((k) => { if (mainKeys.has(k) || extraKeys.has(k)) dup = true; });
+        if (dup) { devSkippedDup += 1; return; }
+        list.push(item);
+        currentVx.add(String(item.vx));
+        devAdded += 1;
+        keys.forEach((k) => extraKeys.add(k));
+      });
+      if (!json.more) break;
+      pageNo += 1;
+      await sleep(PROD_DELAY_MS);
+    }
+    if ((i + 1) % 10 === 0 || i === prodBatches.length - 1) {
+      console.log(`  开发商批次 ${i + 1}/${prodBatches.length}，累计新增 ${devAdded}`);
+    }
+    await sleep(PROD_DELAY_MS);
+  }
+  console.log(`开发商补全：新增 ${devAdded} 条（producer ${producers.size}，请求 ${devPages} 页，重名 ${devSkippedDup}，无效 ${devSkippedInvalid}）`);
+
   list.sort((a, b) => (b.h || 0) - (a.h || 0));
 
   const meta = {
@@ -394,12 +540,19 @@ async function main() {
       skippedDup: relSkippedDup,
       skippedInvalid: relSkippedInvalid,
     },
+    developer: {
+      producers: producers.size,
+      added: devAdded,
+      pages: devPages,
+      skippedDup: devSkippedDup,
+      skippedInvalid: devSkippedInvalid,
+    },
   };
   const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
     'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
   await writeFile(OUT_FILE, content, 'utf8');
 
-  console.log(`完成：扩展 ${list.length} 条（其中关系补全 ${relAdded} 条），请求 ${page} 页 / ${fetched} 条候选，跳过 主库 ${skippedUsed}、重名 ${skippedDup}、无效 ${skippedInvalid}`);
+  console.log(`完成：扩展 ${list.length} 条（关系补全 ${relAdded}，开发商补全 ${devAdded}），请求 ${page} 页 / ${fetched} 条候选，跳过 主库 ${skippedUsed}、重名 ${skippedDup}、无效 ${skippedInvalid}`);
   console.log(`输出：${OUT_FILE}`);
 }
 

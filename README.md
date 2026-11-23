@@ -1,12 +1,12 @@
 # Galgame 库 · 游玩记录
 
-本地优先的 Galgame 浏览与游玩记录 PWA。内置 Bangumi「galgame」「视觉小说」「乙女向」「百合」「BL」「拔作」等日系 galgame 标签条目，并用 VNDB 补充评分、时长、制作人员与 3452 部日系扩展作品（含关系补全），用 Bangumi 关联条目补同系列乙女 / galgame，用月幕 Galgame 补充中文标题与外链，无账号、无后端。
+本地优先的 Galgame 浏览与游玩记录 PWA。内置 Bangumi「galgame」「视觉小说」「乙女向」「百合」「BL」「拔作」等日系 galgame 标签条目，并用 VNDB 补充评分、时长、制作人员与 7879 部日系扩展作品（含关系与开发商补全），用 Bangumi 关联条目补同系列乙女 / galgame，用月幕 Galgame 补充中文标题与外链，无账号、无后端。
 
-状态：**v2.21.0**
+状态：**v2.22.0**
 
 ## 功能
 
-- **全库浏览**：5955 部日系作品（2485 部 Bangumi 主库 + 18 部 Bangumi 关联 + 3452 部 VNDB 日系扩展），按年份、平台、开发商、题材、游玩时长筛选，评分 / 热度 / 发售日 / 名称排序
+- **全库浏览**：10474 部日系作品（2485 部 Bangumi 主库 + 110 部 Bangumi 关联 + 7879 部 VNDB 日系扩展），按年份、平台、开发商、题材、游玩时长筛选，评分 / 热度 / 发售日 / 名称排序
 - **搜索**：多关键词交集、`-词` 排除、拼音首字母、跨源别名（VNDB 英文 / 罗马字标题、月幕原名 / 中文名 / 详情别名）、开发商 / 平台命中、标题高亮、搜索历史；严格无结果时自动忽略空格、标点与全半角差异再搜一次；支持 `开发商:Key`、`平台:Switch`、`年份:2015`、`题材:恋爱`、`评分:>=8` 限定（评分支持 `>=` / `<=` / `>` / `<`，省略运算符按 `>=`），前缀 `-` 表示排除
 - **我的游玩**：想玩 / 在玩 / 已通关 / 弃坑（仅四种状态）
 - **视图**：网格 / 列表 / 看板；按发售年份、加入年份、状态、系列分组
@@ -29,12 +29,12 @@
 ## 数据
 
 - 主源：Bangumi（bgm.tv），`type=4` 游戏，`tag=galgame` / `视觉小说` / `乙女向` / `百合` / `BL` / `拔作` 按 ID 合并去重；不收 ADV（混入大量非 gal 的冒险 / 解谜游戏），也不收标为欧美的作品
-- 扩展源：VNDB 公共 Kana API，只收原始语言为日文（`olang=ja`）、评分 ≥ 60、投票 ≥ 10 的作品，按热度降序取 3000 部；再以主库 VNDB 映射 + 扩展库为种子批量遍历 `relations`，补同系列 / 同设定 / 前传续作等 452 部，合计 3452 部。扩展条目额外补 `length_minutes` 与 `staff`（剧本 / 原画 / 音乐），并接入时长筛选
-- 关联源：Bangumi 关联条目（`/v0/subjects/{id}/subjects`），从 500 个主库种子补同系列作品；按游戏类型与恋爱 / 乙女 / BL 标签严格过滤掉 RPG / ACT / 手游，最终保留 18 部真正日系 galgame / 乙女向条目
+- 扩展源：VNDB 公共 Kana API，只收原始语言为日文（`olang=ja`）、评分 ≥ 60 的作品：热度前 6000 条 + 关系补全 452 条 + 1325 个 producer 的开发商补全 3626 条，合计 7879 条。扩展条目额外补 `length_minutes` 与 `staff`（剧本 / 原画 / 音乐），并接入时长筛选
+- 关联源：Bangumi 关联条目（`/v0/subjects/{id}/subjects`），遍历全部 2485 个主库种子；按游戏类型与恋爱 / 乙女 / BL 标签严格过滤掉 RPG / ACT / 手游 / 开放世界换装，最终保留 110 部真正日系 galgame / 乙女向条目
 - 补充源：VNDB 公共 Kana API，按标题归一 + 年份容差保守匹配，只保留高置信结果；当前匹配 1042 条（已尝试 1840 条）
 - 补充源：月幕 Galgame 开放 API，同样按标题归一 + 年份容差严格匹配；当前匹配 1144 条，其中 577 条有详情别名
-- 规模：5955 条（主库 2485 + Bangumi 关联 18 + VNDB 扩展 3452；1985-05-31 ~ 2027-03-25）
-- 覆盖：日期 99.1%、评分 98.9%、封面 100%、平台 98.3%、开发商 90.5%、题材 58.0%
+- 规模：10474 条（主库 2485 + Bangumi 关联 110 + VNDB 扩展 7879；1985-05-31 ~ 2027-03-25）
+- 覆盖：日期 99.4%、评分 99.2%、封面 100%、平台 99.0%、开发商 94.6%、题材 49.1%
 - 文件：`data/galgames.js`（主库）、`data/vndb.js`（第二数据源）、`data/ymgal.js`（第三数据源）、`data/vndb-extra.js`（VNDB 扩展）、`data/bgm-extra.js`（Bangumi 关联）
 
 抓取按发售年份分桶（镜像 offset 上限 1000），再用 heat / rank / score 三个排序各取前 1000 条兜底：
@@ -44,7 +44,8 @@ npm run fetch-data          # 增量，已有分桶缓存直接复用
 node scripts/fetch-games.mjs --refresh   # 清空缓存重抓
 node scripts/fetch-games.mjs --tags=galgame,视觉小说,乙女向   # 指定标签
 npm run fetch-vndb          # 补充 VNDB（默认热度前 350 条，增量）
-npm run fetch-vndb-extra    # 抓取 VNDB 日系扩展（默认 3000 条 + 关系补全，整包重抓）
+npm run fetch-vndb-extra    # 抓取 VNDB 日系扩展（默认 3000 条 + 关系 + 开发商，整包重抓）
+node scripts/fetch-vndb-extra.mjs --limit=6000 --popularity-only   # 只补热度页，保留现有关系 / 开发商条目
 npm run fetch-bgm-related   # 从主库关联条目补同系列 galgame / 乙女向（默认 500 种子）
 npm run fetch-ymgal         # 补充月幕（默认热度前 700 条，增量）
 npm run check-data
@@ -54,7 +55,7 @@ npm run check-data
 
 VNDB 匿名限流约 200 次 / 5 分钟，脚本固定 1.6s 间隔并对 429 退避；匹配结果落 `data/build/vndb-map.json`，重复运行只补未匹配条目。
 
-扩展库脚本按热度降序分页拉取（每页 100 条、间隔 1s），40 页取满 3000 条；再按 50 个 id 一批遍历 4033 个种子的 `relations`（只跟随 seq / preq / set / alt / side 等官方关系，跳过 char / fan），补字段完整的相关作品 452 条。标题 / 别名归一后与主库和月幕去重，输出独立文件，不写主库。Bangumi 关联脚本从 500 个主库种子出发，过滤非 gal 类型后保留 18 条，写入 `data/bgm-extra.js`。
+扩展库脚本按热度降序分页拉取（每页 100 条、间隔 1s），60 页取到前 6000 条候选；再按 50 个 id 一批遍历 4033 个种子的 `relations`（只跟随 seq / preq / set / alt / side 等官方关系，跳过 char / fan），补字段完整的相关作品 452 条；最后从现有作品反查 1325 个 producer，按 20 个一批拉其全部 VN（每批最多 3 页），补 3626 条。标题 / 别名归一后与主库和月幕去重，输出独立文件，不写主库。Bangumi 关联脚本遍历 2485 个主库种子，过滤非 gal 类型后保留 110 条，写入 `data/bgm-extra.js`。
 
 月幕使用官方公开的公共凭据（`client_id=ymgal`，供学习 / 实验），构建期顺序请求、800ms 间隔并对 429 退避，匹配结果落 `data/build/ymgal-map.json`；有匹配的条目再逐条取详情补 `extensionName` 别名（同样 800ms 限速）。也可用环境变量 `YMGAL_CLIENT_ID` / `YMGAL_CLIENT_SECRET` 覆盖。数据非商业用途，本站已在页脚与文档标注月幕 Galgame 来源。
 
