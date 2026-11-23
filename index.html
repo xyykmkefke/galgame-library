@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.24.0">
+<meta name="version" content="2.24.1">
 <meta name="description" content="本地优先的 Galgame 浏览与游玩记录：7732 部日系作品（1972 部 Bangumi 主库 + 18 部 Bangumi 关联 + 5742 部 VNDB 扩展，其中 35 部非 gal 默认隐藏；不含乙女向），按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
@@ -2715,7 +2715,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.24.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.24.1</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2940,6 +2940,7 @@
 <script src="data/vndb-extra.js"></script>
 <script src="data/bgm-extra.js"></script>
 <script src="data/series.js"></script>
+<script src="data/dev-alias.js"></script>
 <script>
 (function () {
   'use strict';
@@ -2962,6 +2963,8 @@
   var DATA = [];
   var byId = new Map();
 
+  var DEV_ALIAS_MAP = (window.GL_DEV_ALIAS && window.GL_DEV_ALIAS.map) || {};
+
   function adoptData() {
     DATA = (window.GL_DATA || []).slice();
     BGM_EXTRA_LIST.forEach(function (x) {
@@ -2971,6 +2974,20 @@
     EXTRA_LIST.forEach(function (x) {
       x.ex = 1;
       DATA.push(x);
+    });
+    // 开发商别名归一：显示与筛选统一用 canonical，原名保留在 dva 供搜索
+    DATA.forEach(function (x) {
+      if (!x.dev || !x.dev.length) return;
+      x.dva = x.dev.slice();
+      var seen = Object.create(null);
+      var out = [];
+      x.dev.forEach(function (d) {
+        var c = DEV_ALIAS_MAP[d] || d;
+        if (seen[c]) return;
+        seen[c] = 1;
+        out.push(c);
+      });
+      x.dev = out;
     });
     DATA.forEach(function (x) {
       var v = VNDB_MAP[String(x.i)];
@@ -3438,8 +3455,9 @@
     if (map.y === 'all') state.year = 'all';
     else if (y >= start && y <= end) state.year = String(y);
     if (map.f === 'all' || Object.prototype.hasOwnProperty.call(platforms, map.f)) state.platform = map.f;
-    if (map.dv === '') state.dev = '';
-    else if (typeof map.dv === 'string' && Object.prototype.hasOwnProperty.call(devs, map.dv)) state.dev = map.dv;
+    var dv = typeof map.dv === 'string' ? (DEV_ALIAS_MAP[map.dv] || map.dv) : map.dv;
+    if (dv === '') state.dev = '';
+    else if (typeof dv === 'string' && Object.prototype.hasOwnProperty.call(devs, dv)) state.dev = dv;
     // 制作人员筛选：只接受已知维度且该名字确实存在于数据中，避免旧链接留下空结果
     state.staff = '';
     state.staffKind = 'sc';
@@ -3903,7 +3921,7 @@
     if (!qf.v) return false;
     var v = qf.v.toLowerCase();
     if (qf.k === 'dev') {
-      return (x.dev || []).some(function (d) { return String(d).toLowerCase().indexOf(v) >= 0; });
+      return (x.dev || []).concat(x.dva || []).some(function (d) { return String(d).toLowerCase().indexOf(v) >= 0; });
     }
     if (qf.k === 'pl') {
       return (x.pl || []).some(function (p) { return String(p).toLowerCase().indexOf(v) >= 0; });
@@ -3953,7 +3971,7 @@
     if (!t) return false;
     return looseText(x.cn).indexOf(t) >= 0 || looseText(x.n).indexOf(t) >= 0 ||
       looseText(aliasText(x)).indexOf(t) >= 0 ||
-      looseText((x.dev || []).join(' ')).indexOf(t) >= 0 ||
+      looseText((x.dev || []).concat(x.dva || []).join(' ')).indexOf(t) >= 0 ||
       looseText((x.pl || []).join(' ')).indexOf(t) >= 0;
   }
 
@@ -3983,7 +4001,7 @@
     }
     // 标题都不命中时，开发商 / 平台命中排在命中结果之后
     if (best === 3) {
-      var devs = (x.dev || []).join(' ').toLowerCase();
+      var devs = (x.dev || []).concat(x.dva || []).join(' ').toLowerCase();
       var pls = (x.pl || []).join(' ').toLowerCase();
       if (devs.indexOf(q) >= 0 || pls.indexOf(q) >= 0) best = 2;
     }
@@ -4019,7 +4037,7 @@
     var cn = String(x.cn || '').toLowerCase();
     var n = String(x.n || '').toLowerCase();
     var py = String(x.py || '');
-    var dev = (x.dev || []).join(' ').toLowerCase();
+    var dev = (x.dev || []).concat(x.dva || []).join(' ').toLowerCase();
     var pl = (x.pl || []).join(' ').toLowerCase();
     return cn.indexOf(token) >= 0 || n.indexOf(token) >= 0 ||
       aliasText(x).indexOf(token) >= 0 ||

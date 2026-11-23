@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-23
-- 当前状态：v2.24.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 184/184，线上已部署）
+- 当前状态：v2.24.1（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 185/185，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -986,12 +986,12 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.24.0 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.24.0 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.24.0 |
-| `README.md` | 「状态：**vN**」 | v2.24.0 |
-| `manifest.webmanifest` | `version` | 2.24.0 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v31 |
+| `package.json` | `version` | 2.24.1 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.24.1 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.24.1 |
+| `README.md` | 「状态：**vN**」 | v2.24.1 |
+| `manifest.webmanifest` | `version` | 2.24.1 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v32 |
 | `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.4 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
@@ -1206,6 +1206,34 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - `check-data` 0 问题；`verify` **184/184**；`data/series.js` 已重建；SW `yuc-gl-shell-v31`。
 - BGM 关联源只剩 18 条（原 110），基本边缘化；若后续不再需要，可评估停用该源。
 - 乙女向的 513 条主库条目删除后，旧收藏与 `?id=` 深链会失效；这是「彻底删除」方案的已知代价。
+
+## 50. 开发商别名归一（v2.24.1）
+
+- `data/dev-alias.js`：117 组高置信别名、139 个 alias→canonical 键，影响 414 条；文件约 4.7KB。
+- 归一后开发商去重名 **2174 → 2044**，≥2 部的开发商 **921 → 884**；典型：Alice Soft/Alicesoft/ALICESOFT/アリスソフト[ALICESOFT] → AliceSoft；Front Wing/Frontwing/FrontWing/Front wing → Frontwing；NITRO PLUS/Nitro+/ニトロプラス[Nitro+] → Nitroplus。
+- 运行时在 `adoptData()` 归一：`x.dev` 存 canonical，`x.dva` 保留原名；搜索、`开发商:` 限定语法、旧 `dv=` 深链都会回退到原名/别名。
+- **不合并**母子公司与子品牌：Nitro+CHiRAL、Black Lilith、Anime Lilith、AKABEiSOFT3、SILKY'S 各子品牌、Purple Software Delight、Navel 各子品牌等保持独立。
+- 验收新增「开发商别名已归一」断言；`check-data` 0、`verify` 185/185；SW `yuc-gl-shell-v32`。
+
+## 51. 题材补齐与标签票数门槛评估（未落盘）
+
+### 51.1 主库题材补齐 dry-run
+
+- 目标：无 `tg` 且有 VNDB 映射的主库条目 **229 条**。
+- 可补 **150 条（65.5%）**：rom 60 / sch 59 / sci 30 / fan 28 / mys 27 / sli 19 / dep 18 / hor 12 / bat 11 / mec 6 / nak 5 / det 3 / adv 3 / nukige 1 / gru 1。
+- 补不出 **79 条**：其中 7 条 VNDB 完全无标签，72 条只有 ADV / Female Protagonist / Gambling 等非题材标签。
+- 若应用：主库无题材 862 → **712**（44.5% → 36.8%），全库题材覆盖 83.4% → **85.3%**，体积约 +5KB。
+- 工具：`scripts/enrich-main-genres.mjs`，默认 dry-run，`--apply` 才写入；VNDB 单次 `or` 最多 10 条，脚本已按 10 条/批、2s 间隔。
+- 建议：只应用 150 条高置信结果，不强行给 79 条补题材（标题兜底会引入误判）。
+
+### 51.2 标签票数门槛评估
+
+- 样本：120 条随机主库 + 60 条等距抽样；已知噪声 GTA IV（Galgame:1）、FF13（Galgame:2）、海贼无双4（Galgame:2）都会被 `>=3` 拦住。
+- 规则 B 推荐：`galgame >=3` **或** 命中视觉小说 / 百合 / BL / 拔作任一（不限票数）。预估当前主库会排除 **230–290 条**，其中约 60–90 条是低票但确实像 gal 的作品。
+- 规则 C（`>=10`）会排除约 550 条，误杀过高；规则 A（`>=5`）与 B 接近。
+- Y 层 221 条「Galgame=0 但命中白名单标签」无法靠票数拦；B' 精确候选 369 条（gcd=1、gr=0），可离线二次判断。
+- **结论：门槛只用于未来抓取，不做追溯删除**；否则会误删大量冷门 gal。追溯清理如需做，应走「标记隐藏」而不是删除。
+- 实现要点：搜索 API 的 `item.tags` 已带 `count`，抓取时可保留 `gc`/`wc` 再过滤；当前 `data/build` 缓存没有票数，追溯评估需重新请求详情。
 
 
 

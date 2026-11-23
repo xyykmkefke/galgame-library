@@ -91,3 +91,11 @@
 - `data/blocklist-otome.json` + 三个抓取脚本防回流；前端移除「乙女」题材选项；`remove-otome.mjs` 支持 dry-run / --apply。
 - 清理 `vndb.js` / `ymgal.js` 孤儿映射 256 / 228；系列重建为 601 / 1704；SW `yuc-gl-shell-v31`。
 - `check-data` 0 问题；`verify` 184/184。
+
+## 11. 开发商别名归一 + 两项评估（v2.24.1）
+
+- `data/dev-alias.js`：117 组高置信别名、139 个映射、影响 414 条；开发商去重 2174 → 2044，≥2 部 921 → 884。
+- 运行时 `adoptData()` 归一，`x.dva` 保留原名供搜索、限定语法与旧 `dv=` 深链。
+- 题材补齐 dry-run：229 条目标，150 条可补（65.5%），79 条无可用标签；未落盘。
+- 标签票数门槛：推荐规则 B（`galgame >=3` 或白名单任一），仅用于未来抓取，不做追溯删除。
+- `check-data` 0；`verify` 185/185；SW `yuc-gl-shell-v32`。

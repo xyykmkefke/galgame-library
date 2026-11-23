@@ -250,6 +250,14 @@ async function main() {
       "(() => { const d=window.GL_DATA||[]; return d.length ? d.filter((x)=>x.dev&&x.dev.length).length/d.length : 0; })()");
     check('开发商覆盖率 ≥75%', devCover >= 0.75, (devCover * 100).toFixed(1) + '%');
 
+    const devAlias = await cdp.evaluate(
+      "(() => { const d=window.GL_DATA||[]; return [" +
+      "d.filter((x)=>(x.dev||[]).includes('AliceSoft')).length," +
+      "d.filter((x)=>(x.dev||[]).includes('Alice Soft')).length," +
+      "d.filter((x)=>(x.dva||[]).includes('Alice Soft')).length]; })()");
+    check('开发商别名已归一', devAlias[0] >= 60 && devAlias[1] === 0 && devAlias[2] >= 50,
+      'AliceSoft ' + devAlias[0] + ' / 旧名 ' + devAlias[1] + ' / 原名保留 ' + devAlias[2]);
+
     const datesOk = await cdp.evaluate(
       "(() => (window.GL_DATA||[]).every((x)=>!x.d || /^\\d{4}-\\d{2}-\\d{2}$/.test(x.d)))()");
     check('发售日格式全部合法', datesOk === true);
