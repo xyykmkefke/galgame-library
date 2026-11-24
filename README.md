@@ -2,14 +2,16 @@
 
 本地优先的 Galgame 浏览与游玩记录 PWA。内置 Bangumi「galgame」「视觉小说」「百合」「BL」「拔作」等日系 galgame 标签条目，并用 VNDB 补充评分、时长、制作人员与 5742 部日系扩展作品（含关系与开发商补全），用 Bangumi 关联条目补同系列 galgame，用月幕 Galgame 补充中文标题与外链，无账号、无后端。**已移除全部乙女向作品。**
 
-状态：**v2.26.1**
+状态：**v2.27.0**
 
 ## 功能
 
 - **全库浏览**：7732 部日系作品（1972 部 Bangumi 主库 + 18 部 Bangumi 关联 + 5742 部 VNDB 日系扩展；不含乙女向），按年份、平台、开发商、题材、游玩时长筛选，评分 / 热度 / 发售日 / 名称排序
 - **搜索**：多关键词交集、`-词` 排除、拼音首字母、跨源别名（VNDB 英文 / 罗马字标题、月幕原名 / 中文名 / 详情别名）、开发商 / 平台命中、标题高亮、搜索历史；严格无结果时自动忽略空格、标点与全半角差异再搜一次；支持 `开发商:Key`、`平台:Switch`、`年份:2015`、`题材:恋爱`、`评分:>=8` 限定（评分支持 `>=` / `<=` / `>` / `<`，省略运算符按 `>=`），前缀 `-` 表示排除
 - **我的游玩**：想玩 / 在玩 / 已通关 / 弃坑（仅四种状态）
-- **题材补齐**：从 VNDB 标签为主库补 148 条题材，主库无题材从 862 降到 714；抓取侧新增 `galgame ≥3 票` 门槛（老数据不追溯）
+- **题材补齐**：主库题材 1234 → 1349（68.4%），VNDB 标签 + Bangumi 原始标签离线映射；扩展题材 93.2%
+- **主库字段补齐**：从 Bangumi 详情补别名/中文名，从 VNDB staff 补剧本/原画/音乐，从月幕补开发商；主库开发商 81.6% → 84.5%，剧本 55.4% → 61.2%，原画 44.3% → 51.9%，音乐 38.1% → 47.8%
+- **主库别名**：877 条作品带 Bangumi 别名（共 1490 条），参与搜索与详情展示
 - **非 gal 标记**：35 条主库误收（逆转裁判、FF、GTA 等）加 `k="off"`，默认隐藏；设置里可切换显示，收藏、详情与旧链接保留
 - **视图**：网格 / 列表 / 看板；按发售年份、加入年份、状态、系列分组
 - **详情**：平台、开发、发行、剧本、原画、音乐、游戏类型、题材、相似推荐；平台、开发商、剧本 / 原画 / 音乐 / 发行逐项可点，点制作人员即筛出该人员参与的全部作品；同系列作品优先按 VNDB 官方关系（ser / seq / preq）聚合，标题前缀兜底；详情显示「系列 · N 部」并一键筛选整个系列；Bangumi / VNDB / 月幕三外链
@@ -55,6 +57,9 @@ npm run fetch-vndb-relations # 保存库内 VNDB 官方关系边表（构建缓�
 npm run build-series        # 用强关系生成 data/series.js（标题前缀兜底）
 npm run fetch-bgm-related   # 从主库关联条目补同系列 galgame（排除乙女向，默认 500 种子）
 npm run enrich-vndb-tags    # 只重抓缺失题材的扩展条目标签，补 tg
+npm run enrich-main-bangumi # 用 Bangumi 详情补主库 开发/剧本/原画/音乐/中文名/别名（dry-run）
+npm run enrich-main-staff   # 用 VNDB staff 补主库缺失制作人员（dry-run）
+npm run enrich-main-genres-keywords # 用 Bangumi 原始标签离线补主库题材（dry-run）
 npm run prune-vndb-extra -- --policy=conservative          # 预演裁剪低热度老作（不写文件）
 npm run prune-vndb-extra -- --policy=balanced --apply      # 执行裁剪，为后续更新释放约 497KB
 npm run apply-blocklist                                    # 预演按 data/blocklist.json 过滤非 gal 扩展条目
@@ -79,12 +84,12 @@ VNDB 匿名限流约 200 次 / 5 分钟，脚本固定 1.6s 间隔并对 429 退
 
 ```bash
 npm start        # 本地静态服务
-npm run verify   # Edge/Chrome + CDP 自动验收（186 项，含 Gist mock、离线重开、统计与五份数据文件）
+npm run verify   # Edge/Chrome + CDP 自动验收（187 项，含 Gist mock、离线重开、统计与五份数据文件）
 ```
 
 CI：`.github/workflows/ci.yml` 在 push / PR 时运行 `check-data` 与 `verify`（Linux 下自动使用系统 Chrome）。
 
-交接与会话记录：[HANDOVER.md](./HANDOVER.md)（字段、数据源、风险与后续建议）、[SESSION-LOG.md](./SESSION-LOG.md)（v2.19.0 → v2.26.1 会话过程与提交）。
+交接与会话记录：[HANDOVER.md](./HANDOVER.md)（字段、数据源、风险与后续建议）、[SESSION-LOG.md](./SESSION-LOG.md)（v2.19.0 → v2.27.0 会话过程与提交）。
 
 ## 部署
 

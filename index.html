@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.26.1">
+<meta name="version" content="2.27.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2754,7 +2754,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.26.1</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.27.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -4112,9 +4112,10 @@
     return false;
   }
 
-  // 跨源别名：VNDB 英文 / 罗马字标题、月幕原名、中文名与详情别名，运行时拼接参与搜索，不写入主库
+  // 跨源别名：主库 Bangumi 别名、VNDB 英文 / 罗马字标题、月幕原名、中文名与详情别名，运行时拼接参与搜索，不写入主库
   function aliasText(x) {
     var parts = [];
+    if (x.al && x.al.length) parts.push(x.al.join(' '));
     if (x.vo && x.vo.t) parts.push(x.vo.t);
     if (x.ym) {
       if (x.ym.n) parts.push(x.ym.n);
@@ -4947,15 +4948,22 @@
     if (item.vo) {
       pairs.push(['VNDB', item.vo.r ? (item.vo.r / 10).toFixed(1) : '暂无']);
       if (item.vo.l) pairs.push(['时长', Math.round(item.vo.l / 60) + ' 小时']);
-      // 别名：VNDB 英文 / 罗马字标题与主标题不同才展示，方便核对搜索命中的来源
-      var aliasName = item.vo.t || '';
-      var ownNames = [item.cn, item.n].map(function (v) {
-        return String(v || '').toLowerCase().replace(/\s+/g, '');
-      });
-      if (aliasName && ownNames.indexOf(aliasName.toLowerCase().replace(/\s+/g, '')) < 0) {
-        pairs.push(['别名', aliasName]);
-      }
     }
+    // 别名：主库 Bangumi 别名 + VNDB 英文 / 罗马字标题，去重后最多展示 5 个
+    var aliasList = (item.al || []).slice();
+    if (item.vo && item.vo.t) aliasList.push(item.vo.t);
+    var ownNames = [item.cn, item.n].map(function (v) {
+      return String(v || '').toLowerCase().replace(/\s+/g, '');
+    });
+    var seenAlias = {};
+    ownNames.forEach(function (v) { if (v) seenAlias[v] = 1; });
+    aliasList = aliasList.filter(function (v) {
+      var key = String(v || '').toLowerCase().replace(/\s+/g, '');
+      if (!key || seenAlias[key]) return false;
+      seenAlias[key] = 1;
+      return true;
+    });
+    if (aliasList.length) pairs.push(['别名', aliasList.slice(0, 5).join(' / ')]);
     // 扩展库时长直接来自 VNDB length_minutes
     if (!item.vo && item.l) pairs.push(['时长', Math.round(item.l / 60) + ' 小时']);
     // 第三数据源：月幕评分、中文版标记与详情别名

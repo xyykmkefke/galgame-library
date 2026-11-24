@@ -375,6 +375,22 @@ async function main() {
     const yAliasIds = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
     check('搜索可命中月幕原名别名', yAliasIds.includes(yAlias[1]), `${yAlias[0]} → ${yAliasIds.length} 条`);
 
+    // 主库别名：Bangumi infobox 的别名参与搜索（选不含空格/冒号/减号的样例，避免触发限定语法）
+    const bAlias = await cdp.evaluate(`(() => {
+      const hit = (window.GL_DATA || []).find((x) => {
+        if (!x.al || !x.al.length) return false;
+        return x.al.some((a) => /^[A-Za-z0-9\\u3040-\\u30ff\\u3400-\\u9fff]{4,}$/.test(a) &&
+          ((x.cn || '') + ' ' + (x.n || '')).toLowerCase().indexOf(a.toLowerCase()) < 0);
+      });
+      if (!hit) return null;
+      const alias = hit.al.find((a) => /^[A-Za-z0-9\\u3040-\\u30ff\\u3400-\\u9fff]{4,}$/.test(a) &&
+        ((hit.cn || '') + ' ' + (hit.n || '')).toLowerCase().indexOf(a.toLowerCase()) < 0);
+      return [alias, String(hit.i)];
+    })()`);
+    await typeSearch(bAlias[0]);
+    const bAliasIds = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
+    check('搜索可命中主库 Bangumi 别名', bAliasIds.includes(bAlias[1]), `${bAlias[0]} → ${bAliasIds.length} 条`);
+
     // 宽松搜索：严格匹配无结果时忽略空格与标点再试一次（如 Fate/stay night → fatestaynight）
     const looseHit = await cdp.evaluate(
       "(() => { const x=(window.GL_DATA||[]).find((x)=>String(x.n||'').toLowerCase().replace(/[^a-z0-9]+/g,'').indexOf('fatestaynight')===0); return x?[String(x.i), x.n]:null; })()");

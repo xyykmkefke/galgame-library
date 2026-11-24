@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-24
-- 当前状态：v2.26.1（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 186/186，线上已部署）
+- 当前状态：v2.27.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.26.1（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离）
+- 本次会话：v2.19.0 → v2.27.0（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐）
 
 ## 1. 目标与边界
 
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.26.1 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.26.1 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.26.1 |
-| `README.md` | 「状态：**vN**」 | v2.26.1 |
-| `manifest.webmanifest` | `version` | 2.26.1 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v36 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.26.1 |
+| `package.json` | `version` | 2.27.0 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.27.0 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.27.0 |
+| `README.md` | 「状态：**vN**」 | v2.27.0 |
+| `manifest.webmanifest` | `version` | 2.27.0 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v37 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.27.0 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 7732），数据规模大幅变化时应同步修改。
@@ -1305,4 +1305,23 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 修复：`sw.js` 的 `activate` 改为只删除 `yuc-gl-` 前缀的旧缓存（同 `轻小说/sw.js` 的 `yuc-ln-` 方案）；封面缓存新增 `IMG_LIMIT = 500`，超出后按插入顺序删除最旧图片，避免长期浏览占满配额。
 - 版本：v2.26.1，SW `yuc-gl-shell-v36`；新增 MIT `LICENSE`。
 - 验收：`check-data` 0 问题；`verify` 186/186（页面版本 2.26.1）。
-- 注意：`番剧/sw.js` 仍是旧逻辑（`yuc-anime-shell-v24`），在其修复前，打开番剧仍会清掉本站缓存；两站都升级后跨站离线才互不影响。
+- 注意：三站现已全部使用各自前缀（`yuc-gl-` / `yuc-anime-` / `yuc-ln-`），打开任何一站都不再清其他两站缓存；2026-11-24 线上实测三份缓存可共存。
+
+## 56. 主库字段补齐（v2.27.0，2026-11-24）
+
+- 目标：只补主库空字段，不扩库、不新增作品。
+- 新增脚本：
+  - `enrich-main-bangumi.mjs`：1577 条缺项抓 Bangumi 详情；实际补别名 877 条（1490 个）、开发商 6 条、中文名 1 条。结论：主库本身来自 Bangumi infobox，重抓对开发/制作人员几乎无增益，别名是主要收益。
+  - `enrich-main-staff.mjs`：469 条有 VNDB 映射的缺项，补 277 条（剧本 113 / 原画 149 / 音乐 190）；VNDB 日文原名去空格对齐 Bangumi。
+  - `fill-main-devs-ymgal.mjs`：月幕 `o` 补 51 条开发商。
+  - `enrich-main-genres-keywords.mjs`：Bangumi 原始标签离线映射，补 115 条题材；严格排除 RPG/SLG/ACT 与格式标签。
+- 覆盖变化（主库）：
+  - 开发商 1610 → 1667（81.6% → 84.5%）
+  - 剧本 1093 → 1206（55.4% → 61.2%）
+  - 原画 874 → 1023（44.3% → 51.9%）
+  - 音乐 752 → 942（38.1% → 47.8%）
+  - 题材 1234 → 1349（62.6% → 68.4%）
+  - 别名 0 → 877 条（1490 个）
+- 数据体积 2826KB → 2891KB；主库 732 → 796KB。
+- 验收：`check-data` 0；`verify` 187/187（新增主库别名搜索断言）；SW v37。
+- 结论：题材 85% 不可达（缺失条目的原始标签多为格式/来源）；开发商/制作人员的剩余缺口主要来自无 VNDB 映射的条目，下一轮应先做 VNDB 匹配扩展（A5）。
