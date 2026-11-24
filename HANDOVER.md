@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-24
-- 当前状态：v2.27.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
+- 当前状态：v2.27.1（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.27.0（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐）
+- 本次会话：v2.19.0 → v2.27.1（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配）
 
 ## 1. 目标与边界
 
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.27.0 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.27.0 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.27.0 |
-| `README.md` | 「状态：**vN**」 | v2.27.0 |
-| `manifest.webmanifest` | `version` | 2.27.0 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v37 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.27.0 |
+| `package.json` | `version` | 2.27.1 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.27.1 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.27.1 |
+| `README.md` | 「状态：**vN**」 | v2.27.1 |
+| `manifest.webmanifest` | `version` | 2.27.1 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v38 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.27.1 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 7732），数据规模大幅变化时应同步修改。
@@ -1325,3 +1325,11 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 数据体积 2826KB → 2891KB；主库 732 → 796KB。
 - 验收：`check-data` 0；`verify` 187/187（新增主库别名搜索断言）；SW v37。
 - 结论：题材 85% 不可达（缺失条目的原始标签多为格式/来源）；开发商/制作人员的剩余缺口主要来自无 VNDB 映射的条目，下一轮应先做 VNDB 匹配扩展（A5）。
+
+## 57. A5 首批 VNDB 重匹配（v2.27.1，2026-11-24）
+
+- 对未匹配可见条目 1155 条，用中文名 / Bangumi 别名 / 月幕别名做 OR 搜索重试；探测 160 条，命中 17 条（10.6%），已合并 `vndb.js`，累计匹配 786 → **803**。
+- 二次补齐：开发商 +2（84.6%）、剧本 +1 / 原画 +1 / 音乐 +3、题材 +3（68.6%）；体积 2893KB。
+- VNDB 匿名限流严重：60 秒全局冷却后仍频繁 429，第 2 轮 10 分钟只推进 40 条；全量 1155 条按当前节奏需数小时，暂停分批。
+- 新增脚本 `rematch-main-vndb.mjs`（OR 搜索、保守匹配）与 `apply-vndb-rematch.mjs`（合并回 `vndb.js`）；探测缓存 `data/build/vndb-rematch.json`。
+- 验收：`check-data` 0；`verify` 187/187；SW v38。
