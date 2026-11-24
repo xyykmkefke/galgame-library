@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
-- 文档日期：2026-11-23
-- 当前状态：v2.26.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 186/186，线上已部署）
+- 文档日期：2026-11-24
+- 当前状态：v2.26.1（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 186/186，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.23.2（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、balanced 裁剪、非 gal 黑名单）
+- 本次会话：v2.19.0 → v2.26.1（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离）
 
 ## 1. 目标与边界
 
@@ -937,7 +937,7 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 ## 42. 会话交接总结（2026-11-23）
 
-### 42.1 当前状态
+### 42.1 当前状态（历史快照，v2.23.1）
 
 - 版本：**v2.23.1**；HEAD `d23493b`；线上 <https://xyykmkefke.github.io/galgame-library/>。
 - 全库 **8624 条**：Bangumi 主库 2485 + Bangumi 关联 110 + VNDB 扩展 6029。
@@ -986,16 +986,16 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.26.0 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.26.0 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.26.0 |
-| `README.md` | 「状态：**vN**」 | v2.26.0 |
-| `manifest.webmanifest` | `version` | 2.26.0 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v35 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.23.4 |
+| `package.json` | `version` | 2.26.1 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.26.1 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.26.1 |
+| `README.md` | 「状态：**vN**」 | v2.26.1 |
+| `manifest.webmanifest` | `version` | 2.26.1 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v36 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.26.1 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
-- `manifest.webmanifest` 的 `description` 含作品数（当前 8567），数据规模大幅变化时应同步修改。
+- `manifest.webmanifest` 的 `description` 含作品数（当前 7732），数据规模大幅变化时应同步修改。
 - 有数据文件变化时必须升级 `sw.js` 缓存名（vN+1）；仅改文档或元数据可不升。`verify.mjs` 的缓存断言从 `sw.js` 动态读取，升级后无需改测试。
 
 ### 43.2 发布流程
@@ -1298,3 +1298,11 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 本地复测：首卡 **231ms**（-21%），DOMContentLoaded **227ms**。
 - 线上复测：首卡 **3.0s**（网络较慢一次 4.8s），基线 8.7s；扩展库后台合并慢网约 13s，主库浏览与搜索不受阻。
 - 验收：`check-data` 0；`verify` 186/186；SW `yuc-gl-shell-v35`。
+
+## 55. 跨站缓存隔离与封面缓存上限（v2.26.1，2026-11-24）
+
+- 背景：番剧、轻小说、galgame 三站共用 `xyykmkefke.github.io`，此前 `activate` 删除同源全部缓存，打开本站会清掉另外两站的离线缓存。
+- 修复：`sw.js` 的 `activate` 改为只删除 `yuc-gl-` 前缀的旧缓存（同 `轻小说/sw.js` 的 `yuc-ln-` 方案）；封面缓存新增 `IMG_LIMIT = 500`，超出后按插入顺序删除最旧图片，避免长期浏览占满配额。
+- 版本：v2.26.1，SW `yuc-gl-shell-v36`；新增 MIT `LICENSE`。
+- 验收：`check-data` 0 问题；`verify` 186/186（页面版本 2.26.1）。
+- 注意：`番剧/sw.js` 仍是旧逻辑（`yuc-anime-shell-v24`），在其修复前，打开番剧仍会清掉本站缓存；两站都升级后跨站离线才互不影响。

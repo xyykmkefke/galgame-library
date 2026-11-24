@@ -2,7 +2,7 @@
 
 本地优先的 Galgame 浏览与游玩记录 PWA。内置 Bangumi「galgame」「视觉小说」「百合」「BL」「拔作」等日系 galgame 标签条目，并用 VNDB 补充评分、时长、制作人员与 5742 部日系扩展作品（含关系与开发商补全），用 Bangumi 关联条目补同系列 galgame，用月幕 Galgame 补充中文标题与外链，无账号、无后端。**已移除全部乙女向作品。**
 
-状态：**v2.26.0**
+状态：**v2.26.1**
 
 ## 功能
 
@@ -84,7 +84,7 @@ npm run verify   # Edge/Chrome + CDP 自动验收（186 项，含 Gist mock、�
 
 CI：`.github/workflows/ci.yml` 在 push / PR 时运行 `check-data` 与 `verify`（Linux 下自动使用系统 Chrome）。
 
-交接与会话记录：[HANDOVER.md](./HANDOVER.md)（字段、数据源、风险与后续建议）、[SESSION-LOG.md](./SESSION-LOG.md)（v2.19.0 → v2.23.2 会话过程与提交）。
+交接与会话记录：[HANDOVER.md](./HANDOVER.md)（字段、数据源、风险与后续建议）、[SESSION-LOG.md](./SESSION-LOG.md)（v2.19.0 → v2.26.1 会话过程与提交）。
 
 ## 部署
 
