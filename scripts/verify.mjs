@@ -609,7 +609,7 @@ async function main() {
     // 系列聚合：详情展示系列入口，点击后按系列筛选全库，非法系列链接自动忽略
     const seriesData = await cdp.evaluate(
       "(() => window.GL_SERIES ? [window.GL_SERIES.meta.series, window.GL_SERIES.meta.items] : null)()");
-    check('系列映射数据已加载', Array.isArray(seriesData) && seriesData[0] === 622 && seriesData[1] === 1775,
+    check('系列映射数据已加载', Array.isArray(seriesData) && seriesData[0] === 629 && seriesData[1] === 1797,
       JSON.stringify(seriesData));
     const seriesName = '秋之回忆';
     const seriesIds = await cdp.evaluate(

@@ -1,6 +1,6 @@
 # 会话日志 · 2026-11-23
 
-本日志记录 Galgame 库从 v2.19.0 到 v2.29.0 的完整会话过程。详细字段、风险与后续建议见 [HANDOVER.md](./HANDOVER.md) 第 36–62 节。
+本日志记录 Galgame 库从 v2.19.0 到 v2.29.1 的完整会话过程。详细字段、风险与后续建议见 [HANDOVER.md](./HANDOVER.md) 第 36–63 节。
 
 ## 起点
 
@@ -180,3 +180,10 @@
 - 月幕：444 条已匹配无别名，详情只有 `extensionName` 且已抓全，详情别名方向收口。
 - `check-data` 0；`verify` 187/187；SW `yuc-gl-shell-v43`；体积 2951KB；版本 2.29.0。
 - 发布：提交 `4c18c03`，tag `v2.29.0`（git HTTPS 本轮恢复，直接 push 成功）；CI 与 Pages 成功，线上复核版本 2.29.0、SW v43、7729 条、VNDB 匹配 1253、系列 622 / 1775。
+
+## 23. 时长补齐与关系边刷新（v2.29.1）
+
+- 新增 `enrich-vndb-lengths.mjs`：批量补 `length_minutes`，1253 条映射中 1006 条有时长（本轮补 292 条，247 条 VNDB 未标注）。注意 `length` 是 1–5 枚举，必须用 `length_minutes`。
+- `fetch-vndb-relations` 增量补 457 个新匹配 id：有边种子 3190 → 3368，边 5541 条；系列重建 622/1775 → 629/1797。
+- 效果：v2.29.0 新增的 467 条匹配不再在时长筛选与「我的时长」里落空。
+- `check-data` 0；`verify` 187/187；SW `yuc-gl-shell-v44`；体积 2952KB；版本 2.29.1。

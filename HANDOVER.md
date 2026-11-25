@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-24
-- 当前状态：v2.29.0（数据 7729 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
+- 当前状态：v2.29.1（数据 7729 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.29.0（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口）
+- 本次会话：v2.19.0 → v2.29.1（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口）
 
 ## 1. 目标与边界
 
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.29.0 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.0 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.0 |
-| `README.md` | 「状态：**vN**」 | v2.29.0 |
-| `manifest.webmanifest` | `version` | 2.29.0 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v43 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.0 |
+| `package.json` | `version` | 2.29.1 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.1 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.1 |
+| `README.md` | 「状态：**vN**」 | v2.29.1 |
+| `manifest.webmanifest` | `version` | 2.29.1 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v44 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.1 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 7729），数据规模大幅变化时应同步修改。
@@ -1407,3 +1407,11 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - `check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v43`；版本 2.29.0。
 - 经验：VNDB 全量标题索引是离线匹配的最佳入口（68k 部 / 14 万键，一次约 18 分钟），`title` 与 `aliases` 都要纳入；中文标题常只出现在 `titles` 的 `zh-Hans` 里。
 - 发布：提交 `4c18c03`，tag `v2.29.0`；本轮 git HTTPS 恢复，直接 push 成功（前一轮的 API 推送历史已通过 `reset --soft origin/main` 对齐，tree 一致）。CI 与 Pages 成功，线上复核 2.29.0 / SW v43 / 7729 条 / 匹配 1253 / 系列 622·1775。
+
+## 63. 时长补齐与关系边刷新（v2.29.1，2026-11-25）
+
+- 新增 `scripts/enrich-vndb-lengths.mjs`：按 VNDB id 批量（50 一批）补 `length_minutes`。映射 1253 条中 1006 条有时长，本轮补 292 条；247 条 VNDB 本身未标时长。
+- 坑：VNDB `/vn` 的 `length` 字段是 1–5 的枚举（very short…very long），不是分钟；必须用 `length_minutes`，否则会把《Parfait》写成 3 分钟。
+- `fetch-vndb-relations.mjs` 增量处理新匹配的 457 个 id：有边种子 3190 → **3368**，关系边 **5541 条**；`build-series.mjs` 重建后系列 **622 / 1775 → 629 / 1797**，强关系边 2268，体积 43.5KB。
+- 效果：v2.29.0 新增的 467 条匹配（A5 375 + 离线 92）不再在时长筛选里全部落空，`我的时长` 统计覆盖同步提升。
+- `check-data` 0 问题；`verify` 187/187（系列快照改为 629 / 1797，详情部数断言改为动态）；体积 2952KB；SW `yuc-gl-shell-v44`；版本 2.29.1。
