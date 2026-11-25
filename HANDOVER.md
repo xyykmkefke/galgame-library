@@ -1406,3 +1406,4 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 体积 2940 → **2951KB**（主库 806 / VNDB 140 / 月幕 210 / 扩展 1787 / 关联 8）。
 - `check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v43`；版本 2.29.0。
 - 经验：VNDB 全量标题索引是离线匹配的最佳入口（68k 部 / 14 万键，一次约 18 分钟），`title` 与 `aliases` 都要纳入；中文标题常只出现在 `titles` 的 `zh-Hans` 里。
+- 发布：提交 `4c18c03`，tag `v2.29.0`；本轮 git HTTPS 恢复，直接 push 成功（前一轮的 API 推送历史已通过 `reset --soft origin/main` 对齐，tree 一致）。CI 与 Pages 成功，线上复核 2.29.0 / SW v43 / 7729 条 / 匹配 1253 / 系列 622·1775。

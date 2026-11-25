@@ -179,3 +179,4 @@
 - `fetch-bgm-related` 新增 `--scan` / `--from-scan`：1094 个候选分流后确认放宽无收益；补回被 `--limit=500` 截断的 9 条真 gal，关联扩展 18 → 20，系列 601/1704 → 622/1775。
 - 月幕：444 条已匹配无别名，详情只有 `extensionName` 且已抓全，详情别名方向收口。
 - `check-data` 0；`verify` 187/187；SW `yuc-gl-shell-v43`；体积 2951KB；版本 2.29.0。
+- 发布：提交 `4c18c03`，tag `v2.29.0`（git HTTPS 本轮恢复，直接 push 成功）；CI 与 Pages 成功，线上复核版本 2.29.0、SW v43、7729 条、VNDB 匹配 1253、系列 622 / 1775。
