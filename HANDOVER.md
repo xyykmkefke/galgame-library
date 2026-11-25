@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-25
-- 当前状态：v2.29.2（数据 7729 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
+- 当前状态：v2.29.3（数据 7729 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.29.2（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口）
+- 本次会话：v2.19.0 → v2.29.3（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口）
 
 ## 1. 目标与边界
 
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.29.2 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.2 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.2 |
-| `README.md` | 「状态：**vN**」 | v2.29.2 |
-| `manifest.webmanifest` | `version` | 2.29.2 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v45 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.2 |
+| `package.json` | `version` | 2.29.3 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.3 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.3 |
+| `README.md` | 「状态：**vN**」 | v2.29.3 |
+| `manifest.webmanifest` | `version` | 2.29.3 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v46 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.3 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 7729），数据规模大幅变化时应同步修改。
@@ -1446,3 +1446,21 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 体积 2952 → **2994KB**（月幕数据 210 → 250KB）；系列 629 / 1797（新映射未改变分组）。
 - `check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v45`；版本 2.29.2。
 - 发布：提交 `17fbdf4`，tag `v2.29.2`；CI 首页因 runner 浏览器调试端口未就绪失败，`gh run rerun --failed` 后成功（非代码问题）；Pages 成功，线上复核 2.29.2 / SW v45 / VNDB 1264 / 月幕 1075（645 别名）。
+
+## 65. 月幕全量索引（v2.29.3，2026-11-25）
+
+### 65.1 全量索引与离线匹配
+
+- 发现月幕 `search-game` 在 `keyword` 为空时按入库时间倒序返回全部作品，`pageSize` 上限 20。
+- 新增 `scripts/fetch-ymgal-index.mjs`：31,693 部 / 1,585 页，800ms 间隔，约 26 分钟，缓存 `data/build/ymgal-index.json`（可续抓）。
+- 新增 `scripts/match-ymgal-index.mjs`：与 VNDB 索引同口径——主库原名 / 中文名 / Bangumi 别名 / VNDB 各语言标题 vs 月幕 `name` / `chineseName`，归一全等、年份差 ≤3、纯拉丁开发商词重合、同分歧义跳过；结果并入 `data/build/ymgal-alias.json`，沿用 `apply-ymgal-aliases`。
+- 结果：866 条未匹配可见条目只命中 **7 条**（花落冬阳、亿万年的星光、篱笆庄密闻、第九日、高考恋爱 100 天、天使的星期日、刻痕 II）。**结论：月幕搜索接口召回已接近完整，全量索引只能补漏；月幕收录规模本身有限（31,693 vs VNDB 68,371），此路线到此为止。**
+
+### 65.2 别名回填优化
+
+- 旧 `fetch-ymgal` 每次都会重抓「已匹配但无别名」的条目（约 437 条 × 800ms ≈ 6 分钟），因为缓存不记「确认无别名」。
+- 现在缓存写 `nad: 1` 标记，并输出前剔除；重复运行只处理新增条目。
+
+### 65.3 验收
+
+- 月幕匹配 1075 → **1082**（649 条有别名）；体积 2996KB；`check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v46`；版本 2.29.3。

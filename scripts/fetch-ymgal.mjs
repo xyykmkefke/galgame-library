@@ -257,7 +257,7 @@ async function main() {
 
   // 为已匹配条目补别名：详情接口的 extensionName 参与搜索，列表接口拿不到
   const aliasTodo = PRUNE ? [] : Object.keys(cache)
-    .filter((id) => cache[id] && cache[id].g && !Array.isArray(cache[id].al));
+    .filter((id) => cache[id] && cache[id].g && !Array.isArray(cache[id].al) && !cache[id].nad);
   console.log(`别名待补 ${aliasTodo.length} 条`);
   let aliased = 0;
   let detailFailed = 0;
@@ -268,7 +268,7 @@ async function main() {
       const game = await fetchDetail(v.g);
       const names = aliasNames(game, [v.n, v.cn]);
       v.al = names;
-      if (names.length) aliased += 1;
+      if (names.length) { aliased += 1; delete v.nad; } else { v.nad = 1; }
     } catch (err) {
       detailFailed += 1;
       console.warn(`  [${id}] 月幕 gid ${v.g} 详情失败：${err.message}`);
@@ -288,6 +288,7 @@ async function main() {
     const v = cache[id];
     if (!v || !v.g || !idSet.has(id)) return;
     const item = Object.assign({}, v);
+    delete item.nad;
     if (!Array.isArray(item.al) || !item.al.length) delete item.al;
     map[id] = item;
   });
