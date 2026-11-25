@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.30.0">
+<meta name="version" content="2.31.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -1605,6 +1605,12 @@
   .score { color: #f2f3f5; }
   .score.none { color: #b6bcc8; }
   .plat { color: #c6cbd5; }
+  /* 未发售：用虚线边框与偏冷的字色，与「暂无评分」区分开，避免误以为已能玩 */
+  .badge.upcoming {
+    color: #a8c6f0;
+    border: 1px dashed rgba(150, 185, 235, 0.55);
+    background: rgba(30, 42, 60, 0.85);
+  }
   .badge.status { display: inline-flex; align-items: center; gap: 5px; color: #c9ced8; }
   .badge.status::before {
     content: "";
@@ -2653,7 +2659,8 @@
         <button class="btn adv-filter" id="onlyMineBtn" type="button" aria-pressed="false" title="只显示已加入我的游玩的条目">只看已收藏</button>
         <button class="btn adv-filter" id="highScoreBtn" type="button" aria-pressed="false" title="只显示评分 8.0 及以上的游戏">高分 ≥8.0</button>
         <button class="btn adv-filter" id="hideMineBtn" type="button" aria-pressed="false" title="隐藏已加入我的游玩的条目，只看还没收藏的">隐藏已收藏</button>
-        <button class="btn adv-filter" id="recentBtn" type="button" aria-pressed="false" title="只看 2025 年起发售的新作（含尚未积累票数的作品）">新作 2025+</button>
+        <button class="btn adv-filter" id="recentBtn" type="button" aria-pressed="false" title="只看 2025 年起发售的新作（含尚未积累票数的作品），并自动按发售日排序">新作 2025+</button>
+        <button class="btn adv-filter" id="hideUpcomingBtn" type="button" aria-pressed="false" title="隐藏尚未发售的作品（只填了年份的占位条目）">隐藏未发售</button>
         <button class="btn" id="clearFiltersBtn" type="button" hidden title="清除平台、开发商、题材、状态与搜索等筛选条件">清除筛选</button>
         <button class="btn adv-filter" id="copyViewBtn" type="button" title="复制包含当前筛选与视图的链接">复制视图链接</button>
         <button class="btn adv-filter" id="viewsBtn" type="button" aria-expanded="false" title="保存或套用筛选组合">视图</button>
@@ -2755,7 +2762,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.30.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.31.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3002,6 +3009,13 @@
   var RECENT_LIST = (RECENT && RECENT.list) || [];
   // 「新作」筛选的起始日期，与 fetch-recent-index.mjs 的 --from 保持一致
   var RECENT_SINCE = (RECENT && RECENT.meta && RECENT.meta.filter && RECENT.meta.filter.releasedGte) || '2025-01-01';
+  // 「今天」按本地时区算，用于区分已发售与未发售（页面是纯静态，不能依赖构建时间）
+  var TODAY = (function () {
+    var d = new Date();
+    var m = String(d.getMonth() + 1);
+    var day = String(d.getDate());
+    return d.getFullYear() + '-' + (m.length < 2 ? '0' + m : m) + '-' + (day.length < 2 ? '0' + day : day);
+  })();
   // 数据量约 7000 条，一次加载，无需分层
   var fullReady = false;
   // 扩展库加载失败标记：失败时 fullReady 保持 false，才能提示「仅主库」并允许重试
@@ -3436,6 +3450,10 @@
     highScore: false,
     hideMine: false,
     recentOnly: false,
+    // 记录「新作」开关是否自动改过排序，关闭时要还原，避免覆盖用户手动选择
+    recentAutoSort: false,
+    // 隐藏尚未发售的作品（占位日期 2027/2028 会混进新作列表）
+    hideUpcoming: false,
     view: 'grid',
     group: false,
     groupBy: 'year',
@@ -3726,6 +3744,14 @@
     if (map.rn === '1' || map.rn === '0' || typeof map.rn === 'boolean') {
       state.recentOnly = map.rn === '1' || map.rn === true;
     }
+    if (map.hu === '1' || map.hu === '0' || typeof map.hu === 'boolean') {
+      state.hideUpcoming = map.hu === '1' || map.hu === true;
+    }
+    // 深链带 rn=1 时与按钮行为保持一致：默认排序会自动切到发售日，否则打开分享链接看到的还是那批有分老作
+    if (state.recentOnly && state.sort === 'score') {
+      state.sort = 'date';
+      state.recentAutoSort = true;
+    }
     if (map.v === 'grid' || map.v === 'list' || map.v === 'board') state.view = map.v;
     if (['recent', 'name', 'date'].indexOf(map.ms) >= 0) state.mineSort = map.ms;
     if (map.gb === 'year' || map.gb === 'added' || map.gb === 'status' || map.gb === 'series') {
@@ -3775,6 +3801,7 @@
         hs: state.highScore,
         hm: state.hideMine,
         rn: state.recentOnly,
+        hu: state.hideUpcoming,
         v: state.view,
         ms: state.mineSort,
         gb: state.group ? state.groupBy : '',
@@ -3982,6 +4009,11 @@
       recentBtn.setAttribute('aria-pressed', state.recentOnly ? 'true' : 'false');
       recentBtn.classList.toggle('primary', state.recentOnly);
     }
+    var hideUpcomingBtn = $('hideUpcomingBtn');
+    if (hideUpcomingBtn) {
+      hideUpcomingBtn.setAttribute('aria-pressed', state.hideUpcoming ? 'true' : 'false');
+      hideUpcomingBtn.classList.toggle('primary', state.hideUpcoming);
+    }
     document.querySelectorAll('.tab').forEach(function (b) {
       b.classList.toggle('active', b.dataset.tab === state.tab);
     });
@@ -4051,6 +4083,14 @@
     var s = String(dateStr || '');
     if (!s) return '';
     return /^\d{4}$/.test(s) ? s + ' 年' : s;
+  }
+
+  // 未发售判定：只有年份精度时按当年 1 月 1 日估算，宁可判成「已发售」也不误标
+  function isUpcoming(x) {
+    var s = String((x && x.d) || '');
+    if (!s) return false;
+    var norm = /^\d{4}$/.test(s) ? s + '-01-01' : s;
+    return norm > TODAY;
   }
 
   function renderYears() {
@@ -4397,6 +4437,12 @@
       list = list.filter(function (x) { return String(x.d || '').slice(0, 4) >= sinceYear; });
     }
 
+    // 隐藏未发售：96 条只填了年份的占位作品（2027/2028）会混在「新作」里，
+    // 它们既没有评分也没有实质内容，默认展示容易让人误以为「新作就这些」
+    if (state.hideUpcoming && state.tab === 'all') {
+      list = list.filter(function (x) { return !isUpcoming(x); });
+    }
+
     // 游玩状态过滤：我的游玩常驻；全库搜索时也可按状态缩小范围
     if (state.status !== 'all' && (state.tab === 'mine' || q)) {
       list = list.filter(function (x) {
@@ -4436,8 +4482,14 @@
     switch (state.sort) {
       case 'heat':
         return copy.sort(function (a, b) { return (b.h || 0) - (a.h || 0); });
+      // 发售日降序：同年内未发售的排后面，避免占位日期（如 2028）插在真正最新的作品前面
       case 'date':
-        return copy.sort(function (a, b) { return String(b.d).localeCompare(String(a.d)); });
+        return copy.sort(function (a, b) {
+          var au = isUpcoming(a) ? 1 : 0;
+          var bu = isUpcoming(b) ? 1 : 0;
+          if (au !== bu) return au - bu;
+          return String(b.d).localeCompare(String(a.d));
+        });
       case 'name':
         return copy.sort(function (a, b) { return String(a.cn || a.n).localeCompare(String(b.cn || b.n), 'zh'); });
       default:
@@ -4466,6 +4518,7 @@
     var score = x.s ? Number(x.s).toFixed(1) : '';
     var pls = (x.pl || []).slice(0, 2).join('/');
     var meta = [dateLabel(x.d), pls, (x.dev || [])[0]].filter(Boolean).join(' · ');
+    var upcoming = isUpcoming(x);
     var selecting = state.bulk && state.tab === 'mine';
     var selected = selecting && bulkSel[id];
     var phHue = Number(String(x.i).slice(-3)) % 360;
@@ -4485,6 +4538,8 @@
           '<span class="ph">' + escapeHtml(initial) + '</span>' +
           (score ? '<span class="badge score">' + score + '</span>' : '<span class="badge score none">暂无</span>') +
           (x.pl && x.pl[0] ? '<span class="badge plat">' + escapeHtml(x.pl[0]) + '</span>' : '') +
+          // 未发售标识：占位日期（2027/2028）与已发售作品视觉一致，容易误以为已经能玩
+          (upcoming ? '<span class="badge upcoming">未发售</span>' : '') +
           (entry
             ? '<span class="badge status s-' + escapeHtml(entry.s || 'done') + '">' + escapeHtml(STATUS[entry.s] || '看完') + '</span>'
             : '') +
@@ -4602,6 +4657,7 @@
     if (state.highScore) chips.push({ k: 'highScore', label: '评分', v: '≥8.0' });
     if (state.hideMine) chips.push({ k: 'hideMine', label: '范围', v: '隐藏已收藏' });
     if (state.recentOnly) chips.push({ k: 'recentOnly', label: '范围', v: '新作 2025+' });
+    if (state.hideUpcoming) chips.push({ k: 'hideUpcoming', label: '范围', v: '隐藏未发售' });
     if (!chips.length) {
       el.hidden = true;
       el.innerHTML = '';
@@ -4649,6 +4705,13 @@
       state.hideMine = false;
     } else if (key === 'recentOnly') {
       state.recentOnly = false;
+      // 移除 chip 等同关闭开关，自动改过的排序也要回退
+      if (state.recentAutoSort) {
+        state.sort = 'score';
+        state.recentAutoSort = false;
+      }
+    } else if (key === 'hideUpcoming') {
+      state.hideUpcoming = false;
     }
     syncControls();
     render();
@@ -4762,7 +4825,7 @@
       tab: v.tab, y: v.year, f: v.platform, dv: v.dev || '',
       sk: v.staffKind || 'sc', sv: v.staff || '', se: v.series || '',
       gr: v.genre || 'all', ln: v.length || 'all', o: v.sort, st: v.status, om: !!v.onlyMine, hs: !!v.highScore,
-      hm: !!v.hideMine, rn: !!v.recentOnly, v: v.view, ms: v.mineSort,
+      hm: !!v.hideMine, rn: !!v.recentOnly, hu: !!v.hideUpcoming, v: v.view, ms: v.mineSort,
       gb: v.group ? v.groupBy : '', q: v.q || ''
     });
     state.group = !!v.group;
@@ -4856,7 +4919,7 @@
       (state.genre !== 'all' ? 1 : 0) + (state.length !== 'all' ? 1 : 0) +
       (state.status !== 'all' ? 1 : 0) + (state.onlyMine ? 1 : 0) +
       (state.highScore ? 1 : 0) + (state.hideMine ? 1 : 0) +
-      (state.recentOnly ? 1 : 0) + (state.q.trim() ? 1 : 0);
+      (state.recentOnly ? 1 : 0) + (state.hideUpcoming ? 1 : 0) + (state.q.trim() ? 1 : 0);
     var activeFilters = filterCount - (state.status !== 'all' ? 1 : 0) -
       (state.q.trim() ? 1 : 0) + (state.sort !== 'score' ? 1 : 0);
     $('filterToggle').textContent = activeFilters ? '筛选 · ' + activeFilters : '筛选';
@@ -5038,7 +5101,7 @@
       $('detailNext').title = nextItem ? '下一部：' + (nextItem.cn || nextItem.n || '') : '已是最后一部';
     }
     var pairs = [
-      ['发售', item.d ? dateLabel(item.d) : '未知'],
+      ['发售', item.d ? dateLabel(item.d) + (isUpcoming(item) ? '（未发售）' : '') : '未知'],
       ['平台', item.pl && item.pl.length ? item.pl.join('、') : '未标注'],
       ['开发', item.dev && item.dev.length ? item.dev.join('、') : '未标注'],
       ['发行', item.pub || '未标注'],
@@ -6150,6 +6213,26 @@
   // 只看新作：2025 年起发售。默认排序是评分，新作票数少容易沉底，这个开关把它们挑出来
   $('recentBtn').addEventListener('click', function () {
     state.recentOnly = !state.recentOnly;
+    // 打开时若还是默认的「按评分」，自动切到「按发售日」：
+    // 66.5% 的新作没有评分，按评分排会把它们全部压到第 583 位之后，等于白点
+    if (state.recentOnly) {
+      if (state.sort === 'score') {
+        state.sort = 'date';
+        state.recentAutoSort = true;
+      }
+    } else if (state.recentAutoSort) {
+      // 关闭时只回退本开关自动改过的排序，用户手动选的排序不动
+      state.sort = 'score';
+      state.recentAutoSort = false;
+    }
+    syncControls();
+    render();
+    if (state.recentOnly) toast('已切换到新作，并按发售日排序');
+  });
+
+  // 隐藏未发售：只填了年份的占位条目（2027/2028）没有评分与实质内容，混在新作里噪声很大
+  $('hideUpcomingBtn').addEventListener('click', function () {
+    state.hideUpcoming = !state.hideUpcoming;
     syncControls();
     render();
   });
@@ -6169,6 +6252,8 @@
     state.highScore = false;
     state.hideMine = false;
     state.recentOnly = false;
+    state.recentAutoSort = false;
+    state.hideUpcoming = false;
     state.q = '';
     searchEl.value = '';
     syncControls();

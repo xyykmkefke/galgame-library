@@ -4,7 +4,7 @@
 
 import http from 'node:http';
 import { readFile, rm, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
@@ -228,7 +228,31 @@ async function main() {
     // ---------- 数据与首屏 ----------
     const total = await cdp.evaluate('(window.GL_DATA || []).filter((x) => x.k !== "off").length');
     const hiddenNonGal = await cdp.evaluate('(window.GL_DATA || []).filter((x) => x.k === "off").length');
-    check('默认隐藏非 gal 条目', hiddenNonGal === 35, '隐藏 ' + hiddenNonGal + ' 部');
+    // 数量不写死：黑名单会随数据核查增删，写死 35 这种字面量每次清理都要改断言。
+    // 改为校验「黑名单与主库的交集全部被隐藏」，以及 meta 计数与实际一致，
+    // 这样断言跟着数据走，但确实能抓到「标记漏了 / 没同步 meta」的解。
+    // 注意黑名单里可能有根本不存在的 id（如「火焰之纹章if 暗夜/白夜王国」被标签门槛先挡掉了），
+    // 所以比的是交集，不是黑名单长度。
+    const blocklistIds = (() => {
+      try {
+        const raw = readFileSync(path.join(ROOT, 'data', 'blocklist-main.json'), 'utf8');
+        return (JSON.parse(raw).items || []).map((x) => Number(x.i)).filter(Boolean);
+      } catch { return null; }
+    })();
+    const nonGalSynced = await cdp.evaluate(
+      '(() => { const d = window.GL_DATA || [];' +
+      ' return [[...new Set(d.filter((x) => x.k === "off").map((x) => x.i))],' +
+      ' (window.GL_META || {}).nonGalMarked || 0]; })()');
+    const offIds = new Set(nonGalSynced[0]);
+    let missHide = 0;
+    if (blocklistIds) {
+      const allIds = new Set(await cdp.evaluate('(window.GL_DATA || []).map((x) => x.i)'));
+      missHide = blocklistIds.filter((id) => allIds.has(id) && !offIds.has(id)).length;
+    }
+    check('默认隐藏非 gal 条目',
+      hiddenNonGal > 0 && nonGalSynced[0].length === nonGalSynced[1] && missHide === 0,
+      `隐藏 ${hiddenNonGal} 部 / meta 记 ${nonGalSynced[1]}` +
+      (blocklistIds ? ` / 黑名单 ${blocklistIds.length} 条，该隐藏未隐藏 ${missHide} 条` : ''));
     const metaCount = await cdp.evaluate('(window.GL_META || {}).count || 0');
     const extraCount = await cdp.evaluate('((window.GL_VNDB_EXTRA || {}).list || []).length');
     const bgmExtraCount = await cdp.evaluate('((window.GL_BGM_EXTRA || {}).list || []).length');
@@ -1437,8 +1461,61 @@ async function main() {
       "(() => { const el=document.getElementById('filterChips'); " +
       "return !!el && !el.hidden && /新作/.test(el.textContent); })()");
     check('新作筛选显示可移除的条件标签', recentChip === true);
+
+    // 关键：新作 66.5% 无评分，若仍按评分排序会被压到 580+ 位，等于白点。
+    // 打开开关必须自动切到按发售日，且首屏要出现无评分作品
+    const recentSort = await cdp.evaluate(
+      "(() => { const byId=new Map((window.GL_DATA||[]).map((x)=>[String(x.i),x])); " +
+      "const cards=[...document.querySelectorAll('.card')].map((c)=>byId.get(String(c.dataset.id))||{}); " +
+      "return { sort: document.getElementById('sort').value, cards: cards.length, " +
+      "noScore: cards.filter((x)=>!x.s).length, " +
+      "dates: cards.slice(0,12).map((x)=>String(x.d||'')) }; })()");
+    check('新作筛选自动切到按发售日排序', recentSort.sort === 'date', 'sort=' + recentSort.sort);
+    check('新作首屏含无评分作品（不被评分排序压到末尾）', recentSort.noScore > 0,
+      '首屏 ' + recentSort.cards + ' 张中无评分 ' + recentSort.noScore + ' 张');
+    check('新作首屏按发售日降序排列',
+      recentSort.dates.length > 1 &&
+      recentSort.dates.every((d, i) => i === 0 || String(recentSort.dates[i - 1]).localeCompare(d) >= 0),
+      recentSort.dates.slice(0, 4).join(' > '));
+
+    // 未发售：占位日期要有明确标识，且可一键隐藏
+    // 注意：按发售日降序后未发售作品被排到末尾，首屏看不到徽章，
+    // 因此先切到「2027 年」筛出全部未发售作品再验证标识
+    await cdp.evaluate("(() => { location.hash='#tab=all&y=2027&rn=0'; })()");
+    await sleep(500);
+    const upcoming = await cdp.evaluate(
+      "(() => { const cards=[...document.querySelectorAll('.card')]; " +
+      "const badges=document.querySelectorAll('.card .badge.upcoming').length; " +
+      "return { cards: cards.length, badges }; })()");
+    check('未发售作品在卡片上有标识', upcoming.cards > 0 && upcoming.badges === upcoming.cards,
+      upcoming.badges + ' 个标识 / ' + upcoming.cards + ' 张卡片');
+
+    await cdp.evaluate("(() => { location.hash='#tab=all&rn=0'; })()");
+    await sleep(400);
+    await cdp.evaluate("document.getElementById('recentBtn').click()");
+    await sleep(500);
+    const beforeHide = await cdp.evaluate("document.querySelectorAll('.card').length");
+    await cdp.evaluate("document.getElementById('hideUpcomingBtn').click()");
+    await sleep(500);
+    const afterHide = await cdp.evaluate(
+      "(() => { const cards=[...document.querySelectorAll('.card')]; " +
+      "const byId=new Map((window.GL_DATA||[]).map((x)=>[String(x.i),x])); " +
+      "const d=new Date(); const t=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); " +
+      "const norm=(v)=>String(v).length===4?v+'-01-01':String(v); " +
+      "const up=cards.filter((c)=>{const x=byId.get(String(c.dataset.id))||{};return norm(x.d||'')>t;}).length; " +
+      "return { cards: cards.length, up, pressed: document.getElementById('hideUpcomingBtn').getAttribute('aria-pressed') }; })()");
+    check('隐藏未发售开启后不再出现未发售作品',
+      afterHide.up === 0 && afterHide.pressed === 'true',
+      '剩余 ' + afterHide.cards + ' 张 / 未发售 ' + afterHide.up);
+    // 注意：默认排序下未发售作品本就在 583 位之后，首屏 240 张不含它们，
+    // 所以这里只校验「开关生效 + 徽章存在」，不校验数量减少
+    await cdp.evaluate("document.getElementById('hideUpcomingBtn').click()");
+    await sleep(300);
+
     await cdp.evaluate("document.getElementById('recentBtn').click()");
     await sleep(400);
+    const sortRestored = await cdp.evaluate("document.getElementById('sort').value");
+    check('关闭新作筛选还原自动改过的排序', sortRestored === 'score', 'sort=' + sortRestored);
 
     // 年份精度日期必须显示为「2028 年」，不能渲染成 2028-01-01 误导
     const yearItem = await cdp.evaluate(

@@ -47,6 +47,14 @@ for (const id of ids) {
 }
 
 console.log(`主库黑名单 ${ids.size} 条；将${UNMARK ? '撤销' : '标记'} ${changed} 条，已是目标状态 ${already} 条，主库缺失 ${missing} 条`);
+
+// meta.nonGalMarked 供统计面板展示，必须与实际 k="off" 数量一致，否则面板与列表自相矛盾
+const offCount = all.filter((x) => x.k === 'off').length;
+if (meta.nonGalMarked !== offCount) {
+  console.log(`meta.nonGalMarked ${meta.nonGalMarked} → ${offCount}`);
+  meta.nonGalMarked = offCount;
+}
+
 if (!APPLY) {
   console.log('当前为预演模式，未写入文件；确认后加 --apply。');
   process.exit(0);

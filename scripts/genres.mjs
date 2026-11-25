@@ -58,6 +58,35 @@ export function genreIdsFromNames(names = []) {
   return GENRES.filter((g) => hit.has(g.id)).map((g) => g.id);
 }
 
+// ---- 泛用标签抑制：题材只在「类型支持」时才采信 ----
+//
+// 背景：Bangumi 用户标签里「百合」「耽美」是高频泛用标签 —— 角色关系、画风、甚至作者偏好
+// 都会被标上，与作品玩法无关。实测全库 283 条游戏类型明显是 RPG/SRPG/ACT/TPS 的作品
+// 被标了 yur（如「火焰之纹章if」(SRPG)、「蓝色星原：旅谣」(ARPG)）。
+//
+// 规则：当游戏类型明确是可玩性主导（RPG/ACT/育成等）**且**不含任何文字冒险指示时，
+// 不采信这两个「关系类」标签；其余题材（科幻/悬疑/恐怖等属内容描述）不受影响。
+// SLG / SIM（模拟经营、策略、养成）也是可玩性主导，与 RPG/ACT 同类。
+// v2.31.0 排查发现原规则缺这两个词，导致「发明工坊2」(SLG)、「火山的女儿」(SIM 美少女模拟养成)
+// 等 11 条策略 / 模拟类仍被标成百合。含 AVG/ADV 的混合类型由 NARRATIVE_TYPE 自动放行。
+const HARD_TYPE = /(?:SRPG|RPG|SLG|SIM|FTG|TPS|FPS|ACT|育成|パズル|カード|アクション|シューティング|シミュレーション|音ゲー|リズム|ストラテジー|タワーディフェンス|模拟|模擬)/i;
+const NARRATIVE_TYPE = /(?:AVG|ADV|アドベンチャー|ノベル|ビジュアルノベル|视觉小说|視覚小説)/i;
+const RELATIONAL_GENRES = new Set(['yur', 'bl']);
+// 类型或标题本身就写明百合 / 耽美时，标注是正确的，必须保留
+const YURI_SIGNAL = /百合|yuri|ガールズラブ|女子(?:恋爱|愛)/i;
+const BL_SIGNAL = /耽美|boys\s*love|yaoi|ボーイズラブ/i;
+
+export function suppressRelationalGenres(ids = [], gameType = '', title = '') {
+  const g = String(gameType || '');
+  if (!g || !HARD_TYPE.test(g) || NARRATIVE_TYPE.test(g)) return ids;
+  const t = String(title || '');
+  return ids.filter((id) => {
+    if (!RELATIONAL_GENRES.has(id)) return true;
+    if (id === 'yur') return YURI_SIGNAL.test(g) || YURI_SIGNAL.test(t);
+    return BL_SIGNAL.test(g) || BL_SIGNAL.test(t);
+  });
+}
+
 export function genreIdsOf(metaTags, tags) {
   return genreIdsFromNames(rawTagNames(metaTags, tags));
 }

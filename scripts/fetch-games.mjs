@@ -13,7 +13,8 @@
 import { mkdir, writeFile, readFile, access, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { initials } from './build-pinyin.mjs';
-import { genreIdsFromNames, rawTagNames, tagVotes } from './genres.mjs';
+import { genreIdsFromNames, rawTagNames, tagVotes, suppressRelationalGenres } from './genres.mjs';
+import { fillGenres, tagNamesOf } from './genre-fill.mjs';
 
 const BASE = 'https://bgmapi.anibt.net';
 const START_YEAR = 1980;
@@ -51,8 +52,39 @@ async function loadOtomeMainIds() {
 
 // 原始标签可能是字符串或对象，统一取出名字再判断乙女
 const tagName = (t) => (typeof t === 'string' ? t : String((t && (t.name || t.n)) || ''));
-const isOtomeRaw = (rt) => Array.isArray(rt) && rt.some((t) => /乙女|otome/i.test(tagName(t)));
+// 「伪乙女ゲーム」「非乙女」「乙女要素なし」这类是用户用来表示「不是乙女向」的标签，
+// 直接按 /乙女/ 匹配会误杀（实测「火焰之纹章if 白夜王国」因此被整条丢掉）
+const OTOME_NEGATED = /伪乙女|偽乙女|非乙女|乙女(?:要素)?な?し|not\s*otome|non-?otome|乙女向(?:け)?では(?:ない|無い)/i;
+const isOtomeRaw = (rt) => Array.isArray(rt) && rt.some((t) => {
+  const name = tagName(t);
+  if (!/乙女|otome/i.test(name)) return false;
+  return !OTOME_NEGATED.test(name);
+});
 const pad = (n) => String(n).padStart(2, '0');
+
+// ---------- 题材补全用的 VNDB 标签（懒加载） ----------
+//
+// 题材要走三级回退，最后一档是 VNDB 官方标签。这两份文件加起来 1MB+，
+// 只有真的出现「无题材」条目时才值得读，所以做成一次性懒加载。
+let vndbTagCache = null;
+async function vndbTagsFor(bgmId) {
+  if (vndbTagCache === null) {
+    vndbTagCache = { map: {}, tags: {} };
+    try {
+      const vRaw = await readFile(path.join(rootDir, 'data', 'vndb.js'), 'utf8');
+      const m = JSON.parse(vRaw.match(/window\.GL_VNDB\s*=\s*(\{[\s\S]*\});/)[1]);
+      vndbTagCache.map = m.map || {};
+    } catch { /* 没有 VNDB 映射就跳过该档 */ }
+    try {
+      vndbTagCache.tags = JSON.parse(
+        await readFile(path.join(buildDir, 'main-vndb-tags.json'), 'utf8'),
+      );
+    } catch { /* 没抓过 VNDB 标签就跳过该档 */ }
+  }
+  const hit = vndbTagCache.map[String(bgmId)];
+  const vx = hit && hit.v;
+  return (vx && vndbTagCache.tags[vx]) || [];
+}
 
 // ---------- 平台归一 ----------
 
@@ -271,7 +303,9 @@ function slim(item) {
     h: item.collection?.collect || 0,
     img: item.images?.common || item.images?.large || '',
     py: initials(item.name_cn || infoValues(infobox, '中文名')[0] || item.name || ''),
-    tg: genreIdsFromNames(tagNames),
+    // 游戏类型先算出来：题材要据此抑制「百合 / 耽美」这类泛用关系标签
+    gt: joinValues(infoValues(infobox, '游戏类型')),
+    tg: [],
     pl: platformsFromPieces(pieces),
     plr: pieces,
     dev: splitValues(infoValues(infobox, '开发')),
@@ -279,7 +313,6 @@ function slim(item) {
     sc: joinValues(infoValues(infobox, '剧本')),
     ar: joinValues(infoValues(infobox, '原画')),
     mu: joinValues(infoValues(infobox, '音乐')),
-    gt: joinValues(infoValues(infobox, '游戏类型')),
     ns: Boolean(item.nsfw),
     rt: tagNames,
     gc: votes.galgame,
@@ -287,6 +320,12 @@ function slim(item) {
   };
   if (!out.pl.length) delete out.pl;
   if (!out.dev.length) delete out.dev;
+  // 题材在此统一生成：先按标签映射，再按游戏类型抑制泛用关系标签（百合 / 耽美）
+  out.tg = suppressRelationalGenres(
+    genreIdsFromNames(tagNames),
+    out.gt,
+    out.cn || out.n || '',
+  );
   return out;
 }
 
@@ -424,7 +463,23 @@ async function main() {
           if (Array.isArray(rest.pl) && !rest.pl.length) delete rest.pl;
 
           // 有原始标签时按最新映射重算题材；映射出乙女也跳过
-          const tg = rt ? genreIdsFromNames(rt) : (rest.tg || []);
+          // 同样按游戏类型抑制泛用关系标签（百合 / 耽美），与首次抓取口径一致
+          let tg = suppressRelationalGenres(
+            rt ? genreIdsFromNames(rt) : (rest.tg || []),
+            rest.gt || '',
+            rest.cn || rest.n || '',
+          );
+          // 标签映射不出题材时走三级回退（gt 关键词 -> VNDB 标签）。
+          // 这一步以前散在 enrich-main-genres-keywords / enrich-main-genres 两个脚本里，
+          // 重建时必然被本脚本覆盖，导致题材覆盖从 75% 掉到 57%。现在内联，重建即完整。
+          if (!tg.length) {
+            tg = fillGenres({
+              tagNames: tagNamesOf(rt),
+              gameType: rest.gt || '',
+              vndbTags: await vndbTagsFor(rest.i),
+              title: rest.cn || rest.n || '',
+            });
+          }
           if (tg.includes('oto')) continue;
           if (tg.length) rest.tg = tg;
           else delete rest.tg;
@@ -443,8 +498,95 @@ async function main() {
     await run(fills);
   }
 
+  // 保留白名单：当前 TAGS 抓不到、但人工确认是 galgame 的条目（如早期 ADV 标签时代的真 galgame）。
+  // 数据从 build 缓存里按 id 取回，重建时保留，避免每次重抓把它们静默丢掉。
+  const kept = [];
+  try {
+    const keepRaw = await readFile(path.join(rootDir, 'data', 'keep-main.json'), 'utf8');
+    const keepItems = JSON.parse(keepRaw).items || [];
+    if (keepItems.length) {
+      const want = new Set(keepItems.map((x) => String(x.i)));
+      const found = new Map();
+      const { readdirSync } = await import('node:fs');
+      for (const f of readdirSync(buildDir)) {
+        if (!f.endsWith('.json') || found.size === want.size) continue;
+        let arr;
+        try { arr = JSON.parse(await readFile(path.join(buildDir, f), 'utf8')); } catch { continue; }
+        if (!Array.isArray(arr)) continue;
+        for (const x of arr) {
+          const key = String(x && x.i);
+          if (!want.has(key) || found.has(key)) continue;
+          found.set(key, x);
+        }
+      }
+      for (const [key, item] of found) {
+        if (byId.has(Number(key))) continue;  // 正常抓到的不重复加
+        // 与主流程同一套字段整理：剔缓存字段、重算平台与题材
+        const { rt, plr, gc, wc, ...rest } = item;
+        if (Array.isArray(plr) && plr.length) rest.pl = platformsFromPieces(plr);
+        if (Array.isArray(rest.pl) && !rest.pl.length) delete rest.pl;
+        const tg = suppressRelationalGenres(
+          rt ? genreIdsFromNames(rt) : (rest.tg || []),
+          rest.gt || '',
+          rest.cn || rest.n || '',
+        );
+        const finalTg = tg.length ? tg : fillGenres({
+          tagNames: tagNamesOf(rt),
+          gameType: rest.gt || '',
+          vndbTags: await vndbTagsFor(rest.i),
+          title: rest.cn || rest.n || '',
+        });
+        if (finalTg.length) rest.tg = finalTg;
+        else delete rest.tg;
+        if (Array.isArray(rest.dev)) rest.dev = normalizeDevList(rest.dev);
+        if (Array.isArray(rest.dev) && !rest.dev.length) delete rest.dev;
+        byId.set(Number(key), rest);
+        kept.push(rest);
+      }
+      console.log(`保留白名单：${keepItems.length} 条，从缓存恢复 ${kept.length} 条`);
+    }
+  } catch { /* 白名单可选 */ }
+
   const all = [...byId.values()].filter((x) => !otomeMain.has(String(x.i)) && !(x.tg || []).includes('oto'));
   all.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
+
+  // 叠加补全成果：别名 / 开发商 / 剧本 / 原画 / 音乐这些字段靠 enrich 类脚本补充，
+  // 抓取桶里根本没有。不叠加的话每次重建都会把它们抹掉 —— 实测一次重建丢过
+  // 别名 877 条、音乐 305 条、原画 224 条、剧本 187 条、开发商 247 条。
+  // 快照由 scripts/snapshot-enrich.mjs 从当前主库抽出来，补完记得刷新。
+  let enrichApplied = 0;
+  try {
+    const snap = JSON.parse(await readFile(path.join(rootDir, 'data', 'enrich-main.json'), 'utf8'));
+    const items = snap.items || {};
+    const fields = Array.isArray(snap.fields) && snap.fields.length
+      ? snap.fields
+      : ['al', 'dev', 'sc', 'ar', 'mu'];
+    for (const x of all) {
+      const rec = items[String(x.i)];
+      if (!rec) continue;
+      let touched = false;
+      for (const f of fields) {
+        let v = rec[f];
+        if (v === undefined || v === null) continue;
+        if (Array.isArray(v) && !v.length) continue;
+        if (typeof v === 'string' && !v.trim()) continue;
+        // 抓取侧已经算出值时不覆盖：那是本次真实抓到的，比快照新
+        const cur = x[f];
+        const hasCur = Array.isArray(cur) ? cur.length > 0 : (cur !== undefined && cur !== null && String(cur).trim() !== '');
+        if (hasCur) continue;
+        // 快照里的题材是历史值，可能带着已修掉的误标（如 RPG 类被标成百合）。
+        // 搬回来之前必须过一遍抑制，否则重建等于把修正成果再撤销一次。
+        if (f === 'tg') {
+          v = suppressRelationalGenres(v, x.gt || '', x.cn || x.n || '');
+          if (!v.length) continue;
+        }
+        x[f] = v;
+        touched = true;
+      }
+      if (touched) enrichApplied += 1;
+    }
+    console.log(`补全快照：${Object.keys(items).length} 条，实际补回 ${enrichApplied} 条`);
+  } catch { /* 快照可选：首次跑或还没生成时跳过 */ }
 
   // 主库非 gal 标记：只加 k="off"，不删条目，保证重抓后仍默认隐藏
   let nonGal = new Set();

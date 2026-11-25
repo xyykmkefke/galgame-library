@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-23",
-  "note": "主库非 gal 黑名单：给 galgames.js 对应条目加 k=\"off\"，默认隐藏但保留收藏、详情与旧链接；不删除条目。",
+  "updatedAt": "2026-11-25",
+  "note": "非 gal 主库黑名单：手工核对（逆转裁判 / FF / GTA 等）+ 按类型规则筛出（无 galgame 标签的可玩性主导作品）。",
   "source": "2026-11-23 主库非 gal 核查（确认误收 36 条）",
   "items": [
     {
@@ -212,6 +212,1038 @@
       "title": "OZ大乱斗 梦想的传说",
       "group": "其它大厂非 gal",
       "reason": "RPG / ACT / SRPG / 音游等"
+    },
+    {
+      "i": 12056,
+      "title": "月姬格斗",
+      "group": "",
+      "reason": "类型「2D FTG」且无 galgame 标签"
+    },
+    {
+      "i": 18008,
+      "title": "月姬格斗 MBAACC",
+      "group": "",
+      "reason": "类型「2D FTG」且无 galgame 标签"
+    },
+    {
+      "i": 185662,
+      "title": "诺诺来自异世界",
+      "group": "",
+      "reason": "类型「2D横版动作类RPG」且无 galgame 标签"
+    },
+    {
+      "i": 13533,
+      "title": "寒蝉鸣泣之时：破晓时分",
+      "group": "",
+      "reason": "类型「3Dタッグ格闘アクション」且无 galgame 标签"
+    },
+    {
+      "i": 526988,
+      "title": "神树残响",
+      "group": "",
+      "reason": "类型「百合卡牌RPG」且无 galgame 标签"
+    },
+    {
+      "i": 444776,
+      "title": "闪耀星骑士",
+      "group": "",
+      "reason": "类型「変身ヒロイン×本格バトルRPG」且无 galgame 标签"
+    },
+    {
+      "i": 343288,
+      "title": "游戏王 大师决斗",
+      "group": "",
+      "reason": "类型「対戦型カードゲーム」且无 galgame 标签"
+    },
+    {
+      "i": 245593,
+      "title": "随性大冒险",
+      "group": "",
+      "reason": "类型「多数の個性的な仲間達と共に冒険や王国運営を繰り広げる長編RPG」且无 galgame 标签"
+    },
+    {
+      "i": 495563,
+      "title": "魔法少女リカとモンスター化ダンジョン",
+      "group": "",
+      "reason": "类型「悪堕ち・モンスター化特化RPG」且无 galgame 标签"
+    },
+    {
+      "i": 365720,
+      "title": "重返未来：1999",
+      "group": "",
+      "reason": "类型「复古神秘学卡牌策略RPG」且无 galgame 标签"
+    },
+    {
+      "i": 485660,
+      "title": "蓝色星原：旅谣",
+      "group": "",
+      "reason": "类型「幻想大世界ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 347210,
+      "title": "灵魂潮汐",
+      "group": "",
+      "reason": "类型「回合制卡牌RPG」且无 galgame 标签"
+    },
+    {
+      "i": 116054,
+      "title": "星光幻歌",
+      "group": "",
+      "reason": "类型「剣と魔法のファンタジーSRPG」且无 galgame 标签"
+    },
+    {
+      "i": 260583,
+      "title": "碧蓝航线 交汇的航迹",
+      "group": "",
+      "reason": "类型「進撃海戦RPG」且无 galgame 标签"
+    },
+    {
+      "i": 158006,
+      "title": "夏莉的工作室 Plus ～黄昏海洋的炼金术士～",
+      "group": "",
+      "reason": "类型「旧约炼金术RPG」且无 galgame 标签"
+    },
+    {
+      "i": 37563,
+      "title": "爱夏的工作室～黄昏大地的炼金术士～",
+      "group": "",
+      "reason": "类型「旧約錬金術RPG」且无 galgame 标签"
+    },
+    {
+      "i": 101939,
+      "title": "夏莉的工作室 ～黄昏海洋的炼金术士～",
+      "group": "",
+      "reason": "类型「旧約錬金術RPG」且无 galgame 标签"
+    },
+    {
+      "i": 234097,
+      "title": "永恒的赛妮亚-雨后的紫阳花-",
+      "group": "",
+      "reason": "类型「剧情向RPG」且无 galgame 标签"
+    },
+    {
+      "i": 718521,
+      "title": "琥珀末日",
+      "group": "",
+      "reason": "类型「卡牌RPG」且无 galgame 标签"
+    },
+    {
+      "i": 525135,
+      "title": "魔女之家MV",
+      "group": "",
+      "reason": "类型「恐怖、解谜、RPG」且无 galgame 标签"
+    },
+    {
+      "i": 109088,
+      "title": "灰烬之棺",
+      "group": "",
+      "reason": "类型「恐怖解谜RPG」且无 galgame 标签"
+    },
+    {
+      "i": 314605,
+      "title": "黑色花与红山羊",
+      "group": "",
+      "reason": "类型「恐怖解谜RPG」且无 galgame 标签"
+    },
+    {
+      "i": 330840,
+      "title": "マビノ×スタイル",
+      "group": "",
+      "reason": "类型「恋愛シミュレーションゲーム」且无 galgame 标签"
+    },
+    {
+      "i": 138202,
+      "title": "苏菲的炼金工房 ～不可思议书的炼金术士～",
+      "group": "",
+      "reason": "类型「錬金術再生RPG」且无 galgame 标签"
+    },
+    {
+      "i": 183563,
+      "title": "菲莉丝的工作室 ～不可思议之旅的炼金术士～",
+      "group": "",
+      "reason": "类型「錬金術再生RPG」且无 galgame 标签"
+    },
+    {
+      "i": 216522,
+      "title": "莉蒂与苏尔的工作室 ～不可思议绘画的炼金术士～",
+      "group": "",
+      "reason": "类型「錬金術再生RPG」且无 galgame 标签"
+    },
+    {
+      "i": 351423,
+      "title": "苏菲的炼金工房2 ～不可思议梦的炼金术士～",
+      "group": "",
+      "reason": "类型「錬金術再生RPG」且无 galgame 标签"
+    },
+    {
+      "i": 490077,
+      "title": "苏菲的炼金工房 ～不可思议书的炼金术士～DX",
+      "group": "",
+      "reason": "类型「錬金術再生RPG」且无 galgame 标签"
+    },
+    {
+      "i": 490095,
+      "title": "菲莉丝的工作室 ～不可思议旅的炼金术士～DX",
+      "group": "",
+      "reason": "类型「錬金術再生RPG」且无 galgame 标签"
+    },
+    {
+      "i": 490096,
+      "title": "莉迪＆苏瑞的炼金工房 ～不可思议绘画的炼金术士～ DX",
+      "group": "",
+      "reason": "类型「錬金術再生RPG」且无 galgame 标签"
+    },
+    {
+      "i": 133630,
+      "title": "无夜之国",
+      "group": "",
+      "reason": "类型「美少女従魔RPG」且无 galgame 标签"
+    },
+    {
+      "i": 190877,
+      "title": "无夜之国2 ～新月的新娘～",
+      "group": "",
+      "reason": "类型「美少女従魔RPG」且无 galgame 标签"
+    },
+    {
+      "i": 52775,
+      "title": "极限凸骑 怪物卡片对决",
+      "group": "",
+      "reason": "类型「萌えカード対戦ゲーム」且无 galgame 标签"
+    },
+    {
+      "i": 384971,
+      "title": "沙石镇时光",
+      "group": "",
+      "reason": "类型「模拟经营RPG」且无 galgame 标签"
+    },
+    {
+      "i": 208779,
+      "title": "魔法纪录 魔法少女小圆外传",
+      "group": "",
+      "reason": "类型「魔法少女☆RPG」且无 galgame 标签"
+    },
+    {
+      "i": 18761,
+      "title": "魔塔大陆2 少女们于世界中回响的创造诗",
+      "group": "",
+      "reason": "类型「少女调和RPG」且无 galgame 标签"
+    },
+    {
+      "i": 126329,
+      "title": "万亿魔坏神",
+      "group": "",
+      "reason": "类型「死に際に想いを託すRPG」且无 galgame 标签"
+    },
+    {
+      "i": 384062,
+      "title": "魔物娘TD",
+      "group": "",
+      "reason": "类型「塔防RPG」且无 galgame 标签"
+    },
+    {
+      "i": 544941,
+      "title": "弹丸论破Remembrance：绝望的记忆与希望的纪念",
+      "group": "manual",
+      "reason": "类型「同人游戏、悬疑、推理」不含任何文字冒险指示，属推理同人游戏；系列正传玩法为高速推理动作"
+    },
+    {
+      "i": 5205,
+      "title": "腥风血雨只一人",
+      "group": "",
+      "reason": "类型「同人RPG」且无 galgame 标签"
+    },
+    {
+      "i": 700430,
+      "title": "神刀戦姫 ―プリンセス・ブレイド―",
+      "group": "",
+      "reason": "类型「武家の末裔×近未来学園×百合（ガールズラブ）で送る、可愛いヒロインたちとの刀剣RPG」且无 galgame 标签"
+    },
+    {
+      "i": 2250,
+      "title": "罗罗娜的工作室 ～阿兰德的炼金术士～",
+      "group": "",
+      "reason": "类型「新约炼金术RPG」且无 galgame 标签"
+    },
+    {
+      "i": 85877,
+      "title": "新・罗罗娜的工作室 起始的物语～阿兰德的炼金术士～",
+      "group": "",
+      "reason": "类型「新约炼金术RPG」且无 galgame 标签"
+    },
+    {
+      "i": 211149,
+      "title": "结城友奈是勇者 花结的闪光",
+      "group": "",
+      "reason": "类型「勇者きらめきRPG」且无 galgame 标签"
+    },
+    {
+      "i": 696992,
+      "title": "美子酱的日常训练计划",
+      "group": "",
+      "reason": "类型「育成シミュレーションゲーム」且无 galgame 标签"
+    },
+    {
+      "i": 1268,
+      "title": "伊苏 -纳比斯汀的方舟- 特别版",
+      "group": "",
+      "reason": "类型「A·RPG」且无 galgame 标签"
+    },
+    {
+      "i": 724,
+      "title": "密特罗德 零点任务",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 962,
+      "title": "恶魔城 苍月十字架",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 15927,
+      "title": "闪乱神乐 -少女们的真影-",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 48002,
+      "title": "闪乱神乐爆裂 -红莲的少女们-",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 92119,
+      "title": "闪乱神乐2 -真红-",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 105970,
+      "title": "超次元ACT 海王星U",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 108440,
+      "title": "闪乱神乐 夏日对决 -少女们的选择-",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 168122,
+      "title": "拉比哩比",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 172168,
+      "title": "崩坏3",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 214013,
+      "title": "Fate/EXTELLA LINK",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 283648,
+      "title": "白色钢铁X 离去的刚巴尔特",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 368888,
+      "title": "炎姬",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 529278,
+      "title": "Awaria",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 644568,
+      "title": "恸哭幽光",
+      "group": "",
+      "reason": "类型「ACT」且无 galgame 标签"
+    },
+    {
+      "i": 394427,
+      "title": "SAMURAI MAIDEN -武士少女-",
+      "group": "",
+      "reason": "类型「ACT (ガールズ侍アクション)」且无 galgame 标签"
+    },
+    {
+      "i": 49210,
+      "title": "闪乱神乐 忍者对决 -少女们的证明-",
+      "group": "",
+      "reason": "类型「ACT(爆乳Hyper Battle)」且无 galgame 标签"
+    },
+    {
+      "i": 744,
+      "title": "召唤之夜 铸剑物语2",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 747,
+      "title": "召唤之夜 铸剑物语",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 1057,
+      "title": "永远的伊苏2",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 38785,
+      "title": "召唤之夜 铸剑物语 起源之石",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 126258,
+      "title": "永恒的赛妮亚",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 193168,
+      "title": "仙剑奇侠传七",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 253721,
+      "title": "死亡或学校",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 256609,
+      "title": "天命奇御",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 298365,
+      "title": "轩辕剑柒",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 308536,
+      "title": "地平线 西之绝境",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 332512,
+      "title": "坎特伯雷公主与骑士唤醒冠军之剑的奇幻冒险",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 405362,
+      "title": "神之天平 ～活着的证明～ Revision",
+      "group": "",
+      "reason": "类型「ARPG」且无 galgame 标签"
+    },
+    {
+      "i": 409394,
+      "title": "神剑少女战记",
+      "group": "",
+      "reason": "类型「ARPG (運命さえ\"クラフト\"する、アールピージー)」且无 galgame 标签"
+    },
+    {
+      "i": 309950,
+      "title": "枪火重生",
+      "group": "",
+      "reason": "类型「ARPG、Roguelite」且无 galgame 标签"
+    },
+    {
+      "i": 171048,
+      "title": "世界树迷宫V 悠久神话的尽头",
+      "group": "",
+      "reason": "类型「DRPG」且无 galgame 标签"
+    },
+    {
+      "i": 279054,
+      "title": "加雷利亚的地下迷宫与魔女的旅团",
+      "group": "",
+      "reason": "类型「DRPG」且无 galgame 标签"
+    },
+    {
+      "i": 2825,
+      "title": "光环2",
+      "group": "",
+      "reason": "类型「FPS」且无 galgame 标签"
+    },
+    {
+      "i": 50358,
+      "title": "战地1942",
+      "group": "",
+      "reason": "类型「FPS」且无 galgame 标签"
+    },
+    {
+      "i": 3507,
+      "title": "永恒格斗零",
+      "group": "",
+      "reason": "类型「FTG」且无 galgame 标签"
+    },
+    {
+      "i": 10750,
+      "title": "海猫鸣泣之时-黄金梦想曲",
+      "group": "",
+      "reason": "类型「FTG」且无 galgame 标签"
+    },
+    {
+      "i": 79581,
+      "title": "侍魂",
+      "group": "",
+      "reason": "类型「FTG」且无 galgame 标签"
+    },
+    {
+      "i": 80841,
+      "title": "NITRO+明星大乱斗",
+      "group": "",
+      "reason": "类型「FTG」且无 galgame 标签"
+    },
+    {
+      "i": 18708,
+      "title": "幻象破灭者",
+      "group": "",
+      "reason": "类型「FTG 美少女対戦格闘ゲーム」且无 galgame 标签"
+    },
+    {
+      "i": 401423,
+      "title": "废都物语重制版",
+      "group": "",
+      "reason": "类型「JRPG」且无 galgame 标签"
+    },
+    {
+      "i": 85232,
+      "title": "天涯明月刀",
+      "group": "",
+      "reason": "类型「MMORPG」且无 galgame 标签"
+    },
+    {
+      "i": 311088,
+      "title": "梦幻之星Online2 新起源",
+      "group": "",
+      "reason": "类型「MMORPG」且无 galgame 标签"
+    },
+    {
+      "i": 3251,
+      "title": "龙腾世纪：起源",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 7564,
+      "title": "仙剑奇侠传五",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 8267,
+      "title": "超次元游戏 海王星",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 11436,
+      "title": "托托莉的工作室 阿兰德的炼金术士2",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 12460,
+      "title": "龙腾世纪2",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 13972,
+      "title": "质量效应",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 19494,
+      "title": "梅露露的工作室 阿兰德的炼金术士3",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 20758,
+      "title": "诺拉和时间工房：雾之森的魔女",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 21555,
+      "title": "东方苍神缘起",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 22302,
+      "title": "超次元游戏 海王星MKⅡ",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 22516,
+      "title": "露赛提娅～道具屋经营妙方～",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 33706,
+      "title": "粘土人世纪",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 37150,
+      "title": "阿加雷斯特战记",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 38755,
+      "title": "神次元游戏 海王星V",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 39773,
+      "title": "重装机兵2 重制版",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 44771,
+      "title": "轩辕剑六：凤凌长空千载云",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 59079,
+      "title": "古剑奇谭二 永夜初晗凝碧天",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 75003,
+      "title": "帽子世界",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 82492,
+      "title": "妖精剑士F",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 83093,
+      "title": "超次次元游戏海王星 Re;Birth1",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 99398,
+      "title": "超次次元游戏海王星 Re;Birth2",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 101989,
+      "title": "东方年代记 双姬蓬莱物语",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 105971,
+      "title": "新次元游戏 海王星VII",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 111296,
+      "title": "轩辕剑外传：穹之扉",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 113854,
+      "title": "神次次元游戏海王星 Re;Birth3",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 119717,
+      "title": "仙剑奇侠传六",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 166873,
+      "title": "向美好的世界献上祝福！in the life",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 202657,
+      "title": "不可思议之城的海伦",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 211129,
+      "title": "新次元游戏海王星VIIR",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 211605,
+      "title": "数码宝贝物语 网络侦探 骇客记忆",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 217844,
+      "title": "闪耀幻想曲",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 261339,
+      "title": "太吾绘卷：天幕心帷",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 264804,
+      "title": "露露娅的工作室 ～阿兰德的炼金术士4～",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 265831,
+      "title": "三角符文",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 283338,
+      "title": "莱莎的炼金工房 ～常暗女王与秘密藏身处～",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 285891,
+      "title": "新约帽子世界",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 301906,
+      "title": "永冻之壳",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 304282,
+      "title": "侠之道",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 310997,
+      "title": "Fate/EXTRA Record",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 314734,
+      "title": "勇士食堂",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 315640,
+      "title": "迷雾列车少女～从雾之世界的车窗～",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 336128,
+      "title": "Deep one 幻梦境",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 349459,
+      "title": "来自星尘",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 354664,
+      "title": "星之海洋6：神圣力量",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 365470,
+      "title": "超次元海王星 姐妹VS姐妹",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 368785,
+      "title": "异度神剑3",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 401192,
+      "title": "莱莎的炼金工房3 ～终结之炼金术士与秘密钥匙～",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 453037,
+      "title": "Little Goody Two Shoes",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 476502,
+      "title": "剧透太多的RPG - 最后的敌人的真实身份是勇者的爸爸 -",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 487511,
+      "title": "星塔旅人",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 491259,
+      "title": "魔法少女小圆 Magia Exedra",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 538882,
+      "title": "花火与幽灵少女",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 563393,
+      "title": "女神异闻录4 Revival",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 700899,
+      "title": "状態異常 =Abnormal Condition= ～酩酊/憑依/改変/苗床編～",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 715500,
+      "title": "硝子の庭",
+      "group": "",
+      "reason": "类型「RPG」且无 galgame 标签"
+    },
+    {
+      "i": 305593,
+      "title": "东方归言录",
+      "group": "",
+      "reason": "类型「RPG 卡牌」且无 galgame 标签"
+    },
+    {
+      "i": 193300,
+      "title": "神舞幻想",
+      "group": "",
+      "reason": "类型「RPG游戏」且无 galgame 标签"
+    },
+    {
+      "i": 5839,
+      "title": "风色幻想3～罪与罚的镇魂歌～",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 5965,
+      "title": "魔界战记",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 122519,
+      "title": "火焰之纹章if",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 130134,
+      "title": "火焰之纹章if 暗夜王国",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 130136,
+      "title": "火焰之纹章if 白夜王国",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 254793,
+      "title": "冻京NECRO SUICIDE MISSION",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 258401,
+      "title": "金庸群侠传X",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 448593,
+      "title": "大恶人千金 枭雌百合战记",
+      "group": "",
+      "reason": "类型「SRPG」且无 galgame 标签"
+    },
+    {
+      "i": 52396,
+      "title": "魔法少女小圆 TPS FEATURING 晓美焰",
+      "group": "",
+      "reason": "类型「TPS」且无 galgame 标签"
+    },
+    {
+      "i": 239945,
+      "title": "全境封锁2",
+      "group": "",
+      "reason": "类型「TPS」且无 galgame 标签"
+    },
+    {
+      "i": 512764,
+      "title": "近畿灵务局",
+      "group": "",
+      "reason": "类型「TPS」且无 galgame 标签"
+    },
+    {
+      "i": 236488,
+      "title": "偶像大师 闪耀色彩",
+      "group": "",
+      "reason": "类型「アイドル育成&ライブ対戦」且无 galgame 标签"
+    },
+    {
+      "i": 99290,
+      "title": "偶像大师： 全力以赴",
+      "group": "manual",
+      "reason": "类型「アイドル育成ゲーム」为偶像养成，核心为养成与音游，非文字阅读；AVG 标签系用户误挂"
+    },
+    {
+      "i": 29048,
+      "title": "魔法少女奈叶As 携带版-命运齿轮-",
+      "group": "",
+      "reason": "类型「アクション」且无 galgame 标签"
+    },
+    {
+      "i": 421372,
+      "title": "恸哭奇机",
+      "group": "",
+      "reason": "类型「アクションRPG」且无 galgame 标签"
+    },
+    {
+      "i": 225210,
+      "title": "子弹少女 幻想曲",
+      "group": "",
+      "reason": "类型「アクションシューティング」且无 galgame 标签"
+    },
+    {
+      "i": 559673,
+      "title": "PRECIOUS -翔为何挑战神明-",
+      "group": "",
+      "reason": "类型「コメディバトルアクション見るゲ」且无 galgame 标签"
+    },
+    {
+      "i": 449432,
+      "title": "蕾斯莱莉娅娜的炼金工房 ~忘却的炼金术与极夜的解放者~",
+      "group": "",
+      "reason": "类型「シネマティック錬金術RPG」且无 galgame 标签"
+    },
+    {
+      "i": 225669,
+      "title": "淫乱娘偶像48！～淫乱娘偶像化计划～",
+      "group": "",
+      "reason": "类型「セックスしてアイドルをプロデュースするRPG」且无 galgame 标签"
+    },
+    {
+      "i": 244274,
+      "title": "勇者海王星 世界啊，宇宙啊，刮目相看吧！！终极RPG宣言！！",
+      "group": "",
+      "reason": "类型「ねぷねぷ2D RPG」且无 galgame 标签"
+    },
+    {
+      "i": 153026,
+      "title": "激次元组合-布兰海王星VS僵尸军团",
+      "group": "",
+      "reason": "类型「ねぷねぷマルチアクション」且无 galgame 标签"
+    },
+    {
+      "i": 195741,
+      "title": "扉の伝説～風のつばさ～",
+      "group": "",
+      "reason": "类型「ハートフルファンタジーRPG」且无 galgame 标签"
+    },
+    {
+      "i": 303627,
+      "title": "突击莉莉Last Bullet",
+      "group": "",
+      "reason": "类型「バトルRPG」且无 galgame 标签"
+    },
+    {
+      "i": 190880,
+      "title": "蓝色反射 在幻影中起舞的少女之剑",
+      "group": "",
+      "reason": "类型「ヒロイックRPG」且无 galgame 标签"
+    },
+    {
+      "i": 226315,
+      "title": "圣剑勇者的H英雄传",
+      "group": "",
+      "reason": "类型「ヤリまくりRPG」且无 galgame 标签"
+    },
+    {
+      "i": 75992,
+      "title": "ラブライブ! School idol paradise Vol.1 Printemps unit",
+      "group": "",
+      "reason": "类型「ライブクリエイトアクション」且无 galgame 标签"
+    },
+    {
+      "i": 317328,
+      "title": "D4DJ Groovy Mix 电音派对",
+      "group": "",
+      "reason": "类型「リズムゲーム」且无 galgame 标签"
     }
   ]
 }
