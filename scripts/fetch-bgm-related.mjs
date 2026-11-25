@@ -7,6 +7,7 @@
 // 已存在于主库的 id 与标题全部跳过。输出 data/bgm-extra.js，页面运行时并入全库。
 
 import { readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { initials } from './build-pinyin.mjs';
 import { genreIdsFromNames, rawTagNames } from './genres.mjs';
@@ -16,8 +17,14 @@ const OUT_FILE = path.join(ROOT, 'data', 'bgm-extra.js');
 const OTOME_FILE = path.join(ROOT, 'data', 'blocklist-otome.json');
 const BASE = 'https://bgmapi.anibt.net';
 const UA = 'yuc-galgame-list/1.0';
-const SEEDS = Number((process.argv.find((a) => a.startsWith('--seeds=')) || '').slice(8)) || 500;
+const SEEDS = Number((process.argv.find((a) => a.startsWith('--seeds=')) || '').slice(8)) || (process.argv.includes('--scan') ? 100000 : 500);
 const LIMIT = Number((process.argv.find((a) => a.startsWith('--limit=')) || '').slice(8)) || 500;
+const SCAN = process.argv.includes('--scan');
+const FROM_SCAN = process.argv.includes('--from-scan');
+const REFRESH_SCAN = process.argv.includes('--refresh');
+const HEADS_CACHE = path.join(ROOT, 'data', 'build', 'bgm-related-heads.json');
+const DETAILS_CACHE = path.join(ROOT, 'data', 'build', 'bgm-related-details.json');
+const SCAN_OUT = path.join(ROOT, 'data', 'build', 'bgm-related-scan.json');
 const CONCURRENCY = Number((process.argv.find((a) => a.startsWith('--concurrency=')) || '').slice(14)) || 4;
 const DELAY_MS = 250;
 
@@ -34,6 +41,23 @@ function isGalLike(item) {
   if (tg.includes('oto')) return false;
   if (!GT_ALLOW.test(gt) || GT_REJECT.test(gt)) return false;
   return tg.includes('rom') || tg.includes('bl') || GT_ROMANCE.test(gt);
+}
+
+// --scan 用：把拒绝原因拆开，便于评估放宽哪一条最划算
+function classify(item, otomeBgm) {
+  const tg = item.tg || [];
+  if (otomeBgm.has(String(item.i)) || tg.includes('oto')) return 'otome';
+  const missing = [];
+  if (!item.d) missing.push('date');
+  if (!item.img) missing.push('cover');
+  if (!item.dev) missing.push('dev');
+  if (!item.pl) missing.push('platform');
+  if (missing.length) return 'missing:' + missing.join('+');
+  const gt = item.gt || '';
+  if (!GT_ALLOW.test(gt)) return 'gt-not-adv';
+  if (GT_REJECT.test(gt)) return 'gt-reject';
+  if (tg.includes('rom') || tg.includes('bl') || GT_ROMANCE.test(gt)) return 'accept';
+  return 'no-romance-tag';
 }
 
 // 固定并发池：Bangumi 镜像单请求约 2s，串行 500 条太慢
@@ -241,24 +265,127 @@ async function main() {
   console.log(`种子 ${seeds.length} 条，开始读取关联条目`);
 
   const candidates = new Map();
-  let seedDone = 0;
-  await mapLimit(seeds, CONCURRENCY, async (seed) => {
-    const list = await getJson(`/v0/subjects/${seed.i}/subjects`);
-    if (Array.isArray(list)) {
-      list.forEach((r) => {
-        if (!r || Number(r.type) !== 4) return;
-        const id = String(r.id);
-        if (mainIds.has(id)) return;
-        const cur = candidates.get(id) || { id: Number(r.id), count: 0, name: r.name || '' };
-        cur.count += 1;
-        candidates.set(id, cur);
-      });
+  const cachedHeads = (SCAN || FROM_SCAN) && !REFRESH_SCAN && existsSync(HEADS_CACHE)
+    ? JSON.parse(await readFile(HEADS_CACHE, 'utf8'))
+    : null;
+  if (cachedHeads) {
+    Object.entries(cachedHeads).forEach(([id, v]) => candidates.set(id, v));
+    console.log(`复用关联候选缓存：${candidates.size} 个`);
+  } else {
+    console.log(`种子 ${seeds.length} 条，开始读取关联条目`);
+    let seedDone = 0;
+    await mapLimit(seeds, CONCURRENCY, async (seed) => {
+      const list = await getJson(`/v0/subjects/${seed.i}/subjects`);
+      if (Array.isArray(list)) {
+        list.forEach((r) => {
+          if (!r || Number(r.type) !== 4) return;
+          const id = String(r.id);
+          if (mainIds.has(id)) return;
+          const cur = candidates.get(id) || { id: Number(r.id), count: 0, name: r.name || '' };
+          cur.count += 1;
+          candidates.set(id, cur);
+        });
+      }
+      seedDone += 1;
+      if (seedDone % 50 === 0 || seedDone === seeds.length) {
+        console.log(`  关联种子 ${seedDone}/${seeds.length}，候选 ${candidates.size}`);
+      }
+    });
+    if (SCAN) await writeFile(HEADS_CACHE, JSON.stringify(Object.fromEntries(candidates)), 'utf8');
+  }
+
+  if (SCAN) {
+    const details = !REFRESH_SCAN && existsSync(DETAILS_CACHE)
+      ? JSON.parse(await readFile(DETAILS_CACHE, 'utf8'))
+      : {};
+    const all = [...candidates.values()].sort((a, b) => b.count - a.count);
+    const todo = all.filter((c) => !details[String(c.id)]);
+    console.log(`候选 ${all.length} 个，详情已缓存 ${all.length - todo.length}，待抓 ${todo.length}`);
+    let scanDone = 0;
+    await mapLimit(todo, CONCURRENCY, async (c) => {
+      try {
+        const full = await getJson(`/v0/subjects/${c.id}`);
+        if (!full || Number(full.type) !== 4) {
+          details[String(c.id)] = { ok: false, reason: 'not-game' };
+        } else {
+          const item = slim(full);
+          details[String(c.id)] = { ok: true, item, reason: classify(item, otomeBgm) };
+        }
+      } catch (err) {
+        details[String(c.id)] = { ok: false, reason: 'fetch-failed', error: err.message };
+      }
+      scanDone += 1;
+      if (scanDone % 100 === 0) {
+        await writeFile(DETAILS_CACHE, JSON.stringify(details), 'utf8');
+        console.log(`  详情 ${scanDone}/${todo.length}`);
+      }
+    });
+    await writeFile(DETAILS_CACHE, JSON.stringify(details), 'utf8');
+
+    const buckets = {};
+    const accepted = [];
+    const nearMiss = [];
+    for (const c of all) {
+      const d = details[String(c.id)];
+      if (!d) continue;
+      const reason = d.reason || 'unknown';
+      buckets[reason] = (buckets[reason] || 0) + 1;
+      if (!d.item) continue;
+      const item = d.item;
+      const keys = new Set();
+      addKeys(keys, item.n);
+      addKeys(keys, item.cn);
+      const dup = [...keys].some((k) => titleKeys.has(k));
+      const row = {
+        id: item.i, name: item.n, cn: item.cn, d: item.d, h: item.h,
+        gt: item.gt, tg: item.tg, dev: item.dev, dup, count: c.count,
+      };
+      if (reason === 'accept') accepted.push(row);
+      else if (reason === 'gt-not-adv' || reason === 'no-romance-tag') nearMiss.push(row);
     }
-    seedDone += 1;
-    if (seedDone % 50 === 0 || seedDone === seeds.length) {
-      console.log(`  关联种子 ${seedDone}/${seeds.length}，候选 ${candidates.size}`);
-    }
-  });
+    const report = { generatedAt: new Date().toISOString(), candidates: all.length, buckets, accepted, nearMiss };
+    await writeFile(SCAN_OUT, JSON.stringify(report), 'utf8');
+    console.log('分类：' + Object.entries(buckets).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(' · '));
+    console.log(`符合当前规则 ${accepted.length} 条（其中与主库重名 ${accepted.filter((x) => x.dup).length}）`);
+    console.log(`近似候选 ${nearMiss.length} 条`);
+    nearMiss.sort((a, b) => (b.h || 0) - (a.h || 0)).slice(0, 25).forEach((x) =>
+      console.log(`  ~[${x.id}] ${x.cn || x.name} | ${x.gt || '无类型'} | ${(x.tg || []).join(',') || '无题材'} | h${x.h || 0}`));
+    console.log(`输出：${SCAN_OUT}`);
+    return;
+  }
+
+  if (FROM_SCAN) {
+    // 用 --scan 的详情缓存直接生成扩展库，不再发网络请求
+    const details = existsSync(DETAILS_CACHE) ? JSON.parse(await readFile(DETAILS_CACHE, 'utf8')) : {};
+    const rows = Object.values(details).filter((d) => d.ok && d.item && d.reason === 'accept').map((d) => d.item)
+      .sort((a, b) => (b.h || 0) - (a.h || 0));
+    const list = [];
+    let skippedDup = 0;
+    rows.forEach((item) => {
+      const keys = new Set();
+      addKeys(keys, item.n);
+      addKeys(keys, item.cn);
+      if ([...keys].some((k) => titleKeys.has(k))) { skippedDup += 1; return; }
+      keys.forEach((k) => titleKeys.add(k));
+      list.push(item);
+    });
+    const meta = {
+      generatedAt: new Date().toISOString(),
+      source: 'bangumi-related',
+      seeds: main.filter((x) => x.cn || x.n).length,
+      candidates: Object.keys(details).length,
+      count: list.length,
+      skippedDup,
+      skippedInvalid: Object.keys(details).length - rows.length,
+      failed: 0,
+      fromScan: true,
+    };
+    await writeFile(OUT_FILE, '// 由 scripts/fetch-bgm-related.mjs 生成，请勿手动修改\n' +
+      'window.GL_BGM_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n', 'utf8');
+    console.log(`完成（--from-scan）：关联扩展 ${list.length} 条（候选 ${meta.candidates}，重名 ${skippedDup}，无效 ${meta.skippedInvalid}）`);
+    console.log(`输出：${OUT_FILE}`);
+    return;
+  }
 
   const ordered = [...candidates.values()].sort((a, b) => b.count - a.count).slice(0, LIMIT);
   console.log(`关联候选 ${candidates.size} 个，取前 ${ordered.length} 个补齐详情`);

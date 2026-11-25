@@ -142,12 +142,14 @@ floors.forEach(([name, ratio, min]) => {
 });
 
 // ---------- 第二数据源（VNDB） ----------
+const mainVx = new Set();
 try {
   const vraw = await readFile(path.join(ROOT, 'data', 'vndb.js'), 'utf8');
   const vm = vraw.match(/window\.GL_VNDB\s*=\s*(\{[\s\S]*\});/);
   if (!vm) throw new Error('未找到 window.GL_VNDB');
   const vndb = JSON.parse(vm[1]);
   const map = vndb.map || {};
+  Object.values(map).forEach((v) => { if (v && v.v) mainVx.add(String(v.v)); });
   const ids = new Set(data.map((x) => String(x.i)));
   const bad = [];
   Object.keys(map).forEach((id) => {
@@ -315,6 +317,7 @@ try {
     else if (ids.has(String(x.i))) bad.push(`${at}:重复 i`);
     ids.add(String(x.i));
     if (!/^v\d+$/.test(String(x.vx || ''))) bad.push(`${at}:vx ${x.vx}`);
+    else if (mainVx.has(String(x.vx))) bad.push(`${at}:与主库映射重复 ${x.vx}`);
     else if (vxs.has(String(x.vx))) bad.push(`${at}:重复 vx ${x.vx}`);
     vxs.add(String(x.vx));
     if (!String(x.n || '').trim()) bad.push(`${at}:缺少标题`);

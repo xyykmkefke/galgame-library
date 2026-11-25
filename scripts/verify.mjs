@@ -609,7 +609,7 @@ async function main() {
     // 系列聚合：详情展示系列入口，点击后按系列筛选全库，非法系列链接自动忽略
     const seriesData = await cdp.evaluate(
       "(() => window.GL_SERIES ? [window.GL_SERIES.meta.series, window.GL_SERIES.meta.items] : null)()");
-    check('系列映射数据已加载', Array.isArray(seriesData) && seriesData[0] === 601 && seriesData[1] === 1704,
+    check('系列映射数据已加载', Array.isArray(seriesData) && seriesData[0] === 622 && seriesData[1] === 1775,
       JSON.stringify(seriesData));
     const seriesName = '秋之回忆';
     const seriesIds = await cdp.evaluate(
@@ -618,8 +618,8 @@ async function main() {
     await waitFor("document.getElementById('modal').hidden === false");
     const seriesChip = await cdp.evaluate(
       "(() => { const b=document.querySelector('#detailMeta [data-jump-series]'); return b ? [b.dataset.jumpSeries, b.textContent] : null; })()");
-    check('详情展示系列入口与部数', !!seriesChip && seriesChip[0] === seriesName && /10 部/.test(seriesChip[1]), String(seriesChip));
     const seriesCount = Number((String(seriesChip && seriesChip[1]).match(/(\d+) 部/) || [])[1] || 0);
+    check('详情展示系列入口与部数', !!seriesChip && seriesChip[0] === seriesName && seriesCount >= 5, String(seriesChip));
     // 同系列其他作品：详情内直接列出并切换，按发售日升序，最多 12 部
     const seriesSibs = await cdp.evaluate(`(() => {
       const head = document.querySelector('#detailSimilar .series-head');

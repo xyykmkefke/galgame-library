@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-24
-- 当前状态：v2.28.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
+- 当前状态：v2.29.0（数据 7729 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.28.0（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾）
+- 本次会话：v2.19.0 → v2.29.0（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口）
 
 ## 1. 目标与边界
 
@@ -986,16 +986,16 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.28.0 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.28.0 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.28.0 |
-| `README.md` | 「状态：**vN**」 | v2.28.0 |
-| `manifest.webmanifest` | `version` | 2.28.0 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v42 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.28.0 |
+| `package.json` | `version` | 2.29.0 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.0 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.0 |
+| `README.md` | 「状态：**vN**」 | v2.29.0 |
+| `manifest.webmanifest` | `version` | 2.29.0 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v43 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.0 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
-- `manifest.webmanifest` 的 `description` 含作品数（当前 7732），数据规模大幅变化时应同步修改。
+- `manifest.webmanifest` 的 `description` 含作品数（当前 7729），数据规模大幅变化时应同步修改。
 - 有数据文件变化时必须升级 `sw.js` 缓存名（vN+1）；仅改文档或元数据可不升。`verify.mjs` 的缓存断言从 `sw.js` 动态读取，升级后无需改测试。
 
 ### 43.2 发布流程
@@ -1368,3 +1368,41 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 体积 2910KB → **2940KB**（主库 804KB）；`check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v42`。
 - 结论：A5 候选池已耗尽，此路线结束。后续若还要提升 VNDB 匹配率，需要新的别名来源（月幕详情别名补全、Bangumi 关联条目、手工核对），或改用 VNDB 官方 dump 离线匹配，不再走逐条搜索。
 - 发布：`git push` HTTPS 被重置，改用 GitHub API 建 blob/tree/commit 并 PATCH `refs/heads/main`，远端 `bd07827` 与本地 `3cfd9cb` tree 完全一致；CI 与 Pages 成功，线上复核 2.28.0 / SW v42 / 匹配 1161。
+
+## 62. VNDB 标题索引离线匹配 + 关联扫描（v2.29.0，2026-11-25）
+
+### 62.1 VNDB 全量标题索引
+
+- 新增 `scripts/fetch-vndb-titles.mjs`：按 `id` 升序分页（100 条/页、1.6s 间隔）抓 `/vn` 的 `title / alttitle / titles{title,latin,lang} / aliases / released / rating / votecount / developers.name`，共 **68,371 部 VN / 682 页 / 142,138 个归一标题键**，落 `data/build/vndb-titles.json`（git 忽略，可增量续抓）。
+- 相比逐条 `search`，索引含全部语言标题与 VNDB 别名，一次抓取后可离线反复匹配，不再受匿名限流影响。
+
+### 62.2 离线匹配
+
+- 新增 `scripts/match-vndb-offline.mjs`：对未匹配可见主库条目，用主库原名 / 中文名 / Bangumi 别名 / 月幕名与索引做归一标题**完全相等**匹配；发售年差 ≤ 3；同一 VNDB id 不重复分配；多候选只接受命中键数严格更高的一个，同分视为歧义跳过；两侧开发商都是纯拉丁名时要求至少一个词重合。
+- 结果：780 条未匹配可见条目中命中 **92 条**（年份不符 137、开发商不符 3、同分歧义 3）；年份差 0 年 85 / 1 年 5 / 2 年 2。VNDB 匹配 1161 → **1253**。
+- 开发商守卫拦下 2 条明显错配：Bangumi「Kira*Kira」(Zodiac, 2010) 对 VNDB KIRA☆KIRA (OVERDRIVE, 2007)、「HOME」(SORAREVO) 对 VNDB Home (ripper253)。
+- 结果写 `data/build/vndb-offline-match.json`，由 `apply-vndb-rematch.mjs` 与 A5 探测缓存一起合并（meta 新增 `offlineAt / offlineAdded`）。
+
+### 62.3 二次补齐与数据清理
+
+- 开发商 1695 → **1702（86.3%）**；题材 1429 → **1461（74.1%）**；剧本 1266 → 1277（64.8%）、原画 1077 → 1092（55.4%）、音乐 1033 → 1049（53.2%）。
+- 合并三源覆盖：开发商 **96.5%**、题材 **88.3%**（日期 99.3 / 评分 99.2 / 封面 100 / 平台 98.7 不变）。
+- 新增 `scripts/prune-vndb-extra-dups.mjs`：删除扩展库中已被主库映射覆盖的条目（否则同一 VNDB 作品显示两张卡），本次删 5 条（v6700 / v7719 / v6242 / v62734 / v17677），扩展 5742 → **5737**。
+- `check-data` 新增「扩展 vx 与主库映射重复」断言，防止以后再出现重复卡片。
+
+### 62.4 Bangumi 关联扫描（`--scan` / `--from-scan`）
+
+- `fetch-bgm-related.mjs` 新增两条模式：`--scan` 遍历全部种子并把 1094 个候选的详情与分类缓存到 `data/build/bgm-related-{heads,details,scan}.json`；`--from-scan` 用缓存直接重建 `bgm-extra.js`，不再发请求。
+- 分流：`accept 28`、`missing:dev 421`、`gt-not-adv 271`、`no-romance-tag 201`，其余为日期/封面/平台缺失与乙女向。近似候选 472 条经人工查看基本是 RPG / ARPG / 大厂非 gal（女神异闻录5、尼尔、原神、仙剑、GTA 等），**放宽规则没有收益**，维持现有过滤。
+- 旧脚本 `--limit=500` 会截断候选：本次重建补回 9 条真正 gal（Re;quartz 系列 3 条、レムレスブルー、五等分剧场版、银河天使2 等），同时 7 条乙女向旧条目已在 otome 黑名单中，关联扩展 18 → **20 条**。
+- 系列映射重建：601 / 1704 → **622 / 1775**，别名 210，强关系边 2167，体积 43.1KB；`verify` 快照同步为 622 / 1775。
+
+### 62.5 月幕别名结论
+
+- 916 条已匹配里 444 条没有别名；详情接口只有 `extensionName` 一个别名来源，且此前已全量抓过（0 失败）。因此「补月幕详情别名」没有增量空间；月幕方向剩余价值是用别名反向多匹配主库条目，留待后续。
+
+### 62.6 验收
+
+- 体积 2940 → **2951KB**（主库 806 / VNDB 140 / 月幕 210 / 扩展 1787 / 关联 8）。
+- `check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v43`；版本 2.29.0。
+- 经验：VNDB 全量标题索引是离线匹配的最佳入口（68k 部 / 14 万键，一次约 18 分钟），`title` 与 `aliases` 都要纳入；中文标题常只出现在 `titles` 的 `zh-Hans` 里。
