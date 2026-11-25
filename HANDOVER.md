@@ -1464,3 +1464,4 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 ### 65.3 验收
 
 - 月幕匹配 1075 → **1082**（649 条有别名）；体积 2996KB；`check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v46`；版本 2.29.3。
+- 发布：提交 `fac5f51`，tag `v2.29.3`（git 推送 tag 时 HTTPS 断连，改用 GitHub API 建 tag 对象 + ref）；CI 与 Pages 成功，线上复核 2.29.3 / SW v46 / 月幕 1082（649 别名）。
