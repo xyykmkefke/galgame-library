@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.29.3">
+<meta name="version" content="2.29.4">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2754,7 +2754,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.29.3</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.29.4</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2998,6 +2998,9 @@
   var BGM_EXTRA_LIST = (BGM_EXTRA && BGM_EXTRA.list) || [];
   // 数据量约 7000 条，一次加载，无需分层
   var fullReady = false;
+  // 扩展库加载失败标记：失败时 fullReady 保持 false，才能提示「仅主库」并允许重试
+  var extraFailed = false;
+  var extraLoading = false;
   var DATA = [];
   var byId = new Map();
 
@@ -3074,11 +3077,16 @@
     renderYears();
     fillFilterOptions();
     syncControls();
-    render();
+    // 先置就绪标记再 render：否则 render 里的空结果判断会把「已合并完成」误认成「仍在加载」
     fullReady = true;
     window.__FULL_DATA_READY = true;
+    render();
     var status = $('extraStatus');
-    if (status) status.hidden = true;
+    if (status) {
+      status.hidden = true;
+      status.onclick = null;
+      status.style.cursor = '';
+    }
     // 深链指向扩展库条目时，等合并后再打开
     if (pendingDetail && byId.has(pendingDetail)) {
       var deep = pendingDetail;
@@ -3098,16 +3106,56 @@
         loadScriptOnce('data/vndb-extra.js'),
         loadScriptOnce('data/bgm-extra.js'),
       ]).then(function () {
+        extraFailed = false;
         mergeExtraData();
+        // 合并后如果正处在「扩展库未就绪」的空结果状态，重绘一次让真实结果补上
+        if (state.q.trim()) render();
       }).catch(function () {
-        // 扩展库失败不阻塞主库使用；标记就绪，避免验收/深链一直等待
-        fullReady = true;
+        // 加载失败：保留主库可用，但明确告知「只加载了主库」并给出重试入口
+        extraFailed = true;
+        // 对验收脚本 / 深链标记为已就绪，避免它们在扩展库永久失败时一直等待
         window.__FULL_DATA_READY = true;
-        if (status) status.textContent = '扩展库加载失败，仅显示主库';
+        if (status) {
+          status.hidden = false;
+          status.textContent = '扩展库加载失败，当前仅显示主库 · 点此重试';
+          status.style.cursor = 'pointer';
+          status.onclick = function () {
+            status.onclick = null;
+            status.style.cursor = '';
+            retryExtraData();
+          };
+        }
+        render();
       });
     };
     if (window.requestIdleCallback) window.requestIdleCallback(start, { timeout: 600 });
     else setTimeout(start, 60);
+  }
+
+  // 重试扩展库：失败后 fullReady 仍为 false，可安全重入；成功后自动合并
+  function retryExtraData() {
+    if (fullReady || extraLoading) return;
+    extraLoading = true;
+    var status = $('extraStatus');
+    if (status) {
+      status.hidden = false;
+      status.textContent = '扩展库重试加载中…';
+      status.onclick = null;
+      status.style.cursor = '';
+    }
+    var finish = function () {
+      extraLoading = false;
+      scheduleExtraData();
+    };
+    Promise.all([
+      loadScriptOnce('data/vndb-extra.js?v=' + Date.now()),
+      loadScriptOnce('data/bgm-extra.js?v=' + Date.now()),
+    ]).then(function () {
+      extraLoading = false;
+      extraFailed = false;
+      mergeExtraData();
+      if (state.q.trim()) render();
+    }).catch(finish);
   }
   var STORAGE_KEY = 'yuc_gl_mine_v1';
   var PREFS_KEY = 'yuc_gl_prefs_v1';
@@ -4843,6 +4891,15 @@
       } else if (state.hideMine) {
         emptyEl.innerHTML = '<b>这个范围内没有未收藏的游戏</b>关闭「隐藏已收藏」即可看到已收藏条目' +
           '<br><button class="btn" id="resetFilters" type="button">清除筛选条件</button>';
+      } else if (!fullReady) {
+        // 扩展库尚未就绪：此刻的空结果不一定是真没有，不能报「没找到」误导用户
+        if (extraFailed) {
+          emptyEl.innerHTML = '<b>扩展库加载失败</b>当前只搜了主库，还有大量作品没加载进来' +
+            '<br><button class="btn" id="retryExtra" type="button">重新加载扩展库</button>';
+        } else {
+          emptyEl.innerHTML = '<b>扩展库还在加载</b>还有一大批作品正在下载，完成后会自动刷新结果' +
+            '<br><button class="btn" id="retryExtra" type="button">立即重试加载</button>';
+        }
       } else if (DATA.length) {
         renderEmptyRecovery();
       } else {
@@ -6501,6 +6558,10 @@
     }
     if (e.target.closest('#retryFull')) {
       render();
+      return;
+    }
+    if (e.target.closest('#retryExtra')) {
+      retryExtraData();
       return;
     }
     if (e.target.closest('#clearMineFilter')) {
