@@ -196,3 +196,4 @@
 - 文档审计（子代理）修正 README 6 处旧数字、`ymgal.js` meta.aliased、HANDOVER 日期与题材数。
 - 主库题材 1464（74.2%）、剧本 64.9% / 原画 55.7% / 音乐 53.6%；体积 2994KB。
 - `check-data` 0；`verify` 187/187；SW `yuc-gl-shell-v45`；版本 2.29.2。
+- 发布：提交 `17fbdf4`，tag `v2.29.2`；CI 首次因 runner 无法启动浏览器调试端口失败，重跑后成功；Pages 成功，线上复核 2.29.2 / SW v45 / VNDB 1264 / 月幕 1075（645 别名）。
