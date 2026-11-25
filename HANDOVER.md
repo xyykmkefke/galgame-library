@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-24
-- 当前状态：v2.27.2（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
+- 当前状态：v2.27.3（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.27.2（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配）
+- 本次会话：v2.19.0 → v2.27.3（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配）
 
 ## 1. 目标与边界
 
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.27.2 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.27.2 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.27.2 |
-| `README.md` | 「状态：**vN**」 | v2.27.2 |
-| `manifest.webmanifest` | `version` | 2.27.2 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v39 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.27.2 |
+| `package.json` | `version` | 2.27.3 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.27.3 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.27.3 |
+| `README.md` | 「状态：**vN**」 | v2.27.3 |
+| `manifest.webmanifest` | `version` | 2.27.3 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v40 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.27.3 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 7732），数据规模大幅变化时应同步修改。
@@ -1340,3 +1340,11 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 二次补齐：开发商 +3（84.8%）、剧本 +3 / 原画 +2 / 音乐 +6、题材 +6（68.9%）。
 - 体积 2896KB；`check-data` 0；`verify` 187/187；SW v39。
 - 剩余约 757 条未探测；VNDB 限流仍严重，继续按 100 条/轮分批，累计后再 apply。
+
+## 59. A5 第三批（v2.27.3，2026-11-24）
+
+- 累计探测 560 / 1117 条未匹配，命中 75 条（13.4%）；本轮新增 37 条，VNDB 匹配 824 → **861**。
+- 命中率波动明显：第 5 批 7%，第 6 批 **30%**——低热度段有大量中文 / 同人 VN，中文标题可精确命中 VNDB。
+- 二次补齐：开发商 +5（85.0%）、剧本 +8 / 原画 +7 / 音乐 +10、题材 +9（69.3%）。
+- 体积 2901KB；`check-data` 0；`verify` 187/187；SW v40。
+- 剩余约 557 条未探测；继续按 100 条/轮，命中率跌破 7% 再停。
