@@ -232,8 +232,10 @@ async function main() {
     const metaCount = await cdp.evaluate('(window.GL_META || {}).count || 0');
     const extraCount = await cdp.evaluate('((window.GL_VNDB_EXTRA || {}).list || []).length');
     const bgmExtraCount = await cdp.evaluate('((window.GL_BGM_EXTRA || {}).list || []).length');
-    check('全库数据加载', total > 3000 && metaCount + extraCount + bgmExtraCount === total + hiddenNonGal,
-      (total + hiddenNonGal) + ' 条（主库 ' + metaCount + ' + VNDB ' + extraCount + ' + 关联 ' + bgmExtraCount + '，默认可见 ' + total + '）');
+    const recentCount = await cdp.evaluate('((window.GL_RECENT || {}).list || []).length');
+    check('全库数据加载', total > 3000 && metaCount + extraCount + bgmExtraCount + recentCount === total + hiddenNonGal,
+      (total + hiddenNonGal) + ' 条（主库 ' + metaCount + ' + VNDB ' + extraCount + ' + 关联 ' + bgmExtraCount +
+      ' + 新作 ' + recentCount + '，默认可见 ' + total + '）');
 
     const noCacheFields = await cdp.evaluate(
       "(() => (window.GL_DATA || []).slice(0, 200).every((x) => x.rt === undefined && x.plr === undefined && x.gc === undefined && x.wc === undefined))()");
@@ -259,13 +261,32 @@ async function main() {
     check('开发商别名已归一', devAlias[0] >= 60 && devAlias[1] === 0 && devAlias[2] >= 50,
       'AliceSoft ' + devAlias[0] + ' / 旧名 ' + devAlias[1] + ' / 原名保留 ' + devAlias[2]);
 
+    // 日期允许两种精度：完整日期 2025-03-14，或只有年份 2025（VNDB 未公布月日，仅新作索引会出现）
     const datesOk = await cdp.evaluate(
-      "(() => (window.GL_DATA||[]).every((x)=>!x.d || /^\\d{4}-\\d{2}-\\d{2}$/.test(x.d)))()");
+      "(() => (window.GL_DATA||[]).every((x)=>!x.d || /^\\d{4}-\\d{2}-\\d{2}$/.test(x.d) || (x.rn === 1 && /^\\d{4}$/.test(x.d))))()");
     check('发售日格式全部合法', datesOk === true);
 
+    // 年份精度只允许出现在新作索引里，且必须有对应的时间标签，避免渲染成「2028-01-01」误导
+    const yearOnly = await cdp.evaluate(
+      "(() => { const d=(window.GL_DATA||[]).filter((x)=>/^\\d{4}$/.test(String(x.d||''))); " +
+      "return [d.length, d.filter((x)=>x.rn===1).length]; })()");
+    check('年份精度日期仅来自新作索引', yearOnly[0] === yearOnly[1], yearOnly.join(' / '));
+
+
+    // 题材覆盖率按主库 + 扩展库统计：新作索引的题材受 VNDB 冷启动限制（无票即无标签），单列门槛
     const genreCover = await cdp.evaluate(
-      "(() => { const d=window.GL_DATA||[]; return d.length ? d.filter((x)=>x.tg&&x.tg.length).length/d.length : 0; })()");
+      "(() => { const d=(window.GL_DATA||[]).filter((x)=>x.rn!==1); " +
+      "return d.length ? d.filter((x)=>x.tg&&x.tg.length).length/d.length : 0; })()");
     check('题材覆盖率 ≥80%', genreCover >= 0.80, (genreCover * 100).toFixed(1) + '%');
+    const recentGenreCover = await cdp.evaluate(
+      "(() => { const d=(window.GL_DATA||[]).filter((x)=>x.rn===1); " +
+      "return [d.length, d.filter((x)=>x.tg&&x.tg.length).length]; })()");
+    // 新作票数少 → VNDB 标签权重不足 0.5 → 无题材可映射。这是数据源冷启动的客观限制，
+    // 门槛只用于兜住「映射规则整体失效」这类回归，不追求高覆盖
+    check('新作题材有兜底覆盖（≥30%）',
+      recentGenreCover[0] === 0 || recentGenreCover[1] / recentGenreCover[0] >= 0.30,
+      recentGenreCover[1] + ' / ' + recentGenreCover[0] +
+      ' (' + (recentGenreCover[0] ? (recentGenreCover[1] / recentGenreCover[0] * 100).toFixed(1) : 0) + '%)');
 
     const metaHelp = await cdp.evaluate('JSON.stringify(window.GL_META || {})');
     check('数据元信息含生成时间与日期范围', /generatedAt/.test(metaHelp) && /minDate/.test(metaHelp), metaHelp.slice(0, 80));
@@ -887,7 +908,7 @@ async function main() {
     })()`);
     check('题材一览列出全部有作品的题材', genrePanel.rows === genrePanel.expected && genrePanel.rows >= 15 &&
       /^\d+ \/ \d+ 个题材 · 覆盖 \d+ 部$/.test(genrePanel.total) && genrePanel.cards === 3,
-      genrePanel.rows + ' 行 / ' + genrePanel.total);
+      genrePanel.rows + ' 行 / 期望 ' + genrePanel.expected + ' / 卡片 ' + genrePanel.cards + ' / ' + genrePanel.total);
 
     await cdp.evaluate("document.querySelector('#genreBody [data-genre-pick]').click()");
     await sleep(500);
@@ -1349,9 +1370,11 @@ async function main() {
     check('扩展库使用独立 ID 段并带 VNDB 编号', Number(extraInfo[2]) >= 1000000 && /^v\d+$/.test(extraInfo[3]),
       extraInfo[2] + ' → ' + extraInfo[3]);
     const extraMerged = await cdp.evaluate(
-      "(() => { const main=(window.GL_META||{}).count||0; const ex=((window.GL_VNDB_EXTRA||{}).list||[]).length; const bg=((window.GL_BGM_EXTRA||{}).list||[]).length; return [(window.GL_DATA||[]).length, main, ex, bg]; })()");
+      "(() => { const main=(window.GL_META||{}).count||0; const ex=((window.GL_VNDB_EXTRA||{}).list||[]).length; " +
+      "const bg=((window.GL_BGM_EXTRA||{}).list||[]).length; const rn=((window.GL_RECENT||{}).list||[]).length; " +
+      "return [(window.GL_DATA||[]).length, main, ex, bg, rn]; })()");
     check('扩展库已并入全库浏览',
-      extraMerged[0] === extraMerged[1] + extraMerged[2] + extraMerged[3], extraMerged.join(' / '));
+      extraMerged[0] === extraMerged[1] + extraMerged[2] + extraMerged[3] + extraMerged[4], extraMerged.join(' / '));
 
     await cdp.evaluate(`location.hash = '#d=${extraInfo[2]}'`);
     await waitFor("document.getElementById('modal').hidden === false");
@@ -1369,6 +1392,66 @@ async function main() {
       extraDetail.text.slice(0, 60));
     await cdp.evaluate("document.getElementById('modalClose').click()");
     await sleep(200);
+
+    // ---------- 新作索引（2025+ 全部日系，不设票数门槛） ----------
+    const recentInfo = await cdp.evaluate(
+      "(() => { const e=window.GL_RECENT||{}; const l=e.list||[]; const m=e.meta||{}; " +
+      "const x=l.find((y)=>y.tg&&y.tg.length)||l[0]||{}; " +
+      "return [l.length, m.count||0, (m.filter||{}).releasedGte||'', (m.filter||{}).voteMin, x.i||0, x.d||'']; })()");
+    check('新作索引已加载', recentInfo[0] > 200 && recentInfo[0] === recentInfo[1],
+      recentInfo[0] + ' 条 / 元信息 ' + recentInfo[1]);
+    check('新作索引不设票数门槛且限定 2025 起',
+      recentInfo[3] === 0 && /^\d{4}-\d{2}-\d{2}$/.test(recentInfo[2] || ''),
+      'voteMin=' + recentInfo[3] + ' / since=' + recentInfo[2]);
+    const recentNoVote = await cdp.evaluate(
+      "(() => { const l=((window.GL_RECENT||{}).list||[]); " +
+      "return [l.length, l.filter((x)=>!x.h).length, l.every((x)=>x.rn===1)]; })()");
+    check('新作索引收录无票数作品并带 rn 标记',
+      recentNoVote[1] > 0 && recentNoVote[2] === true,
+      '无票 ' + recentNoVote[1] + ' / ' + recentNoVote[0]);
+
+    const recentDup = await cdp.evaluate(
+      "(() => { const all=window.GL_DATA||[]; const ids=new Set(); let dup=0; " +
+      "all.forEach((x)=>{const k=String(x.i); if(ids.has(k))dup++; ids.add(k);}); return [all.length, ids.size, dup]; })()");
+    check('并入新作后全库无重复 ID', recentDup[2] === 0, recentDup[0] + ' 条 / 唯一 ' + recentDup[1]);
+
+    // 新作筛选：点击后结果必须全部 ≥ 2025，且包含无票作品（这正是按热度排序会漏掉的那批）
+    await cdp.evaluate("(() => { location.hash='#tab=all&rn=0'; })()");
+    await sleep(300);
+    await cdp.evaluate("document.getElementById('recentBtn').click()");
+    await sleep(500);
+    const recentFilter = await cdp.evaluate(
+      "(() => { const cards=[...document.querySelectorAll('.card')].map((c)=>c.dataset.id); " +
+      "const byId=new Map((window.GL_DATA||[]).map((x)=>[String(x.i),x])); " +
+      "const ds=cards.map((id)=>(byId.get(String(id))||{}).d||''); " +
+      "return [cards.length, ds.filter((d)=>String(d).slice(0,4)>='2025').length, " +
+      "document.getElementById('recentBtn').getAttribute('aria-pressed'), " +
+      "location.hash.indexOf('rn=1')>=0]; })()");
+    check('新作筛选只保留 2025 起发售',
+      recentFilter[0] > 0 && recentFilter[0] === recentFilter[1],
+      recentFilter[1] + ' / ' + recentFilter[0]);
+    check('新作筛选状态写入按钮与地址栏',
+      recentFilter[2] === 'true' && recentFilter[3] === true, 'aria-pressed=' + recentFilter[2]);
+
+    const recentChip = await cdp.evaluate(
+      "(() => { const el=document.getElementById('filterChips'); " +
+      "return !!el && !el.hidden && /新作/.test(el.textContent); })()");
+    check('新作筛选显示可移除的条件标签', recentChip === true);
+    await cdp.evaluate("document.getElementById('recentBtn').click()");
+    await sleep(400);
+
+    // 年份精度日期必须显示为「2028 年」，不能渲染成 2028-01-01 误导
+    const yearItem = await cdp.evaluate(
+      "(() => { const x=(window.GL_DATA||[]).find((y)=>/^\\d{4}$/.test(String(y.d||''))); return x ? [x.i, x.d] : []; })()");
+    if (yearItem.length) {
+      await cdp.evaluate(`location.hash = '#d=${yearItem[0]}'`);
+      await waitFor("document.getElementById('modal').hidden === false");
+      const yearText = await cdp.evaluate("document.getElementById('detailMeta').textContent");
+      check('年份精度日期显示为「YYYY 年」', yearText.indexOf(yearItem[1] + ' 年') >= 0 && yearText.indexOf(yearItem[1] + '-01-01') < 0,
+        yearItem[1] + ' → ' + yearText.slice(0, 40));
+      await cdp.evaluate("document.getElementById('modalClose').click()");
+      await sleep(200);
+    }
 
     // ---------- Bangumi 关联扩展库 ----------
     const bgmInfo = await cdp.evaluate(
@@ -1611,7 +1694,7 @@ async function main() {
       "(() => { const q=(s)=>!!document.querySelector(s); return [q('meta[name=\"description\"]'), q('meta[property=\"og:title\"]'), q('meta[property=\"og:image\"]'), q('link[rel=\"canonical\"]')]; })()");
     check('描述、OG 与 canonical 完整', seoMeta.every(Boolean), String(seoMeta));
     const dataSize = await cdp.evaluate(
-      "Promise.all(['data/galgames.js','data/vndb.js','data/ymgal.js','data/vndb-extra.js','data/bgm-extra.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
+      "Promise.all(['data/galgames.js','data/vndb.js','data/ymgal.js','data/vndb-extra.js','data/bgm-extra.js','data/recent-extra.js'].map((u)=>fetch(u).then((r)=>r.text()).then((t)=>t.length)))");
     const dataSum = dataSize.reduce((a, b) => a + b, 0);
     check('数据体积在预算内（<4MB）', dataSum < 4000000, dataSum + ' 字节');
     const devJunk = await cdp.evaluate(

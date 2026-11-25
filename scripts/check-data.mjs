@@ -298,6 +298,9 @@ try {
 
 // ---------- 扩展库（VNDB 日系，独立文件） ----------
 let extraSize = 0;
+// 新作索引需要跨文件查重，这里把扩展库的 id / vx 集合暴露到块外
+const extraIdsAll = new Set();
+const extraVxAll = new Set();
 try {
   const eraw = await readFile(path.join(ROOT, 'data', 'vndb-extra.js'), 'utf8');
   extraSize = Buffer.byteLength(eraw, 'utf8');
@@ -354,6 +357,11 @@ try {
     if (x.rt || x.gc !== undefined || x.wc !== undefined) bad.push(`${at}:缓存字段泄漏`);
   });
   const ratio = (n) => (list.length ? n / list.length : 0);
+  // 供新作索引查重：本文件的 id / vx 均已通过上面的格式校验
+  list.forEach((x) => {
+    extraIdsAll.add(String(x.i));
+    if (x.vx) extraVxAll.add(String(x.vx));
+  });
   console.log(`VNDB 日系扩展：${list.length} 条（请求 ${extra.meta?.pages || 0} 页），异常 ${bad.length} 条`);
   console.log(`扩展覆盖：日期 ${(ratio(cover.date) * 100).toFixed(1)}% · 评分 ${(ratio(cover.score) * 100).toFixed(1)}% · ` +
     `封面 ${(ratio(cover.img) * 100).toFixed(1)}% · 平台 ${(ratio(cover.pl) * 100).toFixed(1)}% · ` +
@@ -384,6 +392,101 @@ try {
   total += 1;
 }
 
+// ---------- 新作索引（VNDB 2025 起，不设票数门槛） ----------
+// 需要与主库、扩展库做 id / vx 冲突校验，这里取用前面已收集的全局集合
+const mainIdsAll = new Set(data.map((x) => String(x.i)));
+let recentSize = 0;
+try {
+  const rraw = await readFile(path.join(ROOT, 'data', 'recent-extra.js'), 'utf8');
+  recentSize = Buffer.byteLength(rraw, 'utf8');
+  const rm = rraw.match(/window\.GL_RECENT\s*=\s*(\{[\s\S]*\});/);
+  if (!rm) throw new Error('未找到 window.GL_RECENT');
+  const recent = JSON.parse(rm[1]);
+  const list = Array.isArray(recent.list) ? recent.list : [];
+  const since = String(recent.meta?.filter?.releasedGte || '').trim();
+  if (!since) {
+    console.log('FAIL 新作索引 meta.filter.releasedGte 缺失，无法判定范围');
+    total += 1;
+  }
+  const sinceYear = (since || '2025-01-01').slice(0, 4);
+  const ids = new Set();
+  const vxs = new Set();
+  const bad = [];
+  const cover = { date: 0, img: 0, pl: 0, dev: 0 };
+  list.forEach((x, idx) => {
+    const at = `${idx}:${x.i}`;
+    const key = String(x.i);
+    if (!Number.isInteger(Number(x.i)) || Number(x.i) < 1000000) bad.push(`${at}:非法 i`);
+    else if (mainIdsAll.has(key)) bad.push(`${at}:与主库冲突`);
+    else if (extraIdsAll.has(key)) bad.push(`${at}:与扩展库冲突`);
+    else if (ids.has(key)) bad.push(`${at}:重复 i`);
+    ids.add(key);
+    if (!/^v\d+$/.test(String(x.vx || ''))) bad.push(`${at}:vx ${x.vx}`);
+    else if (mainVx.has(String(x.vx)) || extraVxAll.has(String(x.vx))) bad.push(`${at}:vx 与已有映射重复 ${x.vx}`);
+    else if (vxs.has(String(x.vx))) bad.push(`${at}:重复 vx ${x.vx}`);
+    vxs.add(String(x.vx));
+    if (!String(x.n || '').trim()) bad.push(`${at}:缺少标题`);
+    // 日期允许两种精度：完整日期 2025-03-14，或只有年份 2025（VNDB 未公布月日）
+    const ds = String(x.d || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ds) || /^\d{4}$/.test(ds)) {
+      if (ds.slice(0, 4) < sinceYear) bad.push(`${at}:早于 ${since} 的日期 ${ds}`);
+      else cover.date += 1;
+    } else {
+      bad.push(`${at}:日期 ${x.d}`);
+    }
+    if (x.s != null && !(Number(x.s) > 0 && Number(x.s) <= 10)) bad.push(`${at}:评分 ${x.s}`);
+    if (x.h != null && !(Number(x.h) >= 0)) bad.push(`${at}:热度 ${x.h}`);
+    if (x.img) {
+      if (!/^https:\/\//.test(String(x.img))) bad.push(`${at}:封面 ${x.img}`);
+      else cover.img += 1;
+    }
+    if (x.pl != null) {
+      if (!Array.isArray(x.pl) || !x.pl.length || x.pl.some((p) => !String(p || '').trim()) ||
+        new Set(x.pl).size !== x.pl.length) bad.push(`${at}:平台 ${JSON.stringify(x.pl)}`);
+      else cover.pl += 1;
+    }
+    if (x.dev != null) {
+      if (!Array.isArray(x.dev) || !x.dev.length || x.dev.some((d) => !String(d || '').trim()) ||
+        new Set(x.dev).size !== x.dev.length) bad.push(`${at}:开发商 ${JSON.stringify(x.dev)}`);
+      else cover.dev += 1;
+    }
+    if (x.cn != null && !String(x.cn).trim()) bad.push(`${at}:cn 为空`);
+    if (x.rn !== 1) bad.push(`${at}:缺少 rn 标记`);
+    // 乙女向是项目既定排除项（data/blocklist-otome.json），新作索引也必须遵守
+    if ((x.tg || []).includes('oto')) bad.push(`${at}:乙女向未排除`);
+    if (x.rt || x.gc !== undefined || x.wc !== undefined) bad.push(`${at}:缓存字段泄漏`);
+  });
+  const ratio = (n) => (list.length ? n / list.length : 0);
+  const tgCover = list.filter((x) => x.tg && x.tg.length).length;
+  console.log(`新作索引：${list.length} 条（抓取 ${recent.meta?.fetched || 0}，跳过已有 ${recent.meta?.skippedExisting || 0}，` +
+    `released >= ${since}），异常 ${bad.length} 条`);
+  console.log(`新作覆盖：日期 ${(ratio(cover.date) * 100).toFixed(1)}% · 封面 ${(ratio(cover.img) * 100).toFixed(1)}% · ` +
+    `平台 ${(ratio(cover.pl) * 100).toFixed(1)}% · 开发商 ${(ratio(cover.dev) * 100).toFixed(1)}% · ` +
+    `题材 ${(ratio(tgCover) * 100).toFixed(1)}%（新作票数少，标签权重普遍不足，覆盖率天然偏低）`);
+  if (list.length < 200) {
+    console.log(`FAIL 新作索引过少：${list.length} < 200`);
+    total += 1;
+  }
+  if (Number(recent.meta?.count) !== list.length) {
+    console.log(`FAIL 新作元信息数量不一致：${recent.meta?.count} != ${list.length}`);
+    total += 1;
+  }
+  // 新作索引刻意收录未积累票数的作品，故只校验「必备字段」，不设评分/票数覆盖率
+  [['日期', cover.date, 1], ['封面', cover.img, 0.9]].forEach(([name, n, min]) => {
+    if (ratio(n) < min) {
+      console.log(`FAIL 新作覆盖率不足：${name} ${(ratio(n) * 100).toFixed(1)}% < ${(min * 100).toFixed(0)}%`);
+      total += 1;
+    }
+  });
+  if (bad.length) {
+    console.log(`FAIL 新作条目异常：${bad.slice(0, 5).join(', ')}`);
+    total += bad.length;
+  }
+} catch (err) {
+  console.log(`FAIL 新作索引不可用：${err.message}`);
+  total += 1;
+}
+
 // ---------- 体积预算 ----------
 const mainSize = Buffer.byteLength(raw, 'utf8');
 let vndbSize = 0;
@@ -394,8 +497,8 @@ try {
 try {
   ymgalSize = Buffer.byteLength(await readFile(path.join(ROOT, 'data', 'ymgal.js'), 'utf8'), 'utf8');
 } catch { /* 缺失已在上面报错 */ }
-const totalSize = mainSize + vndbSize + ymgalSize + extraSize + bgmExtraSize;
-console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB + 月幕 ${(ymgalSize / 1024).toFixed(0)}KB + 扩展 ${(extraSize / 1024).toFixed(0)}KB + 关联 ${(bgmExtraSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
+const totalSize = mainSize + vndbSize + ymgalSize + extraSize + bgmExtraSize + recentSize;
+console.log(`体积：主库 ${(mainSize / 1024).toFixed(0)}KB + VNDB ${(vndbSize / 1024).toFixed(0)}KB + 月幕 ${(ymgalSize / 1024).toFixed(0)}KB + 扩展 ${(extraSize / 1024).toFixed(0)}KB + 关联 ${(bgmExtraSize / 1024).toFixed(0)}KB + 新作 ${(recentSize / 1024).toFixed(0)}KB = ${(totalSize / 1024).toFixed(0)}KB`);
 if (totalSize > 4000 * 1024) {
   console.log(`FAIL 数据体积超预算：${(totalSize / 1024).toFixed(0)}KB > 4000KB`);
   total += 1;

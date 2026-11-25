@@ -20,22 +20,22 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.29.4">
+<meta name="version" content="2.30.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
 <link rel="preload" as="script" href="data/series.js">
-<meta name="description" content="本地优先的 Galgame 浏览与游玩记录：7729 部日系作品（1972 部 Bangumi 主库 + 20 部 Bangumi 关联 + 5737 部 VNDB 扩展，其中 35 部非 gal 默认隐藏；不含乙女向），按年份、平台、开发商、题材筛选，支持想玩 / 在玩 / 已通关 / 弃坑四种状态与 GitHub Gist 云同步，可离线使用。">
+<meta name="description" content="本地优先的 Galgame 浏览与游玩记录：9058 部日系作品（1972 部 Bangumi 主库 + 20 部 Bangumi 关联 + 5737 部 VNDB 扩展 + 1329 部 2025 年起新作，其中 35 部非 gal 默认隐藏；不含乙女向），按年份、平台、开发商、题材筛选，支持只想看新作与想玩 / 在玩 / 已通关 / 弃坑四种状态、GitHub Gist 云同步，可离线使用。">
 <link rel="canonical" href="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Galgame 库">
 <meta property="og:title" content="Galgame 库 · 我的游玩">
-<meta property="og:description" content="7729 部日系 Galgame / 视觉小说（不含乙女向）的本地优先浏览与游玩记录，支持筛选、搜索、离线与云同步。">
+<meta property="og:description" content="9058 部日系 Galgame / 视觉小说（不含乙女向）的本地优先浏览与游玩记录，支持筛选、搜索、新作发现、离线与云同步。">
 <meta property="og:url" content="https://xyykmkefke.github.io/galgame-library/">
 <meta property="og:image" content="https://xyykmkefke.github.io/galgame-library/icons/icon-512.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Galgame 库 · 我的游玩">
-<meta name="twitter:description" content="7729 部日系 Galgame / 视觉小说（不含乙女向）的本地优先浏览与游玩记录。">
+<meta name="twitter:description" content="9058 部日系 Galgame / 视觉小说（不含乙女向）的本地优先浏览与游玩记录。">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Galgame 库","applicationCategory":"EntertainmentApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},"description":"本地优先的 Galgame 浏览与游玩记录 PWA"}</script>
 <style>
   :root {
@@ -2653,6 +2653,7 @@
         <button class="btn adv-filter" id="onlyMineBtn" type="button" aria-pressed="false" title="只显示已加入我的游玩的条目">只看已收藏</button>
         <button class="btn adv-filter" id="highScoreBtn" type="button" aria-pressed="false" title="只显示评分 8.0 及以上的游戏">高分 ≥8.0</button>
         <button class="btn adv-filter" id="hideMineBtn" type="button" aria-pressed="false" title="隐藏已加入我的游玩的条目，只看还没收藏的">隐藏已收藏</button>
+        <button class="btn adv-filter" id="recentBtn" type="button" aria-pressed="false" title="只看 2025 年起发售的新作（含尚未积累票数的作品）">新作 2025+</button>
         <button class="btn" id="clearFiltersBtn" type="button" hidden title="清除平台、开发商、题材、状态与搜索等筛选条件">清除筛选</button>
         <button class="btn adv-filter" id="copyViewBtn" type="button" title="复制包含当前筛选与视图的链接">复制视图链接</button>
         <button class="btn adv-filter" id="viewsBtn" type="button" aria-expanded="false" title="保存或套用筛选组合">视图</button>
@@ -2754,7 +2755,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.29.4</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.30.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -2996,6 +2997,11 @@
   // 扩展库（Bangumi 关联）：补同系列 / 前传续作，保留 Bangumi 外链
   var BGM_EXTRA = window.GL_BGM_EXTRA || null;
   var BGM_EXTRA_LIST = (BGM_EXTRA && BGM_EXTRA.list) || [];
+  // 新作索引（VNDB 2025 起，不设票数门槛）：补扩展库按全局热度排序漏掉的新作，rn=1 标记来源
+  var RECENT = window.GL_RECENT || null;
+  var RECENT_LIST = (RECENT && RECENT.list) || [];
+  // 「新作」筛选的起始日期，与 fetch-recent-index.mjs 的 --from 保持一致
+  var RECENT_SINCE = (RECENT && RECENT.meta && RECENT.meta.filter && RECENT.meta.filter.releasedGte) || '2025-01-01';
   // 数据量约 7000 条，一次加载，无需分层
   var fullReady = false;
   // 扩展库加载失败标记：失败时 fullReady 保持 false，才能提示「仅主库」并允许重试
@@ -3039,6 +3045,10 @@
       x.ex = 1;
       DATA.push(x);
     });
+    RECENT_LIST.forEach(function (x) {
+      x.rn = 1;
+      DATA.push(x);
+    });
     decorateData(DATA);
     byId = new Map(DATA.map(function (x) { return [String(x.i), x]; }));
     // 验收与外部脚本按「全库」读取，主库原始数组不再单独保留
@@ -3064,13 +3074,24 @@
     if (fullReady) return;
     var extras = (window.GL_VNDB_EXTRA && window.GL_VNDB_EXTRA.list) || [];
     var bgms = (window.GL_BGM_EXTRA && window.GL_BGM_EXTRA.list) || [];
+    var recents = (window.GL_RECENT && window.GL_RECENT.list) || [];
     var added = [];
     bgms.forEach(function (x) { x.bg = 1; added.push(x); });
     extras.forEach(function (x) { x.ex = 1; added.push(x); });
+    // 新作索引与扩展库可能有重叠 id（扩展库也在更新），以已存在的为准，避免重复计数
+    var seen = {};
+    DATA.forEach(function (x) { seen[String(x.i)] = 1; });
+    recents.forEach(function (x) {
+      if (seen[String(x.i)]) return;
+      seen[String(x.i)] = 1;
+      x.rn = 1;
+      added.push(x);
+    });
     decorateData(added);
     DATA = DATA.concat(added);
     BGM_EXTRA_LIST = bgms;
     EXTRA_LIST = extras;
+    RECENT_LIST = recents;
     byId = new Map(DATA.map(function (x) { return [String(x.i), x]; }));
     window.GL_DATA = DATA;
     buildSeriesIndex();
@@ -3105,6 +3126,7 @@
       Promise.all([
         loadScriptOnce('data/vndb-extra.js'),
         loadScriptOnce('data/bgm-extra.js'),
+        loadScriptOnce('data/recent-extra.js'),
       ]).then(function () {
         extraFailed = false;
         mergeExtraData();
@@ -3150,6 +3172,7 @@
     Promise.all([
       loadScriptOnce('data/vndb-extra.js?v=' + Date.now()),
       loadScriptOnce('data/bgm-extra.js?v=' + Date.now()),
+      loadScriptOnce('data/recent-extra.js?v=' + Date.now()),
     ]).then(function () {
       extraLoading = false;
       extraFailed = false;
@@ -3412,6 +3435,7 @@
     onlyMine: false,
     highScore: false,
     hideMine: false,
+    recentOnly: false,
     view: 'grid',
     group: false,
     groupBy: 'year',
@@ -3699,6 +3723,9 @@
     if (map.hm === '1' || map.hm === '0' || typeof map.hm === 'boolean') {
       state.hideMine = map.hm === '1' || map.hm === true;
     }
+    if (map.rn === '1' || map.rn === '0' || typeof map.rn === 'boolean') {
+      state.recentOnly = map.rn === '1' || map.rn === true;
+    }
     if (map.v === 'grid' || map.v === 'list' || map.v === 'board') state.view = map.v;
     if (['recent', 'name', 'date'].indexOf(map.ms) >= 0) state.mineSort = map.ms;
     if (map.gb === 'year' || map.gb === 'added' || map.gb === 'status' || map.gb === 'series') {
@@ -3747,6 +3774,7 @@
         om: state.onlyMine,
         hs: state.highScore,
         hm: state.hideMine,
+        rn: state.recentOnly,
         v: state.view,
         ms: state.mineSort,
         gb: state.group ? state.groupBy : '',
@@ -3859,6 +3887,7 @@
       'om=' + (state.onlyMine ? '1' : '0'),
       'hs=' + (state.highScore ? '1' : '0'),
       'hm=' + (state.hideMine ? '1' : '0'),
+      'rn=' + (state.recentOnly ? '1' : '0'),
       'v=' + encodeURIComponent(state.view),
       'ms=' + encodeURIComponent(state.mineSort),
       't=' + encodeURIComponent(state.theme)
@@ -3948,6 +3977,11 @@
       hideMineBtn.setAttribute('aria-pressed', state.hideMine ? 'true' : 'false');
       hideMineBtn.classList.toggle('primary', state.hideMine);
     }
+    var recentBtn = $('recentBtn');
+    if (recentBtn) {
+      recentBtn.setAttribute('aria-pressed', state.recentOnly ? 'true' : 'false');
+      recentBtn.classList.toggle('primary', state.recentOnly);
+    }
     document.querySelectorAll('.tab').forEach(function (b) {
       b.classList.toggle('active', b.dataset.tab === state.tab);
     });
@@ -4010,6 +4044,13 @@
 
   function yearOf(dateStr) {
     return String(dateStr).slice(0, 4);
+  }
+
+  // 日期展示：只有年份精度（如 "2028"，VNDB 未公布月日）时加「年」字，避免误读成 2028-01-01
+  function dateLabel(dateStr) {
+    var s = String(dateStr || '');
+    if (!s) return '';
+    return /^\d{4}$/.test(s) ? s + ' 年' : s;
   }
 
   function renderYears() {
@@ -4349,6 +4390,13 @@
       list = list.filter(function (x) { return (Number(x.s) || 0) >= 8; });
     }
 
+    // 只看新作：2025 年起发售。新作票数天然低，靠这道筛选把被热度排序压到底的作品挑出来
+    // 按年份而非完整日期比较：VNDB 对未公布月日的作品只给 "2025"，字符串比较会小于 "2025-01-01" 被误排除
+    if (state.recentOnly && state.tab === 'all') {
+      var sinceYear = RECENT_SINCE.slice(0, 4);
+      list = list.filter(function (x) { return String(x.d || '').slice(0, 4) >= sinceYear; });
+    }
+
     // 游玩状态过滤：我的游玩常驻；全库搜索时也可按状态缩小范围
     if (state.status !== 'all' && (state.tab === 'mine' || q)) {
       list = list.filter(function (x) {
@@ -4417,7 +4465,7 @@
     var sub = x.cn && x.n && x.cn !== x.n ? highlightHtml(x.n, q) : '';
     var score = x.s ? Number(x.s).toFixed(1) : '';
     var pls = (x.pl || []).slice(0, 2).join('/');
-    var meta = [x.d, pls, (x.dev || [])[0]].filter(Boolean).join(' · ');
+    var meta = [dateLabel(x.d), pls, (x.dev || [])[0]].filter(Boolean).join(' · ');
     var selecting = state.bulk && state.tab === 'mine';
     var selected = selecting && bulkSel[id];
     var phHue = Number(String(x.i).slice(-3)) % 360;
@@ -4553,6 +4601,7 @@
     if (state.onlyMine) chips.push({ k: 'onlyMine', label: '范围', v: '只看已收藏' });
     if (state.highScore) chips.push({ k: 'highScore', label: '评分', v: '≥8.0' });
     if (state.hideMine) chips.push({ k: 'hideMine', label: '范围', v: '隐藏已收藏' });
+    if (state.recentOnly) chips.push({ k: 'recentOnly', label: '范围', v: '新作 2025+' });
     if (!chips.length) {
       el.hidden = true;
       el.innerHTML = '';
@@ -4598,6 +4647,8 @@
       state.highScore = false;
     } else if (key === 'hideMine') {
       state.hideMine = false;
+    } else if (key === 'recentOnly') {
+      state.recentOnly = false;
     }
     syncControls();
     render();
@@ -4711,7 +4762,7 @@
       tab: v.tab, y: v.year, f: v.platform, dv: v.dev || '',
       sk: v.staffKind || 'sc', sv: v.staff || '', se: v.series || '',
       gr: v.genre || 'all', ln: v.length || 'all', o: v.sort, st: v.status, om: !!v.onlyMine, hs: !!v.highScore,
-      hm: !!v.hideMine, v: v.view, ms: v.mineSort,
+      hm: !!v.hideMine, rn: !!v.recentOnly, v: v.view, ms: v.mineSort,
       gb: v.group ? v.groupBy : '', q: v.q || ''
     });
     state.group = !!v.group;
@@ -4804,7 +4855,8 @@
       (state.staff ? 1 : 0) + (state.series ? 1 : 0) +
       (state.genre !== 'all' ? 1 : 0) + (state.length !== 'all' ? 1 : 0) +
       (state.status !== 'all' ? 1 : 0) + (state.onlyMine ? 1 : 0) +
-      (state.highScore ? 1 : 0) + (state.hideMine ? 1 : 0) + (state.q.trim() ? 1 : 0);
+      (state.highScore ? 1 : 0) + (state.hideMine ? 1 : 0) +
+      (state.recentOnly ? 1 : 0) + (state.q.trim() ? 1 : 0);
     var activeFilters = filterCount - (state.status !== 'all' ? 1 : 0) -
       (state.q.trim() ? 1 : 0) + (state.sort !== 'score' ? 1 : 0);
     $('filterToggle').textContent = activeFilters ? '筛选 · ' + activeFilters : '筛选';
@@ -4986,7 +5038,7 @@
       $('detailNext').title = nextItem ? '下一部：' + (nextItem.cn || nextItem.n || '') : '已是最后一部';
     }
     var pairs = [
-      ['发售', item.d || '未知'],
+      ['发售', item.d ? dateLabel(item.d) : '未知'],
       ['平台', item.pl && item.pl.length ? item.pl.join('、') : '未标注'],
       ['开发', item.dev && item.dev.length ? item.dev.join('、') : '未标注'],
       ['发行', item.pub || '未标注'],
@@ -5141,7 +5193,7 @@
             return '<button class="sim-card' + (String(x.i) === seriesNextId ? ' next' : '') +
               '" type="button" data-sim="' + x.i + '">' +
               '<span class="sim-title">' + escapeHtml(x.cn || x.n || '未知游戏') + '</span>' +
-              '<span class="sim-meta">' + (x.d ? escapeHtml(x.d) : '日期未知') +
+              '<span class="sim-meta">' + (x.d ? escapeHtml(dateLabel(x.d)) : '日期未知') +
               (x.s ? ' · ' + Number(x.s).toFixed(1) : '') +
               (st ? ' · ' + STATUS[st.s] : '') +
               (String(x.i) === seriesNextId ? ' · 下一部' : '') + '</span></button>';
@@ -5155,7 +5207,7 @@
           return '<button class="sim-card" type="button" data-sim="' + x.i + '">' +
             '<span class="sim-title">' + escapeHtml(x.cn || x.n || '未知游戏') + '</span>' +
             '<span class="sim-meta">' + (x.s ? Number(x.s).toFixed(1) : '暂无') +
-            (x.d ? ' · ' + escapeHtml(x.d) : '') + '</span></button>';
+            (x.d ? ' · ' + escapeHtml(dateLabel(x.d)) : '') + '</span></button>';
         }).join('') + '</div>'
       : '';
     $('detailSimilar').innerHTML = seriesListHtml + simsHtml;
@@ -6095,6 +6147,13 @@
     render();
   });
 
+  // 只看新作：2025 年起发售。默认排序是评分，新作票数少容易沉底，这个开关把它们挑出来
+  $('recentBtn').addEventListener('click', function () {
+    state.recentOnly = !state.recentOnly;
+    syncControls();
+    render();
+  });
+
   // 一键清除平台/地区/状态/搜索等筛选，保留当前年份季度与视图偏好
   $('clearFiltersBtn').addEventListener('click', function () {
     state.platform = 'all';
@@ -6109,6 +6168,7 @@
     state.onlyMine = false;
     state.highScore = false;
     state.hideMine = false;
+    state.recentOnly = false;
     state.q = '';
     searchEl.value = '';
     syncControls();
@@ -6444,7 +6504,7 @@
         paletteItems.push({
           kind: 'game',
           name: x.cn || x.n || '未知游戏',
-          sub: [x.d, (x.pl || []).slice(0, 2).join('/')].filter(Boolean).join(' · '),
+          sub: [dateLabel(x.d), (x.pl || []).slice(0, 2).join('/')].filter(Boolean).join(' · '),
           run: function () { openDetail(String(x.i)); }
         });
       });
@@ -7419,7 +7479,7 @@
         .filter(Boolean).join('/');
       rows.push([
         id, x.cn || '', x.n || '', (x.pl || []).join('/'), (x.dev || []).join('/'),
-        genres, x.d || '', STATUS[e.s] || '想玩',
+        genres, dateLabel(x.d), STATUS[e.s] || '想玩',
         new Date(e.t || Date.now()).toLocaleString('zh-CN'),
       ]);
     });
@@ -7448,7 +7508,7 @@
       var name = '[' + String(x.cn || x.n || '未知').replace(/\|/g, '\\|') + '](' +
         (x.vx ? 'https://vndb.org/' + x.vx : 'https://bgm.tv/subject/' + id) + ')';
       lines.push('| ' + name + ' | ' + (STATUS[e.s] || '想玩') + ' | ' +
-        (x.d || '—') + ' | ' + ((x.pl || []).join(' / ') || '—').replace(/\|/g, '\\|') +
+        (dateLabel(x.d) || '—') + ' | ' + ((x.pl || []).join(' / ') || '—').replace(/\|/g, '\\|') +
         ' | ' + ((x.dev || []).join(' / ') || '—').replace(/\|/g, '\\|') + ' |');
     });
     download('我的游玩-' + stamp() + '.md', lines.join('\n'), 'text/markdown;charset=utf-8');
