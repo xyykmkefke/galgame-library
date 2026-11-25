@@ -168,3 +168,4 @@
 - 合并三源：开发商 96.4%、题材 87.8%；体积 2940KB（主库 804KB）。
 - `check-data` 0；`verify` 187/187；SW `yuc-gl-shell-v42`；版本 2.28.0。
 - A5 路线收口：候选池已空，后续提升匹配率需新别名来源（月幕详情补全 / Bangumi 关联 / VNDB dump）。
+- 发布：git HTTPS 被重置，经 GitHub API 推送，远端 `bd07827`（本地 `3cfd9cb`，tree 一致）；CI 与 Pages 成功，线上复核版本 2.28.0、SW v42、VNDB 匹配 1161。

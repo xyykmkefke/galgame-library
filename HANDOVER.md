@@ -1367,3 +1367,4 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 合并三源覆盖：日期 99.3% · 评分 99.2% · 封面 100% · 平台 98.7% · 开发商 **96.4%** · 题材 **87.8%**。
 - 体积 2910KB → **2940KB**（主库 804KB）；`check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v42`。
 - 结论：A5 候选池已耗尽，此路线结束。后续若还要提升 VNDB 匹配率，需要新的别名来源（月幕详情别名补全、Bangumi 关联条目、手工核对），或改用 VNDB 官方 dump 离线匹配，不再走逐条搜索。
+- 发布：`git push` HTTPS 被重置，改用 GitHub API 建 blob/tree/commit 并 PATCH `refs/heads/main`，远端 `bd07827` 与本地 `3cfd9cb` tree 完全一致；CI 与 Pages 成功，线上复核 2.28.0 / SW v42 / 匹配 1161。
