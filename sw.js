@@ -1,5 +1,5 @@
 // 应用壳离线缓存：首页网络优先并带超时回退，其余同源资源缓存优先、后台更新
-var CACHE = 'yuc-gl-shell-v41';
+var CACHE = 'yuc-gl-shell-v42';
 var SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './data/galgames.js', './data/vndb.js', './data/ymgal.js', './data/vndb-extra.js', './data/bgm-extra.js', './data/series.js', './data/dev-alias.js'];
 
 var CORE = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];

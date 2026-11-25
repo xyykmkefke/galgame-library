@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-24
-- 当前状态：v2.27.4（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
+- 当前状态：v2.28.0（数据 7732 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.27.4（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配）
+- 本次会话：v2.19.0 → v2.28.0（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾）
 
 ## 1. 目标与边界
 
@@ -970,8 +970,8 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 - ErogameScape / Getchu 等日本站点在当前网络不可达；未使用需要日本出口或代理的方案。
 - VNDB 匿名限流约 200 次 / 5 分钟；全量重抓耗时长，优先用 `--popularity-only`、`enrich-vndb-tags` 等增量脚本。
 - balanced 裁剪按 `h<20 且 2015 年前`，保留全部 2015+ 与 `h>=20`；极老冷门系列可能整组消失，若系列完整性优先需先保存 relations 再做图连通裁剪。
-- 扩展库仍有约 399 条无题材（93.4% 覆盖），主要缺少标签；可继续补同义词或标题规则，但收益递减。
-- 数据体积已回到 3.2MB，仍建议每次新增数据后跑 `check-data` 与 `verify`，并在数据变化时升级 SW 缓存版本。
+- 扩展库仍有约 390 条无题材（93.2% 覆盖），主要缺少标签；可继续补同义词或标题规则，但收益递减。
+- 数据体积约 2.9MB，仍建议每次新增数据后跑 `check-data` 与 `verify`，并在数据变化时升级 SW 缓存版本。
 
 ### 42.5 后续建议
 
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.27.4 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.27.4 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.27.4 |
-| `README.md` | 「状态：**vN**」 | v2.27.4 |
-| `manifest.webmanifest` | `version` | 2.27.4 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v41 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.27.4 |
+| `package.json` | `version` | 2.28.0 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.28.0 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.28.0 |
+| `README.md` | 「状态：**vN**」 | v2.28.0 |
+| `manifest.webmanifest` | `version` | 2.28.0 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v42 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.28.0 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 7732），数据规模大幅变化时应同步修改。
@@ -1356,3 +1356,14 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 二次补齐：开发商 +5（85.3%）、剧本 +9 / 原画 +9 / 音乐 +16、题材 +11（69.9%）。
 - 体积 2910KB；`check-data` 0；`verify` 187/187；SW v41。
 - 剩余约 355 条未探测，继续跑完后统一收口。
+
+## 61. A5 收尾：候选池全量探测（v2.28.0，2026-11-25）
+
+- 未匹配候选 **1155 条全部探测完毕**（v2.27.4 累计 660 条，本轮新增 495 条）；本轮命中 235 条（47.5%），A5 累计命中 375 条（32.5%）。
+- VNDB 匹配 926 → **1161**（1972 条主库的 58.9%）；探测缓存 `data/build/vndb-rematch.json` 已无未探测项。
+- 合并回主库（`apply-vndb-rematch.mjs`）后的二次补齐：
+  - 开发商 1682 → 1695（86.0%）；题材 1378 → 1429（72.5%，`GL_META.genreFilled` 177 → 228）
+  - 剧本 1227 → 1266（64.2%）· 原画 1041 → 1077（54.6%）· 音乐 976 → 1033（52.4%）
+- 合并三源覆盖：日期 99.3% · 评分 99.2% · 封面 100% · 平台 98.7% · 开发商 **96.4%** · 题材 **87.8%**。
+- 体积 2910KB → **2940KB**（主库 804KB）；`check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v42`。
+- 结论：A5 候选池已耗尽，此路线结束。后续若还要提升 VNDB 匹配率，需要新的别名来源（月幕详情别名补全、Bangumi 关联条目、手工核对），或改用 VNDB 官方 dump 离线匹配，不再走逐条搜索。
