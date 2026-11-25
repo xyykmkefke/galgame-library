@@ -1,0 +1,129 @@
+{
+  "_comment": "人工复核后的 VNDB 匹配修正：reject 删除错误映射且不会被后续 apply 重加；replace 覆盖为正确 VN。",
+  "reject": {
+    "108004": {
+      "reason": "Bangumi 临时女友（Girl Friend BETA 手游，2012-10-29）与 VNDB v17677 的 3DS《与你共度的暑假》（2015-11-19）不是同一作品；3DS 版已由 Bangumi 关联条目 131627 单独收录。"
+    }
+  },
+  "replace": {
+    "91039": {
+      "v": "v13074",
+      "t": "Koiken Otome ~Revive~",
+      "d": "2014-04-25",
+      "r": 73.4,
+      "vc": 179,
+      "dv": "Eufonie",
+      "reason": "恋剣乙女～再燃～ 是 2014 年的 FD，对应 VNDB v13074；原映射 v10608 是 2012 年本篇。"
+    }
+  },
+  "accept": {
+    "227694": {
+      "v": "v27892",
+      "t": "Cornu Copia -Fushigi no Sumu Machi-",
+      "d": "2017-05-06",
+      "r": 0,
+      "vc": 3,
+      "dv": "Amateru.",
+      "reason": "简中版（2026）对应 2017 年原作的官方中文发行；中日文标题一致，开发商 あまてる。/Amateru 对应。"
+    },
+    "290368": {
+      "v": "v20538",
+      "t": "Jiangshi x Daoshi",
+      "d": "2014-12-30",
+      "r": 76.5,
+      "vc": 165,
+      "dv": "Dendou Denki Dou",
+      "reason": "简中发行（2019）对应 2014 年原作；中日文标题与开发商 電動伝奇堂 一致。"
+    },
+    "374504": {
+      "v": "v55113",
+      "t": "Aquarium wa Odoranai",
+      "d": "2024-02-05",
+      "r": 65.4,
+      "vc": 28,
+      "dv": "Gotcha Gotcha Games Inc., Daidai",
+      "reason": "简中标题与英文标题一致；2019 为早期发布、2024 为商业版，视为同一作品。"
+    },
+    "450816": {
+      "v": "v15523",
+      "t": "Higurashi no Naku Koro ni Hou",
+      "d": "2014-08-17",
+      "r": 74.4,
+      "vc": 765,
+      "dv": "07th Expansion",
+      "reason": "寒蝉奉+ 是奉的加强版，VNDB 无独立条目，映射到 2014 年奉。"
+    },
+    "492255": {
+      "v": "v47936",
+      "t": "Muv-Luv Alternative - Total Eclipse: Teito Moyu",
+      "d": "2014-09-26",
+      "r": 76.9,
+      "vc": 287,
+      "dv": "âge, aNCHOR Inc.",
+      "reason": "2023 年发行版对应 2014 年《帝都燃ゆ》；日文标题与开发商 âge 一致。"
+    },
+    "505952": {
+      "v": "v30616",
+      "t": "ToHeart",
+      "d": "1999-03-25",
+      "r": 73.7,
+      "vc": 192,
+      "dv": "AQUAPLUS, Tamsoft Corporation, STING CO., LTD.",
+      "reason": "ToHeart 2025 重制版，VNDB 无独立条目，映射到 1999 原作。"
+    },
+    "511943": {
+      "v": "v29445",
+      "t": "LOOPERS",
+      "d": "2021-05-28",
+      "r": 65.3,
+      "vc": 1428,
+      "dv": "Key",
+      "reason": "LOOPERS+ 是 LOOPERS 的强化版，VNDB 无独立条目，映射到原作。"
+    },
+    "531489": {
+      "v": "v18915",
+      "t": "Issho ni Ikimashou Ikimashou Ikimashou",
+      "d": "2015-11-05",
+      "r": 74,
+      "vc": 248,
+      "dv": "Water Phoenix",
+      "reason": "简中发行（2023）对应 2015 年原作；中文标题与开发商 Water Phoenix 一致。"
+    },
+    "540053": {
+      "v": "v777",
+      "t": "Mahoutsukai no Yoru",
+      "d": "2012-04-12",
+      "r": 86.2,
+      "vc": 5799,
+      "dv": "TYPE-MOON, HuneX, Lasengle Inc.",
+      "reason": "2022 年重制版对应 2012 年原作；中文标题与开发商 TYPE-MOON 一致。"
+    },
+    "540123": {
+      "v": "v21852",
+      "t": "Kin'iro Loveriche",
+      "d": "2017-12-22",
+      "r": 81.5,
+      "vc": 3906,
+      "dv": "SAGA PLANETS",
+      "reason": "简中发行（2021）对应 2017 年原作；中文标题与开发商 SAGA PLANETS 一致。"
+    },
+    "567163": {
+      "v": "v50180",
+      "t": "Yasoukyoku",
+      "d": "2004-12-19",
+      "r": 0,
+      "vc": 0,
+      "dv": "Mahou Douguya \"Gin no Suzu\"",
+      "reason": "同名多作时按发售日与开发商判定：Bangumi 2004-12-19 与 VNDB 同日，开发商 魔法道具屋「銀の鈴」/Mahou Douguya \"Gin no Suzu\" 一致；2006 年的 v27206 / v11026 不采纳。"
+    },
+    "708984": {
+      "v": "v9303",
+      "t": "Imouto Choukyou Nikki ~Konna Tsundere ga Ore no Imouto na Wakenai!~",
+      "d": "2011-08-14",
+      "r": 53.6,
+      "vc": 268,
+      "dv": "NANACAN",
+      "reason": "简中版（2026）对应 2011 年原作；中文标题与开发商 NANACAN 一致。"
+    }
+  }
+}

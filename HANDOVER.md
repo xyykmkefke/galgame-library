@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
-- 文档日期：2026-11-24
-- 当前状态：v2.29.1（数据 7729 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
+- 文档日期：2026-11-25
+- 当前状态：v2.29.2（数据 7729 条，其中 35 条非 gal 默认隐藏；`npm run verify` 187/187，线上已部署）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → v2.29.1（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口）
+- 本次会话：v2.19.0 → v2.29.2（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口）
 
 ## 1. 目标与边界
 
@@ -125,7 +125,7 @@ function infoValues(infobox, key) {
 - `NDSi`、`DS` → `NDS`
 - 其余保持原样，过滤空值和明显异常值
 
-题材白名单（`scripts/genres.mjs`，18 个）：
+题材白名单（`scripts/genres.mjs`，20 个，实际有作品 19 个）：
 
 科幻、奇幻、恋爱、校园、日常、悬疑、推理、泣系、郁系、恐怖、猎奇、战斗、冒险、百合、耽美、后宫、女装、机战。
 
@@ -986,13 +986,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.29.1 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.1 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.1 |
-| `README.md` | 「状态：**vN**」 | v2.29.1 |
-| `manifest.webmanifest` | `version` | 2.29.1 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v44 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.1 |
+| `package.json` | `version` | 2.29.2 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.2 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.2 |
+| `README.md` | 「状态：**vN**」 | v2.29.2 |
+| `manifest.webmanifest` | `version` | 2.29.2 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v45 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.2 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 7729），数据规模大幅变化时应同步修改。
@@ -1416,3 +1416,32 @@ node scripts/fetch-vndb-relations.mjs --delay=2000     # 调整批次间隔
 - 效果：v2.29.0 新增的 467 条匹配（A5 375 + 离线 92）不再在时长筛选里全部落空，`我的时长` 统计覆盖同步提升。
 - `check-data` 0 问题；`verify` 187/187（系列快照改为 629 / 1797，详情部数断言改为动态）；体积 2952KB；SW `yuc-gl-shell-v44`；版本 2.29.1。
 - 发布：提交 `cd7680e`，tag `v2.29.1`；CI 成功，线上复核 2.29.1 / SW v44 / 系列 629·1797 / `lengthFilled` 292。
+
+## 64. 匹配复核、月幕反查与文档审计（v2.29.2，2026-11-25）
+
+### 64.1 新匹配质量复核
+
+- 用脚本复核 A5 + 离线共 467 条：标题跨语言、年份差 >2、开发商拉丁名冲突三类信号筛出 33 条，人工逐条判断后：
+  - **删除 1 条**：`108004` 临时女友（Girl Friend BETA 手游，2012）对 VNDB v17677（3DS《与你共度的暑假》，2015），不是同一作品；3DS 版已由 Bangumi 关联条目 131627 单独收录。
+  - **替换 1 条**：`91039` 恋剣乙女～再燃～ 原指向 2012 本篇 v10608，改为 FD 的 v13074。
+  - **人工确认 12 条**：跨年份但确属同一作品（中文发行 / 重制 / 强化版）——丰裕之角、妹调教日记、魔法使之夜、金辉恋曲四重奏、ToHeart 重制、LOOPERS+、寒蝉奉+、Muv-Luv TE 帝都燃烧、生死永相随、僵尸×道士、水族馆不会跳舞，以及同名多作的《夜想曲》（按同日发售 + 开发商 銀の鈴 选 v50180）。
+  - 明确拒绝：Lunacy（开发商不同）、来自星尘（与 2013 年同名作无关）、夕影、另我空间（VNDB 2009 版与 Bangumi 2018 版无关）。
+- 新增 `data/vndb-corrections.json` + `apply-vndb-rematch.mjs` 的 `reject / replace / accept` 三种人工修正（幂等、持久，避免下次 apply 把删掉的映射加回来）；meta 记 `correctedReject / correctedReplace / acceptedManually`。
+- VNDB 匹配 1253 → **1264**（1016 条有时长）。
+
+### 64.2 月幕别名反查
+
+- 新增 `scripts/match-ymgal-aliases.mjs`：对未匹配月幕的可见条目，用 VNDB 日文原名（索引）与 Bangumi 别名去月幕搜索，只接受归一标题完全相等且年份差 ≤3。
+- 1025 条全部探测，命中 **159 条（15.5%）**；月幕匹配 916 → **1075**。命中样例人工核对无误（如 铁堡的灰烬之花 / 鉄廻城砦の灰花、灰色 CHRONOS REBELLION）。
+- 新增 `scripts/apply-ymgal-aliases.mjs`：合并进 `data/ymgal.js` 并同步 `data/build/ymgal-map.json` 缓存；之后跑一次 `fetch-ymgal` 补详情别名，`aliased` 472 → **645**。
+
+### 64.3 文档一致性审计
+
+- 子代理只读核对版本链与全部计数后，修正 README 6 处旧数字：开发商一览 2138 / 901、题材一览 19 个、平台覆盖 7631 部、VNDB 扩展组成（3000 基线 + 801 热度补页 + 452 关系 + 3626 开发商）、Bangumi 关联脚本种子 1972 / 20 条、SESSION-LOG 链接版本。
+- `data/ymgal.js` 的 `meta.aliased` 577 → 472（与 map 实际一致）；HANDOVER 文档日期与题材白名单数量同步。
+
+### 64.4 验收
+
+- 主库题材 1464（74.2%）、剧本 64.9% / 原画 55.7% / 音乐 53.6%；合并三源开发商 96.5% / 题材 88.3%。
+- 体积 2952 → **2994KB**（月幕数据 210 → 250KB）；系列 629 / 1797（新映射未改变分组）。
+- `check-data` 0 问题；`verify` 187/187；SW `yuc-gl-shell-v45`；版本 2.29.2。

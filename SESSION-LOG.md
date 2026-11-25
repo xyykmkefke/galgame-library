@@ -1,6 +1,6 @@
 # 会话日志 · 2026-11-23
 
-本日志记录 Galgame 库从 v2.19.0 到 v2.29.1 的完整会话过程。详细字段、风险与后续建议见 [HANDOVER.md](./HANDOVER.md) 第 36–63 节。
+本日志记录 Galgame 库从 v2.19.0 到 v2.29.2 的完整会话过程。详细字段、风险与后续建议见 [HANDOVER.md](./HANDOVER.md) 第 36–64 节。
 
 ## 起点
 
@@ -188,3 +188,11 @@
 - 效果：v2.29.0 新增的 467 条匹配不再在时长筛选与「我的时长」里落空。
 - `check-data` 0；`verify` 187/187；SW `yuc-gl-shell-v44`；体积 2952KB；版本 2.29.1。
 - 发布：提交 `cd7680e`，tag `v2.29.1`；CI 成功，线上复核 2.29.1 / SW v44 / 系列 629·1797 / `lengthFilled` 292。
+
+## 24. 匹配复核、月幕反查与文档审计（v2.29.2）
+
+- 复核 A5 + 离线 467 条：删 1 条错配（108004 手游 vs 3DS）、替换 1 条（91039 → v13074 再燃 FD）、人工确认 12 条跨年份同作；新增 `data/vndb-corrections.json` 与 apply 的 reject / replace / accept。匹配 1253 → 1264。
+- 新增 `match-ymgal-aliases`：用 VNDB 日文名 + Bangumi 别名反查月幕，1025 条命中 159 条（15.5%）；月幕 916 → 1075。`apply-ymgal-aliases` 写回并同步缓存，随后 `fetch-ymgal` 补详情别名，aliased 472 → 645。
+- 文档审计（子代理）修正 README 6 处旧数字、`ymgal.js` meta.aliased、HANDOVER 日期与题材数。
+- 主库题材 1464（74.2%）、剧本 64.9% / 原画 55.7% / 音乐 53.6%；体积 2994KB。
+- `check-data` 0；`verify` 187/187；SW `yuc-gl-shell-v45`；版本 2.29.2。
