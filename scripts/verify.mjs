@@ -513,6 +513,41 @@ async function main() {
         `${r.a} vs ${r.b}${r.missing.length ? ' 漏 ' + r.missing.join(',') : ''}`);
     }
 
+    // ---------- 开发商前缀搜索：逐字输入时不能中途空结果 ----------
+    // v2.32.0 曾把 ≤4 字符的短 token 限制成整名/后缀，导致 atel/hook/07th 全部搜不到，
+    // 用户边打字边看结果时前面几步全是空。这里断言「前缀能命中以它开头的开发商」。
+    // 判据不是「有结果」（别的字段可能碰巧命中），而是结果里确实有该前缀开头的开发商。
+    for (const pre of ['atel', 'hook', 'dies']) {
+      await typeSearch(pre);
+      const r = await cdp.evaluate(`(() => {
+        const ids=[...document.querySelectorAll('.card')].map((c)=>String(c.dataset.id));
+        const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[String(x.i)]=x; });
+        const pre=${JSON.stringify(pre)};
+        const withDev=ids.filter((id)=>{
+          const x=map[id]||{};
+          return ((x.dev||[]).concat(x.dva||[])).some((d)=>String(d).toLowerCase().indexOf(pre)===0);
+        });
+        return { total:ids.length, withDev:withDev.length, sample:withDev.slice(0,3).map((id)=>(map[id]||{}).n||'') };
+      })()`);
+      check(`开发商前缀可搜：${pre}`, r.withDev > 0,
+        `${r.total} 条 / 命中前缀开发商 ${r.withDev} 条${r.sample.length ? '：' + r.sample.join('、') : ''}`);
+    }
+
+    // 放开前缀后，标题里的词内子串仍必须挡住：kid 不能命中「kidnapped girl」这类标题
+    await typeSearch('kid');
+    const kidTitleBad = await cdp.evaluate(`(() => {
+      const ids=[...document.querySelectorAll('.card')].map((c)=>String(c.dataset.id));
+      const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[String(x.i)]=x; });
+      return ids.filter((id)=>{
+        const x=map[id]||{};
+        const devs=((x.dev||[]).concat(x.dva||[])).map((d)=>String(d).toLowerCase());
+        const hitDev=devs.some((d)=>/^kid\\b/.test(d)||/^kid$/.test(d));
+        return !hitDev && /kidnapp/i.test(String(x.n||''));
+      }).map((id)=>id+':'+(map[id]||{}).n).slice(0,3);
+    })()`);
+    check('前缀放开不引入标题词内误命中（kidnapped）', kidTitleBad.length === 0,
+      kidTitleBad.length ? kidTitleBad.join('；') : '0 条误命中');
+
     // 含空格的平台全称不能被拆成多词：拆开会让「2」命中「WHITE ALBUM2」这类标题，
     // 再和 playstation 的 PS3/PSV 别名取交集，搜平台全称反而搜出非该平台的条目。
     await typeSearch('PlayStation 2');

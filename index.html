@@ -4313,11 +4313,11 @@
     if (!qf.v) return false;
     var v = qf.v.toLowerCase();
     if (qf.k === 'dev') {
-      return anyNameMatches((x.dev || []).concat(x.dva || []), v);
+      return anyEntityMatches((x.dev || []).concat(x.dva || []), v);
     }
     if (qf.k === 'pl') {
       // pla 是平台别名闭包（Play Station 2 / プレイステーション2 等），搜索时一并匹配
-      return anyNameMatches((x.pl || []).concat(x.pla || []), v);
+      return anyEntityMatches((x.pl || []).concat(x.pla || []), v);
     }
     if (qf.k === 'year') return yearOf(x.d) === v;
     // 题材：支持中文标签（恋爱）与内部 id（rom），必须是白名单内的题材
@@ -4373,8 +4373,8 @@
     if (!t) return false;
     return looseText(x.cn).indexOf(t) >= 0 || looseText(x.n).indexOf(t) >= 0 ||
       looseText(aliasText(x)).indexOf(t) >= 0 ||
-      anyNameMatches((x.dev || []).concat(x.dva || []), token) ||
-      anyNameMatches((x.pl || []).concat(x.pla || []), token);
+      anyEntityMatches((x.dev || []).concat(x.dva || []), token) ||
+      anyEntityMatches((x.pl || []).concat(x.pla || []), token);
   }
 
   // 搜索相关度：0 完全一致 > 1 前缀 > 2 包含，越靠前越优先
@@ -4403,8 +4403,8 @@
     }
     // 标题都不命中时，开发商 / 平台命中排在命中结果之后
     if (best === 3) {
-      if (anyNameMatches((x.dev || []).concat(x.dva || []), q) ||
-          anyNameMatches((x.pl || []).concat(x.pla || []), q)) best = 2;
+      if (anyEntityMatches((x.dev || []).concat(x.dva || []), q) ||
+          anyEntityMatches((x.pl || []).concat(x.pla || []), q)) best = 2;
     }
     // 多关键词时整串通常不会命中，退而用首个关键词的匹配档位排序
     var tokens = searchTokens(q).filter(function (t) { return t.charAt(0) !== '-' || t.length < 2; });
@@ -4480,11 +4480,51 @@
     return false;
   }
 
-  // 一组名字里是否有任一命中（开发商 / 平台用）
+  // 一组名字里是否有任一命中（标题 / 别名用严格规则）
   function anyNameMatches(names, token) {
     if (!names || !names.length) return false;
     for (var i = 0; i < names.length; i += 1) {
       if (nameMatches(names[i], token)) return true;
+    }
+    return false;
+  }
+
+  // 实体名（开发商 / 平台）的匹配：允许词首前缀。
+  //
+  // 为什么和标题分开：用户输入是逐字打的，打到「atel」时就该出 Atelier 的作品，
+  // 打到「07th」就该出 07th Expansion。上一版把 ≤4 字符的短 token 限制成
+  // 「整名相等 / 带版本号 / 只跟公司后缀」，结果 atel / hook / 07th / blac / dies
+  // 这些前缀全部搜不到，等于把「边打边出结果」的体验废掉了。
+  //
+  // 放开后要挡的误命中分两类：
+  //   - 词内子串（IzanagiGames 里的 giga、akidou 里的 kid）：仍靠左边界挡住；
+  //   - 汉化组后缀（KID Fans Club）：NAME_GROUP_MARK 挡住，它不是 KID 公司本身。
+  // 标题不能放开：放开后「kidnapped girl」会被 kid 命中，那是真的词内误命中。
+  function entityNameMatches(name, token) {
+    if (!name || !token) return false;
+    var s = String(name).normalize('NFKC').toLowerCase();
+    var t = String(token).normalize('NFKC').toLowerCase();
+    if (!s || !t) return false;
+    if (NAME_CJK.test(t)) return s.indexOf(t) >= 0;   // 中日文：子串即命中
+    var isWordChar = /[a-z0-9]/;
+    var i = s.indexOf(t);
+    while (i >= 0) {
+      var leftOk = i === 0 || !isWordChar.test(s.charAt(i - 1));
+      if (!leftOk) { i = s.indexOf(t, i + 1); continue; }
+      var end = i + t.length;
+      var rest = s.slice(end).replace(/^[\s.,;:/／、-]+/, '');
+      if (NAME_GROUP_MARK.test(rest)) { i = s.indexOf(t, i + 1); continue; }
+      if (i === 0) return true;   // 词首：无论后面接什么，前缀都算命中
+      if (end === s.length || !isWordChar.test(s.charAt(end))) return true;  // 词内独立词
+      i = s.indexOf(t, i + 1);
+    }
+    return false;
+  }
+
+  function anyEntityMatches(names, token) {
+    if (!names || !names.length) return false;
+    for (var i = 0; i < names.length; i += 1) {
+      if (entityNameMatches(names[i], token)) return true;
     }
     return false;
   }
@@ -4500,8 +4540,8 @@
     return cn.indexOf(token) >= 0 ||
       nameMatches(x.n, token) ||
       nameAliasMatches(x, token) ||
-      anyNameMatches((x.dev || []).concat(x.dva || []), token) ||
-      anyNameMatches((x.pl || []).concat(x.pla || []), token) ||
+      anyEntityMatches((x.dev || []).concat(x.dva || []), token) ||
+      anyEntityMatches((x.pl || []).concat(x.pla || []), token) ||
       (/^[a-z0-9]+$/.test(token) && py.indexOf(token) >= 0);
   }
 
