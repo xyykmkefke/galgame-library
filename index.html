@@ -3035,6 +3035,10 @@
   // 有了闭包后，同组写法全部塞进 dva / pla，搜任一写法都命中全集。
   var ALIAS_GROUPS = (window.GL_ALIAS_GROUPS && window.GL_ALIAS_GROUPS.dev) || {};
   var PLAT_ALIAS = (window.GL_ALIAS_GROUPS && window.GL_ALIAS_GROUPS.plat) || {};
+  // 题材同义词：写法（小写）-> 题材 id（sci / rom / yur …）。
+  // 之前只接了开发商和平台，题材表生成了却没用，导致搜「sf」「cyberpunk」「yuri」
+  // 都搜不到——用户只会觉得「题材筛选坏了」。
+  var GENRE_ALIAS = (window.GL_ALIAS_GROUPS && window.GL_ALIAS_GROUPS.genre) || {};
 
   // 建小写索引：decorateData 要跑 9000+ 条，逐条遍历 key 会拖慢首屏
   function lowerIndex(table) {
@@ -4320,9 +4324,14 @@
       return anyEntityMatches((x.pl || []).concat(x.pla || []), v);
     }
     if (qf.k === 'year') return yearOf(x.d) === v;
-    // 题材：支持中文标签（恋爱）与内部 id（rom），必须是白名单内的题材
+    // 题材：中文标签（恋爱）、同义词（sf / cyberpunk / yuri）、内部 id（rom）都认。
+    // 三级查找：同义词表 -> 中文标签 -> 直接当 id。
+    // 同义词表放在最前，因为它覆盖最广（104 个写法）；「恋爱」这类既是标签又是同义词的，
+    // 两边查到的 id 一致，顺序不影响结果。
     if (qf.k === 'genre') {
-      var gid = GENRE_BY_LABEL[qf.v] || (GENRE_LABEL[qf.v] ? qf.v : '');
+      var gv = String(qf.v).trim();
+      var gid = GENRE_ALIAS[gv.toLowerCase()] || GENRE_BY_LABEL[gv] ||
+        (GENRE_LABEL[gv] ? gv : '');
       return !!gid && (x.tg || []).indexOf(gid) >= 0;
     }
     // 评分：支持 >= / <= / > / < 前缀，省略运算符时按 >= 处理（如 评分:8 即 8 分以上）

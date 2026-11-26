@@ -627,6 +627,43 @@ try {
 
   checkGroups('开发商', dedupe(AG.dev || {}), 'dev');
   checkGroups('平台', dedupe(AG.plat || {}), 'pl');
+
+  // 题材别名：写法 -> 题材 id，必须是运行时 tg 字段真实存在的 id。
+  //
+  // 曾经的真实缺陷：build-alias-groups.mjs 用 Object.entries(GENRES) 取 id，
+  // GENRES 是数组，于是 id 变成数组下标 "0"/"1"/"2"，与 tg 的 sci/fan/rom 完全对不上，
+  // 104 个题材写法全部失效。这条断言就是防它复发——id 必须能在数据里找到。
+  {
+    const genreMap = AG.genre || {};
+    const keys = Object.keys(genreMap);
+    const realIds = new Set();
+    pool.forEach((x) => (x.tg || []).forEach((t) => realIds.add(String(t))));
+    const badIds = [...new Set(Object.values(genreMap))].filter((id) => !realIds.has(String(id)) && !/^$/.test(id));
+    // 允许「有同义词但库里没条目」的题材（如 oto 乙女，本库定位排除乙女向），
+    // 但 id 必须是 GENRES 里定义过的合法 id——不能是数组下标这种错位产物。
+    const validIds = new Set(['sci', 'fan', 'rom', 'sch', 'sli', 'mys', 'det', 'nak', 'dep',
+      'hor', 'gru', 'bat', 'adv', 'yur', 'bl', 'har', 'jk', 'mec', 'oto', 'nukige']);
+    const invalidIds = [...new Set(Object.values(genreMap))].filter((id) => !validIds.has(String(id)));
+    if (invalidIds.length) {
+      console.log(`FAIL 题材别名指向非法 id：${invalidIds.slice(0, 5).join('/')}（应为 sci/fan/rom 等，不是数组下标）`);
+      total += 1;
+    } else if (badIds.length) {
+      // 合法 id 但库里没条目：不报错，只提示（乙女向不在本库范围内属正常）
+      console.log(`提示 题材别名中 ${badIds.length} 个 id 暂无对应条目（${badIds.join('/')}），不影响搜索`);
+    }
+    if (keys.length === 0) {
+      console.log('FAIL 题材别名为空：题材同义词搜索会全部失效');
+      total += 1;
+    } else if (!invalidIds.length) {
+      console.log(`PASS 题材别名：${keys.length} 个写法覆盖 ${new Set(Object.values(genreMap)).size} 个题材，id 合法`);
+    }
+    // 中文标签必须能在别名表里查到，否则「题材:恋爱」这种最自然的输入会失效
+    const missingLabels = ['恋爱', '科幻', '奇幻', '校园', '百合', '拔作'].filter((lb) => !genreMap[lb]);
+    if (missingLabels.length) {
+      console.log(`FAIL 正名标签不在题材别名表：${missingLabels.join('/')}`);
+      total += 1;
+    }
+  }
 } catch (err) {
   console.log(`FAIL 别名组不可用：${err.message}`);
   total += 1;

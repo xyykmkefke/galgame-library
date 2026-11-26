@@ -129,12 +129,15 @@ Object.entries(PLATFORM_ALIAS).forEach(([std, list]) => feed(uf, std, list, stat
 // ---- 3. 题材：genres.mjs 的标签 ----
 // 题材在运行时是按 id 走的（tg），这里只为「题材名搜索」提供同义词，
 // 让「搜 百合 / yuri / GL 都落到 yur」这种能力有数据基础。
-Object.entries(GENRES).forEach(([id, g]) => {
+// 注意：GENRES 是数组，必须取 g.id（sci/fan/rom…），不能用 Object.entries 的数组下标——
+// 那样会得到 "0"/"1"/"2"，与运行时 tg 字段的 id 体系对不上，题材搜索会全部落空。
+for (const g of GENRES) {
+  const id = g.id;
   const names = [g.label, ...(g.tags || [])].map(clean).filter(Boolean);
   const uniq = [...new Set(names)];
   uniq.forEach((n) => uf.find(`g:${id}:${n}`));
   for (let i = 1; i < uniq.length; i += 1) uf.union(`g:${id}:${uniq[0]}`, `g:${id}:${uniq[i]}`);
-});
+}
 
 // ---- 汇总连通分量 ----
 const groups = new Map();

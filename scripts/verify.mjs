@@ -362,6 +362,20 @@ async function main() {
       await cdp.evaluate("(() => { const el=document.getElementById('search'); el.value=''; el.dispatchEvent(new Event('input',{bubbles:true})); })()");
       await sleep(300);
     };
+    // 搜索并取命中集。首屏只渲染 PAGE_SIZE(240) 张卡，所以：
+    // - count 用页面上的 #resultCount（真实命中总数，不受渲染上限影响）；
+    // - ids 用已渲染的卡片（最多 240 条），两边做子集比对——
+    //   同一套匹配规则下前 240 条必然一致，加上 count 相等就能确认真等价。
+    const aliasHits = async (text) => {
+      await typeSearch(text);
+      const r = await cdp.evaluate(`(() => {
+        const cards = [...document.querySelectorAll('.card')].map((c) => String(c.dataset.id));
+        const el = document.getElementById('resultCount');
+        const total = el ? (Number(String(el.textContent).replace(/\\D/g, '')) || 0) : cards.length;
+        return { ids: cards, total: total };
+      })()`);
+      return { ids: r.ids || [], count: r.total || 0 };
+    };
 
     await typeSearch('时空轮回');
     let firstTitle = await cdp.evaluate("(document.querySelector('.card .title') || {}).textContent || ''");
@@ -547,6 +561,30 @@ async function main() {
     })()`);
     check('前缀放开不引入标题词内误命中（kidnapped）', kidTitleBad.length === 0,
       kidTitleBad.length ? kidTitleBad.join('；') : '0 条误命中');
+
+    // ---------- 题材同义词：中文标签 / 英文 / 日文写法必须等价 ----------
+    // 题材别名表曾经生成了却完全没接入（构建脚本还把 id 当成数组下标 0/1/2），
+    // 导致「题材:sf」「题材:yuri」这类输入搜不到。这里守两件事：
+    // 1) 同义词与中文标签命中同一批条目（判据不丢目标）；
+    // 2) 命中数必须大于 0——否则「两边都是 0」会伪装成通过。
+    for (const [a, b, label] of [
+      ['题材:科幻', '题材:sf', '科幻 vs sf'],
+      ['题材:科幻', '题材:cyberpunk', '科幻 vs cyberpunk'],
+      ['题材:恋爱', '题材:romance', '恋爱 vs romance'],
+      ['题材:百合', '题材:yuri', '百合 vs yuri'],
+    ]) {
+      const A = await aliasHits(a);
+      const B = await aliasHits(b);
+      const sb = new Set(B.ids);
+      const missing = A.ids.filter((id) => !sb.has(id));
+      const sb2 = new Set(A.ids);
+      const missing2 = B.ids.filter((id) => !sb2.has(id));
+      // 判据三条：两边都有结果、命中总数相等、渲染出的条目集合一致。
+      // 「两边都是 0」会被 A.count > 0 拦住，不会伪装成通过。
+      check(`题材同义词等价：${label}`,
+        A.count > 0 && A.count === B.count && missing.length === 0 && missing2.length === 0,
+        `${A.count} vs ${B.count}${missing.length + missing2.length ? ' 漏 ' + missing.concat(missing2).slice(0, 3).join(',') : ''}`);
+    }
 
     // 含空格的平台全称不能被拆成多词：拆开会让「2」命中「WHITE ALBUM2」这类标题，
     // 再和 playstation 的 PS3/PSV 别名取交集，搜平台全称反而搜出非该平台的条目。
