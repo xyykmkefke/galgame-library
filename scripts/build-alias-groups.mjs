@@ -25,6 +25,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PLATFORM_ALIAS } from './platform-alias.mjs';
 import { GENRES } from './genres.mjs';
+import { DEV_CROSS_LANG } from './dev-cross-lang.mjs';
+import { romajiAliases } from './dev-romaji.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const DEV_ALIAS = path.join(ROOT, 'data', 'dev-alias.js');
@@ -122,6 +124,83 @@ for (const name of allDevNames) {
   }
 }
 if (compoundLinked) console.log(`复合名并入主名：${compoundLinked} 条`);
+
+// ---- 1c. 跨语言社名：日文名 -> 官方英文名（人工核对表）----
+//
+// 只灌并查集，不写进 dev-alias.js 的 map —— map 会改写 x.dev 从而改变列表显示，
+// 而这里只想让英文名能搜到（进 dva），显示保持日文原名。
+const crossLang = Object.entries(DEV_CROSS_LANG).reduce((n, [jp, lats]) => {
+  const a = clean(jp);
+  const list = (Array.isArray(lats) ? lats : [lats]).map(clean).filter(Boolean);
+  if (!a || !list.length) return n;
+  uf.find(a);
+  list.forEach((lat) => { uf.union(a, lat); stats.edges += 1; });
+  return n + 1;
+}, 0);
+if (crossLang) console.log(`跨语言社名并入：${crossLang} 条`);
+
+// ---- 1d. 假名社名的罗马字：打不出假名时用罗马字也能搜到 ----
+//
+// 上一段只补了 57 家有官方英文名的大社，库里还有 82 个纯假名社名
+// （けばぶ / うた / みどり / ランカース …）搜罗马字命中 0 条。
+// 这些多是只有一两部作品的同人社团，没有官方英文名可查，
+// 但罗马字是**确定性转写**（けばぶ 恒等于 kebabu），不是猜测，可以全量生成。
+//
+// 同样只灌并查集、不写 dev-alias 的 map —— 显示保持日文原名。
+//
+// 跳过的情况（romajiAliases 内部已经返回空）：
+//   - 含汉字：读音不唯一，机械转写会出错（みつどもえ工房 的 工房 读 koubou / kubou 看社名习惯）
+//   - 含拉丁字母或全角符号：本身就是复合名或脏数据（"アトラス / スタジオ・ゼロ"）
+let romajiCount = 0;
+let romajiSkipped = 0;
+// 只看「还没有任何拉丁写法」的社名：已经有了就不需要罗马字近似
+const devWithLatin = new Set();
+Object.keys(devMap).forEach((k) => {
+  if (/[A-Za-z]/.test(k)) devWithLatin.add(k);
+  if (/[A-Za-z]/.test(String(devMap[k] || ''))) devWithLatin.add(k);
+});
+// 复合名（A/B/C）不能只看整串：整串里只要有一段的拉丁名没进 devWithLatin，
+// 就会把「サイバーフロント/KID/SDR project」整串并到罗马字组，
+// 而它的子段 サイバーフロント 早就有官方英文名 CyberFront —— 结果整串名
+// 搜 CyberFront 搜不到，check-data 会报「漏 saibafuronto」。
+// 所以拆段后逐段判断：**所有**子段都已有拉丁写法时，整串才跳过。
+for (const name of allDevNames) {
+  if (devWithLatin.has(name)) continue;
+  // 已有跨语言官方英文名的也不重复生成
+  if (DEV_CROSS_LANG[name]) continue;
+
+  // 复合名（A/B/C）走另一条路：逐段处理，再把整串与已转写好的各段并起来。
+  //
+  // 为什么不能直接对整串生成罗马字：
+  //   「サイバーフロント/KID/SDR project」整串转写会得到 saibafuronto，
+  //   而 サイバーフロント 早就有官方英文名 CyberFront。于是整串被并进罗马字组、
+  //   和 CyberFront 脱钩 —— 搜 CyberFront 搜不到这条，check-data 报「漏 saibafuronto」。
+  //   正确做法是让整串跟着各段已有的名字走，只给「确实没有拉丁名」的段补罗马字。
+  const segs = String(name).split(/\s*[\/／&；;、]\s*/).map((s) => s.trim()).filter(Boolean);
+  if (segs.length > 1) {
+    let touched = false;
+    segs.forEach((seg) => {
+      uf.find(seg);
+      uf.union(name, seg);          // 整串 ≈ 每个子段
+      stats.edges += 1;
+      touched = true;
+      // 该子段没有拉丁名时，补它的罗马字（并连到该子段，不直连整串）
+      if (!devWithLatin.has(seg) && !DEV_CROSS_LANG[seg]) {
+        const segList = romajiAliases(seg);
+        segList.forEach((r) => { uf.union(seg, r); stats.edges += 1; });
+      }
+    });
+    if (touched) romajiCount += 1;
+    continue;
+  }
+
+  const list = romajiAliases(name);
+  if (!list.length) { romajiSkipped += 1; continue; }
+  uf.find(name);
+  list.forEach((r) => { uf.union(name, r); stats.edges += 1; });
+  romajiCount += 1;
+}
+if (romajiCount) console.log(`假名社名罗马字并入：${romajiCount} 社（另有 ${romajiSkipped} 个非纯假名社名，不需要/无法转写）`);
 
 // ---- 2. 平台：platform-alias.mjs ----
 Object.entries(PLATFORM_ALIAS).forEach(([std, list]) => feed(uf, std, list, stats));

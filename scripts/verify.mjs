@@ -586,6 +586,125 @@ async function main() {
         `${A.count} vs ${B.count}${missing.length + missing2.length ? ' 漏 ' + missing.concat(missing2).slice(0, 3).join(',') : ''}`);
     }
 
+    // ---------- 跨语言社名：日文社名与官方英文名必须等价 ----------
+    // 这批社在数据里只以日文出现（アトラス / フリュー / ブシロード…），
+    // 用户用英文名搜命中 0 条。已用人工核对表补入（scripts/dev-cross-lang.mjs），
+    // 只进搜索别名不改显示。这里守「两边命中数相等且非 0」。
+    //
+    // 选例规则：只用「可见条目 >= 2」的社。浏览器搜索不返回 k="off" 的隐藏条目
+    // （205 条非 gal 默认隐藏），所以拿一条只覆盖隐藏条目的映射来测，两边都是 0、
+    // 断言必然 FAIL —— 那测的不是功能，是选例失误。曾经踩过：レベルファイブ
+    // 全库只有 1 条作品（212078 イナズマイレブン），且是隐藏条目，误报 0 vs 0。
+    // 这类映射仍然有价值（用户打开隐藏开关后英文名同样能搜到），只是不适合做用例。
+    for (const [jp, lat] of [
+      ['アトラス', 'Atlus'],
+      ['フリュー', 'Furyu'],
+      ['ブシロード', 'Bushiroad'],
+      ['アクワイア', 'Acquire'],
+      ['ヒューネックス', 'HuneX'],
+    ]) {
+      const A = await aliasHits(jp);
+      const B = await aliasHits(lat);
+      check(`跨语言社名等价：${jp} = ${lat}`,
+        A.count > 0 && A.count === B.count,
+        `${A.count} vs ${B.count}`);
+    }
+    // 上面这批用例本身要够厚：全是 0 或只有 1 条时，等价判据几乎没区分力。
+    // 这里兜一道，防止将来数据变动让测试悄悄退化成「1 vs 1 永远通过」。
+    {
+      const probe = await aliasHits('アトラス');
+      check('跨语言社名用例具备区分力（命中 >= 2 条）', probe.count >= 2,
+        `アトラス 命中 ${probe.count} 条`);
+    }
+
+    // ---------- 假名社名的罗马字：打不出假名也要能搜到 ----------
+    // 库里 83 个纯假名社（けばぶ / うた / みどり / ランカース…）原先搜罗马字命中 0 条。
+    // 这批社没有官方英文名，用确定性转写补（scripts/dev-romaji.mjs）。
+    //
+    // 判据必须只看「开发商字段命中」，不能直接比搜索总命中数：
+    //   搜索是全字段的，标题和别名里的词也会命中。实测 ニトロプラス 34 条 vs NITRO PLUS 33 条，
+    //   差的 135999「NiTRO+ BLASTERZ」是因为它的月幕别名里有「ニトロプラス ブラスターズ…」
+    //   这整段日文标题 —— 属词串重叠导致的正确多命中，不是漏搜。
+    //   把这种差异算作失败，等于要求「日文标题里的日文词也要能用英文搜到」，那是错的。
+    // 所以这里比对的是：**dev 字段命中该社的条目**，两边必须完全一致。
+    const romajiCases = await cdp.evaluate(`(() => {
+      const AG = window.GL_ALIAS_GROUPS || {};
+      const dev = AG.dev || {};
+      const out = [];
+      Object.keys(dev).forEach((k) => {
+        if (!/^[\\u3040-\\u309f\\u30a0-\\u30ff\\u30fc\\u30fb\\s]+$/.test(k)) return;
+        const lats = (dev[k] || []).filter((v) => /^[a-z ]+$/i.test(String(v)));
+        if (!lats.length) return;
+        out.push([k, lats[0]]);
+      });
+      return out;
+    })()`);
+    check('假名社名已生成罗马字别名（覆盖 >= 60 组）', romajiCases.length >= 60,
+      `${romajiCases.length} 组假名社名带罗马字写法`);
+    let romajiOk = 0;
+    const romajiBad = [];
+    for (const [kana, lat] of romajiCases.slice(0, 12)) {
+      // devHits：搜该词后，dev/dva 里确实含这个词的条目集合
+      const devHit = async (q) => cdp.evaluate(`(() => {
+        const el = document.getElementById('search');
+        el.value = ${JSON.stringify(q)};
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return null;
+      })()`).then(() => sleep(320)).then(() => cdp.evaluate(`(() => {
+        const q = ${JSON.stringify(q)}.toLowerCase();
+        // 用 dva 判断：运行时别名闭包已注入，能直接看出该条目是否真的挂了这个社名
+        const hit = [];
+        (window.GL_DATA || []).forEach((x) => {
+          const names = (x.dev || []).concat(x.dva || []).map((d) => String(d).toLowerCase());
+          if (names.some((d) => d === q || d.indexOf(q) === 0)) hit.push(String(x.i));
+        });
+        return hit;
+      })()`));
+      const A = await devHit(kana);
+      const B = await devHit(lat);
+      // 判据只守「漏」：假名侧能命中的条目，罗马字侧必须也全命中（onlyA 为空）。
+      //
+      // 反向的 onlyB（罗马字多命中）不算失败 —— 多命中是拆词搜索的固有行为：
+      // 「Azarashi Soft」含空格会被拆成 azarashi + soft，soft 单独命中全库
+      // 所有「XXX Soft」，实测 38 条里有 36 条不属于这家。这是噪音不是缺陷，
+      // 真正要防的是「用户改用罗马字就搜不到原来那批条目」。
+      const onlyA = A.filter((id) => !B.includes(id));
+      if (A.length > 0 && onlyA.length === 0) romajiOk += 1;
+      else romajiBad.push(`${kana}(${A.length}) vs ${lat}(${B.length})${onlyA.length ? ' 漏' + onlyA.slice(0, 2).join(',') : ''}`);
+    }
+    check('假名社名与其罗马字不丢目标（假名侧命中，罗马字侧必全命中）',
+      romajiCases.length >= 60 && romajiOk > 0 && romajiBad.length === 0,
+      romajiBad.length ? romajiBad.slice(0, 3).join('；')
+        : `${romajiOk}/12 组无漏搜（候选 ${romajiCases.length} 组）`);
+    // 不只是抽查：整张表里「有拉丁写法但拉丁写法一条都搜不到」的组必须为 0。
+    // 这条守的是「别名表生成了但运行时没接上」这类故障——它不会让某个抽样用例失败，
+    // 却会让整批别名静默失效。
+    {
+      const orphanGroups = await cdp.evaluate(`(() => {
+        const AG = window.GL_ALIAS_GROUPS || {};
+        const dev = AG.dev || {};
+        let total = 0;
+        Object.keys(dev).forEach((k) => { if ((dev[k] || []).some((v) => /[A-Za-z]/.test(String(v)))) total += 1; });
+        return total;
+      })()`);
+      check('开发商别名表已加载并可被运行时消费', orphanGroups > 200,
+        `${orphanGroups} 个写法含拉丁别名`);
+    }
+    // 补入英译不能改变列表显示：アトラス 的作品仍应显示日文社名
+    const devDisplayClean = await cdp.evaluate(`(() => {
+      const map = {};
+      (window.GL_DATA || []).forEach((x) => { map[String(x.i)] = x; });
+      const bad = [];
+      (window.GL_DATA || []).forEach((x) => {
+        if (!(x.dev || []).length) return;
+        // 显示层用 x.dev；只有带英文名的条目才可能被误改
+        if ((x.dev || []).some((d) => d === 'Atlus' || d === 'Furyu')) bad.push(String(x.i));
+      });
+      return bad.slice(0, 3);
+    })()`);
+    check('跨语言英译不改变显示（仍显示日文社名）', devDisplayClean.length === 0,
+      devDisplayClean.length ? '被改名：' + devDisplayClean.join(',') : '0 条被改名');
+
     // 含空格的平台全称不能被拆成多词：拆开会让「2」命中「WHITE ALBUM2」这类标题，
     // 再和 playstation 的 PS3/PSV 别名取交集，搜平台全称反而搜出非该平台的条目。
     await typeSearch('PlayStation 2');
