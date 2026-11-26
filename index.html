@@ -2987,6 +2987,7 @@
 <script src="data/ymgal.js"></script>
 <script src="data/series.js"></script>
 <script src="data/dev-alias.js"></script>
+<script src="data/alias-groups.js"></script>
 <script>
 (function () {
   'use strict';
@@ -3026,6 +3027,48 @@
 
   var DEV_ALIAS_MAP = (window.GL_DEV_ALIAS && window.GL_DEV_ALIAS.map) || {};
 
+  // 别名闭包：写法 -> 同组全部写法。由 scripts/build-alias-groups.mjs 用并查集预生成。
+  //
+  // 为什么需要：DEV_ALIAS_MAP 是 原名 -> 标准名 的单向字典，dva 只备份每条记录自己的原始写法，
+  // 所以「戯画」和「GIGA」只在各自出现的条目上可搜，搜不到对方。
+  // 实测 35 对映射搜英文比搜原名多，累计 180 条条目搜不到原名（キッド 1 条 vs KID 26 条）。
+  // 有了闭包后，同组写法全部塞进 dva / pla，搜任一写法都命中全集。
+  var ALIAS_GROUPS = (window.GL_ALIAS_GROUPS && window.GL_ALIAS_GROUPS.dev) || {};
+  var PLAT_ALIAS = (window.GL_ALIAS_GROUPS && window.GL_ALIAS_GROUPS.plat) || {};
+
+  // 建小写索引：decorateData 要跑 9000+ 条，逐条遍历 key 会拖慢首屏
+  function lowerIndex(table) {
+    var m = Object.create(null);
+    Object.keys(table).forEach(function (k) { m[k.toLowerCase()] = table[k]; });
+    return m;
+  }
+  var DEV_ALIAS_LOWER = lowerIndex(ALIAS_GROUPS);
+  var PLAT_ALIAS_LOWER = lowerIndex(PLAT_ALIAS);
+
+  // 取某个名字的全部别名（含自身），查不到返回空数组。
+  // 两张表结构不同：dev 是 写法 -> [其他写法]；plat 是 写法 -> {c: 标准名, a: [其他写法]}。
+  // 统一在这层拍平，调用方不用关心差异。
+  function aliasVariants(name, table, lowerTable) {
+    if (!name) return [];
+    var hit = table[name] || lowerTable[String(name).toLowerCase()];
+    if (!hit) return [];
+    if (Object.prototype.toString.call(hit) === '[object Array]') return hit;
+    return [hit.c].concat(hit.a || []);
+  }
+
+  // 复合开发商名拆段：『サイバーフロント/KID/SDR project』是三家联合开发，整串留在 dva 里
+  // 的同时把每一段也塞进去，否则搜「キッド」命不中这一条（实测差 1 条）。
+  function splitDevName(n) {
+    var raw = String(n == null ? '' : n);
+    if (!/[\/／]/.test(raw)) return [raw];
+    var out = [raw];
+    raw.split(/[\/／]/).forEach(function (p) {
+      var t = p.trim();
+      if (t && out.indexOf(t) < 0) out.push(t);
+    });
+    return out;
+  }
+
   // 开发商别名归一 + VNDB / 月幕映射：主库与扩展库共用同一套装饰逻辑
   function decorateData(list) {
     list.forEach(function (x) {
@@ -3040,8 +3083,40 @@
         out.push(c);
       });
       x.dev = out;
+      // dva = 原始写法 + 复合名拆段 + 同组别名闭包，三者全部参与搜索匹配。
+      // 有了闭包，搜「戯画」和搜「GIGA」命中同一条；有了拆段，搜「KID」也能命中联合开发条目。
+      var dva = x.dva.slice();
+      var seenD = Object.create(null);
+      dva.forEach(function (d) { seenD[d] = 1; });
+      function pushName(v) {
+        if (!v || seenD[v]) return;
+        seenD[v] = 1;
+        dva.push(v);
+      }
+      x.dev.forEach(function (c) {
+        splitDevName(c).forEach(function (part) {
+          pushName(part);
+          aliasVariants(part, ALIAS_GROUPS, DEV_ALIAS_LOWER).forEach(pushName);
+        });
+      });
+      x.dva = dva;
     });
+    // 平台别名：pl 是标准名（PS2 / Switch），pla 补同组的其他写法（Play Station 2 / アーケード）
     list.forEach(function (x) {
+      if (x.pl && x.pl.length) {
+        var out = [];
+        var seen = Object.create(null);
+        x.pl.forEach(function (p) {
+          var variants = aliasVariants(p, PLAT_ALIAS, PLAT_ALIAS_LOWER);
+          var names = variants.length ? variants : [p];
+          names.forEach(function (v) {
+            if (seen[v]) return;
+            seen[v] = 1;
+            out.push(v);
+          });
+        });
+        if (out.length) x.pla = out;
+      }
       var v = VNDB_MAP[String(x.i)];
       if (v && v.v) x.vo = v;
       var y = YMGAL_MAP[String(x.i)];
@@ -4181,10 +4256,33 @@
     return settings.showNonGal ? DATA : DATA.filter(function (x) { return x.k !== 'off'; });
   }
 
+  // 含空格的平台别名整串保留，不拆词。
+  //
+  // 「PlayStation 2」拆成 playstation + 2 之后就成了多词交集：2 命中「WHITE ALBUM2」，
+  // playstation 命中该条的 PS3/PSV 别名，于是搜平台全称反而搜出 PS2 游戏之外的东西。
+  // 官方全称是用户最可能输入的写法，必须整串当成一个实体名来比对。
+  var MULTIWORD_PLATFORM = (function () {
+    var m = Object.create(null);
+    function add(v) {
+      var s = String(v == null ? '' : v).trim().toLowerCase();
+      if (s && /\s/.test(s)) m[s] = 1;
+    }
+    Object.keys(PLAT_ALIAS).forEach(function (k) {
+      var g = PLAT_ALIAS[k];
+      add(k);
+      if (Object.prototype.toString.call(g) === '[object Array]') g.forEach(add);
+      else { add(g && g.c); (g && g.a ? g.a : []).forEach(add); }
+    });
+    return m;
+  })();
+
   // 搜索分词：按空白拆分，多个关键词取交集（AND），便于用「作品名 + 季数」缩小范围
   function searchTokens(q) {
-    return String(q == null ? '' : q).trim().toLowerCase().split(/\s+/)
-      .filter(function (t) { return t; });
+    var s = String(q == null ? '' : q).trim().toLowerCase();
+    if (!s) return [];
+    // 整个查询就是一个含空格的平台别名时，不拆 —— 它表达的是单一实体
+    if (MULTIWORD_PLATFORM[s]) return [s];
+    return s.split(/\s+/).filter(function (t) { return t; });
   }
 
   // 搜索限定语法：开发商:Key / dev:Key、平台:Switch / pl:Switch、年份:2015 / year:2015、
@@ -4215,10 +4313,11 @@
     if (!qf.v) return false;
     var v = qf.v.toLowerCase();
     if (qf.k === 'dev') {
-      return (x.dev || []).concat(x.dva || []).some(function (d) { return String(d).toLowerCase().indexOf(v) >= 0; });
+      return anyNameMatches((x.dev || []).concat(x.dva || []), v);
     }
     if (qf.k === 'pl') {
-      return (x.pl || []).some(function (p) { return String(p).toLowerCase().indexOf(v) >= 0; });
+      // pla 是平台别名闭包（Play Station 2 / プレイステーション2 等），搜索时一并匹配
+      return anyNameMatches((x.pl || []).concat(x.pla || []), v);
     }
     if (qf.k === 'year') return yearOf(x.d) === v;
     // 题材：支持中文标签（恋爱）与内部 id（rom），必须是白名单内的题材
@@ -4242,16 +4341,20 @@
   }
 
   // 跨源别名：主库 Bangumi 别名、VNDB 英文 / 罗马字标题、月幕原名、中文名与详情别名，运行时拼接参与搜索，不写入主库
-  function aliasText(x) {
+  function aliasList(x) {
     var parts = [];
-    if (x.al && x.al.length) parts.push(x.al.join(' '));
+    if (x.al && x.al.length) x.al.forEach(function (a) { parts.push(a); });
     if (x.vo && x.vo.t) parts.push(x.vo.t);
     if (x.ym) {
       if (x.ym.n) parts.push(x.ym.n);
       if (x.ym.cn) parts.push(x.ym.cn);
-      if (x.ym.al && x.ym.al.length) parts.push(x.ym.al.join(' '));
+      if (x.ym.al && x.ym.al.length) x.ym.al.forEach(function (a) { parts.push(a); });
     }
-    return parts.join(' ').toLowerCase();
+    return parts;
+  }
+
+  function aliasText(x) {
+    return aliasList(x).join(' ').toLowerCase();
   }
 
   // 宽松归一：全角转半角、忽略大小写、空格与标点，用于「steinsgate」「ＦＡＴＥ」这类输入
@@ -4261,13 +4364,17 @@
   }
 
   // 严格匹配失败时的兜底命中：标题 / 别名 / 开发商 / 平台去掉空格与标点后仍包含关键词
+  //
+  // 标题部分保留整串 indexOf（「steinsgate」要能命中「Steins;Gate」这种去掉标点后的形态）。
+  // 开发商 / 平台改走 nameMatches：这两个字段是实体名，整串 indexOf 会把「IzanagiGames」
+  // 当成「GIGA」命中，正好破坏别名等价性——而全角输入走的正是这条兜底路径。
   function matchesQueryLoose(x, token) {
     var t = looseText(token);
     if (!t) return false;
     return looseText(x.cn).indexOf(t) >= 0 || looseText(x.n).indexOf(t) >= 0 ||
       looseText(aliasText(x)).indexOf(t) >= 0 ||
-      looseText((x.dev || []).concat(x.dva || []).join(' ')).indexOf(t) >= 0 ||
-      looseText((x.pl || []).join(' ')).indexOf(t) >= 0;
+      anyNameMatches((x.dev || []).concat(x.dva || []), token) ||
+      anyNameMatches((x.pl || []).concat(x.pla || []), token);
   }
 
   // 搜索相关度：0 完全一致 > 1 前缀 > 2 包含，越靠前越优先
@@ -4296,9 +4403,8 @@
     }
     // 标题都不命中时，开发商 / 平台命中排在命中结果之后
     if (best === 3) {
-      var devs = (x.dev || []).concat(x.dva || []).join(' ').toLowerCase();
-      var pls = (x.pl || []).join(' ').toLowerCase();
-      if (devs.indexOf(q) >= 0 || pls.indexOf(q) >= 0) best = 2;
+      if (anyNameMatches((x.dev || []).concat(x.dva || []), q) ||
+          anyNameMatches((x.pl || []).concat(x.pla || []), q)) best = 2;
     }
     // 多关键词时整串通常不会命中，退而用首个关键词的匹配档位排序
     var tokens = searchTokens(q).filter(function (t) { return t.charAt(0) !== '-' || t.length < 2; });
@@ -4327,17 +4433,82 @@
     return best;
   }
 
+  // 名字是否命中关键词。
+  //
+  // 直接用 indexOf 有两种误命中，实测都让别名对的命中数对不上：
+  //   1. 子串误命中 —— 搜「GIGA」命中「IzanagiGames」（nagi+games 里含 giga），搜「KID」命中「akidou」；
+  //   2. 词内误命中 —— 搜「KID」命中「kidnapped girl」标题里的 kid。
+  //
+  // 规则：
+  //   - 先做 NFKC 归一，全角「ｇｉｇａ」等同「giga」，全角字母不再落进宽松兜底路径；
+  //   - 中日文没有词边界概念，「戯画」命中「戯画スタジオ」是对的，子串即命中；
+  //   - 拉丁字母/数字要求左右两侧都是边界：命中位置在词首且后面不接字母数字。
+  //     这样「kogado」仍能命中「Kogado Studio」，但「giga」不会命中「izanagigames」，
+  //     「kid」不会命中「kidnapped」；
+  //   - 短缩写（≤4 字符，如 KID / GIGA / AGE）额外要求整名相等、带版本号后缀、或只跟公司后缀，
+  //     否则「KID」会把「KID Fans Club」（汉化组）当成开发商 KID 公司。
+  var NAME_GROUP_MARK = /^(fans?\s*club|fansub|fan\s*sub|汉化|漢化|字幕|汉化组|漢化組|translation|scanlation)\b/;
+  var NAME_ORG_SUFFIX = /^(ltd|inc|co|corp|corporation|company|games?|studio|studios|software|entertainment|works|project)\.?$/;
+  var NAME_CJK = /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/;
+
+  function nameMatches(name, token) {
+    if (!name || !token) return false;
+    var s = String(name).normalize('NFKC').toLowerCase();
+    var t = String(token).normalize('NFKC').toLowerCase();
+    if (!s || !t) return false;
+    if (NAME_CJK.test(t)) return s.indexOf(t) >= 0;   // 中日文：子串即命中
+
+    var isWordChar = /[a-z0-9]/;
+    var short = t.length <= 4;
+    var i = s.indexOf(t);
+    while (i >= 0) {
+      var leftOk = i === 0 || !isWordChar.test(s.charAt(i - 1));
+      var end = i + t.length;
+      var rightOk = end === s.length || !isWordChar.test(s.charAt(end));
+      if (leftOk && rightOk) {
+        if (!short) return true;
+        // 短缩写：整名相等，或后面只跟版本号 / 公司后缀，否则视为另一个实体
+        var rest = s.slice(end).replace(/^[\s.,;:/／、-]+/, '');
+        if (!rest) return true;
+        if (/^[0-9]{1,2}$/.test(rest)) return true;
+        if (NAME_ORG_SUFFIX.test(rest)) return true;
+        if (NAME_GROUP_MARK.test(rest)) return false;
+        return false;
+      }
+      i = s.indexOf(t, i + 1);
+    }
+    return false;
+  }
+
+  // 一组名字里是否有任一命中（开发商 / 平台用）
+  function anyNameMatches(names, token) {
+    if (!names || !names.length) return false;
+    for (var i = 0; i < names.length; i += 1) {
+      if (nameMatches(names[i], token)) return true;
+    }
+    return false;
+  }
+
   // 单条记录是否命中关键词：中文名 / 原名 / 拼音首字母 / 跨源别名 / 开发商 / 平台
+  //
+  // 中文名仍用 indexOf：中文没有词边界，「恋爱」命中「白衣性恋爱症候群」是对的。
+  // 原名与别名走 nameMatches：它们混着拉丁文，必须按词边界判断，
+  // 否则搜「KID」会命中「kidnapped girl」、搜「GIGA」会命中「IzanagiGames」。
   function matchesQuery(x, token) {
     var cn = String(x.cn || '').toLowerCase();
-    var n = String(x.n || '').toLowerCase();
     var py = String(x.py || '');
-    var dev = (x.dev || []).concat(x.dva || []).join(' ').toLowerCase();
-    var pl = (x.pl || []).join(' ').toLowerCase();
-    return cn.indexOf(token) >= 0 || n.indexOf(token) >= 0 ||
-      aliasText(x).indexOf(token) >= 0 ||
-      dev.indexOf(token) >= 0 || pl.indexOf(token) >= 0 ||
+    return cn.indexOf(token) >= 0 ||
+      nameMatches(x.n, token) ||
+      nameAliasMatches(x, token) ||
+      anyNameMatches((x.dev || []).concat(x.dva || []), token) ||
+      anyNameMatches((x.pl || []).concat(x.pla || []), token) ||
       (/^[a-z0-9]+$/.test(token) && py.indexOf(token) >= 0);
+  }
+
+  // 跨源别名逐个按词边界匹配；别名是多个短标题拼起来的，整串 indexOf 会连片误命中
+  function nameAliasMatches(x, token) {
+    if (aliasText(x).indexOf(token) < 0) return false;   // 先做便宜的整串预筛
+    return anyNameMatches(aliasList(x), token);
   }
 
   function filteredList() {

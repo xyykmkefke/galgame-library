@@ -436,7 +436,102 @@ async function main() {
     const bAliasIds = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
     check('搜索可命中主库 Bangumi 别名', bAliasIds.includes(bAlias[1]), `${bAlias[0]} → ${bAliasIds.length} 条`);
 
-    // 宽松搜索：严格匹配无结果时忽略空格与标点再试一次（如 Fate/stay night → fatestaynight）
+    // ---------- 别名等价：同一实体的不同语言 / 写法必须命中同一条 ----------
+    //
+    // 判据是「不丢目标」而不是「命中数相等」：标题里本来就可能含别的词的子串
+    // （「雨音スイッチ」里有「スイッチ」，「kidnapped」里有「kid」），
+    // 那种多命中是词串本身的歧义，不是别名失效。
+    // 真正的失效是「用 A 能搜到某条，用同组的 B 搜不到它」。
+    const aliasGroupCover = async (field, std) => {
+      const r = await cdp.evaluate(`(() => {
+        const AG = (window.GL_ALIAS_GROUPS || {})[${JSON.stringify(field)}] || {};
+        const g = AG[${JSON.stringify(std)}];
+        if (!g) return null;
+        const names = [${JSON.stringify(std)}].concat(Object.prototype.toString.call(g) === '[object Array]' ? g : [g.c].concat(g.a || []));
+        const D = window.GL_DATA || [];
+        const idx = (n) => {
+          const k = String(n).toLowerCase();
+          const ids = new Set();
+          D.forEach((x) => {
+            const list = ${field === 'dev' ? '((x.dev||[]).concat(x.dva||[]))' : '((x.pl||[]).concat(x.pla||[]))'};
+            if (list.some((v) => String(v).toLowerCase() === k)) ids.add(String(x.i));
+          });
+          return ids;
+        };
+        const sets = names.map((n) => ({ n: n, s: idx(n) }));
+        const union = new Set();
+        sets.forEach((it) => it.s.forEach((id) => union.add(id)));
+        let miss = 0;
+        const sample = [];
+        union.forEach((id) => {
+          const lack = sets.filter((it) => !it.s.has(id));
+          if (!lack.length) return;
+          miss += 1;
+          if (sample.length < 3) sample.push(id + ' 漏 ' + lack.map((it) => it.n).join('/'));
+        });
+        return { names: names, union: union.size, miss: miss, sample: sample };
+      })()`);
+      return r;
+    };
+
+    for (const [field, std, alt] of [
+      ['dev', '戯画', 'GIGA'],
+      ['dev', 'キッド', 'KID'],
+      ['dev', '工画堂スタジオ', 'Kogado Studio'],
+      ['dev', 'ニトロプラス', 'Nitroplus'],
+      ['plat', 'Arcade', 'アーケード'],
+      ['plat', 'PS2', 'PlayStation 2'],
+      ['plat', 'PC', 'Windows'],
+    ]) {
+      const cov = await aliasGroupCover(field, std);
+      check(`别名组「${alt}」不丢目标（${std} 组）`,
+        !!cov && cov.union > 0 && cov.miss === 0,
+        cov ? `${cov.union} 条 / 漏 ${cov.miss}${cov.sample.length ? '：' + cov.sample.join('；') : ''}` : '组不存在');
+    }
+
+    // 大小写 / 全角：同一实体换个写法，命中集合必须一致
+    const sameHits = async (a, b) => {
+      await typeSearch(a);
+      const idsA = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
+      await typeSearch(b);
+      const idsB = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c) => c.dataset.id)");
+      const sb = new Set(idsB);
+      const missing = idsA.filter((id) => !sb.has(id));
+      return { a: idsA.length, b: idsB.length, missing: missing.slice(0, 3) };
+    };
+
+    for (const [a, b, label] of [
+      ['戯画', 'ＧＩＧＡ', '全角 vs 日文'],
+      ['GIGA', '戯画', '英文 vs 日文'],
+      ['キッド', 'KID', '日文 vs 英文'],
+      ['工画堂スタジオ', 'Kogado Studio', '日文 vs 英文'],
+      ['PlayStation 2', 'PS2', '全称 vs 缩写'],
+    ]) {
+      const r = await sameHits(a, b);
+      check(`别名等价：${label}（${a} ⊇ ${b}）`,
+        r.a > 0 && r.missing.length === 0,
+        `${r.a} vs ${r.b}${r.missing.length ? ' 漏 ' + r.missing.join(',') : ''}`);
+    }
+
+    // 含空格的平台全称不能被拆成多词：拆开会让「2」命中「WHITE ALBUM2」这类标题，
+    // 再和 playstation 的 PS3/PSV 别名取交集，搜平台全称反而搜出非该平台的条目。
+    await typeSearch('PlayStation 2');
+    const ps2Strict = await cdp.evaluate(`(() => {
+      const map = {};
+      (window.GL_DATA || []).forEach((x) => { map[String(x.i)] = x; });
+      const ids = [...document.querySelectorAll('.card')].map((c) => String(c.dataset.id));
+      const bad = ids.filter((id) => {
+        const x = map[id] || {};
+        const pls = (x.pl || []).concat(x.pla || []).map((p) => String(p).toLowerCase());
+        return pls.indexOf('ps2') < 0 && pls.indexOf('playstation 2') < 0;
+      });
+      return { total: ids.length, bad: bad.slice(0, 3), badCount: bad.length };
+    })()`);
+    check('平台全称不拆词（PlayStation 2 只出 PS2 游戏）',
+      ps2Strict.total > 0 && ps2Strict.badCount === 0,
+      `${ps2Strict.total} 条 / 非 PS2 ${ps2Strict.badCount}${ps2Strict.bad.length ? '：' + ps2Strict.bad.join(',') : ''}`);
+
+
     const looseHit = await cdp.evaluate(
       "(() => { const x=(window.GL_DATA||[]).find((x)=>String(x.n||'').toLowerCase().replace(/[^a-z0-9]+/g,'').indexOf('fatestaynight')===0); return x?[String(x.i), x.n]:null; })()");
     await typeSearch('fatestaynight');

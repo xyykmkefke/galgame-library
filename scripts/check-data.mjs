@@ -487,6 +487,151 @@ try {
   total += 1;
 }
 
+// ---------- 别名覆盖：同组内任一写法都要能搜到同一条 ----------
+//
+// 这是「中英日任一写法搜索都命中同一条」的守护断言。
+// 判据不看命中数是否相等（标题里本来就可能有别的词的子串，如「雨音スイッチ」含「スイッチ」），
+// 只看「不丢目标」：某条目只要组内有一个写法能搜到，同组其他写法也必须能搜到。
+try {
+  const agRaw = await readFile(path.join(ROOT, 'data', 'alias-groups.js'), 'utf8');
+  const agm = agRaw.match(/window\.GL_ALIAS_GROUPS\s*=\s*([\s\S]*);/);
+  if (!agm) throw new Error('未找到 window.GL_ALIAS_GROUPS');
+  const AG = JSON.parse(agm[1]);
+
+  // 组库 = 主库 + 三个扩展库，与前端 adoptData / mergeExtraData 保持一致
+  let pool = data.slice();
+  const addExtra = async (file, re, flag) => {
+    try {
+      const s = await readFile(path.join(ROOT, 'data', file), 'utf8');
+      const m = s.match(re);
+      if (!m) return;
+      const v = JSON.parse(m[1]);
+      (v.list || []).forEach((x) => { x[flag] = 1; pool.push(x); });
+    } catch { /* 缺失已在其他检查里报错 */ }
+  };
+  await addExtra('bgm-extra.js', /window\.GL_BGM_EXTRA\s*=\s*([\s\S]*);/, 'bg');
+  await addExtra('vndb-extra.js', /window\.GL_VNDB_EXTRA\s*=\s*([\s\S]*);/, 'ex');
+  await addExtra('recent-extra.js', /window\.GL_RECENT\s*=\s*([\s\S]*);/, 'rn');
+
+  // 按连通分量去重：dev 表每个写法都是 key，同一组会重复出现多次
+  const dedupe = (table) => {
+    const seen = new Set();
+    const out = {};
+    Object.entries(table).forEach(([k, v]) => {
+      const names = Array.isArray(v) ? [k].concat(v) : [v.c].concat(v.a || []);
+      const sig = names.slice().sort().join('\u0001');
+      if (seen.has(sig)) return;
+      seen.add(sig);
+      out[k] = Array.isArray(v) ? v : (v.a || []);
+    });
+    return out;
+  };
+
+  // 数据文件里的 dev / pl 是「归一后」的写法，dva / pla 是运行时才注入的。
+  // 校验脚本不跑前端，所以要在这里复现同一套装饰：原始写法 + 复合名拆段 + 同组别名闭包。
+  const DEV_MAP = await (async () => {
+    try {
+      const s = await readFile(path.join(ROOT, 'data', 'dev-alias.js'), 'utf8');
+      const m = s.match(/window\.GL_DEV_ALIAS\s*=\s*([\s\S]*);/);
+      return m ? JSON.parse(m[1]).map || {} : {};
+    } catch { return {}; }
+  })();
+
+  const lowerIdx = (t) => {
+    const m = Object.create(null);
+    Object.keys(t).forEach((k) => { m[k.toLowerCase()] = t[k]; });
+    return m;
+  };
+  const DEV_L = lowerIdx(AG.dev || {});
+  const PLAT_L = lowerIdx(AG.plat || {});
+  const variants = (name, table, lower) => {
+    if (!name) return [];
+    const hit = table[name] || lower[String(name).toLowerCase()];
+    if (!hit) return [];
+    return Array.isArray(hit) ? hit : [hit.c].concat(hit.a || []);
+  };
+
+  // 单条记录的「可搜开发商名集合」
+  const devNamesOf = (x) => {
+    const raw = x.dev || [];
+    const out = new Set();
+    raw.forEach((d) => out.add(String(d)));
+    // 归一后的标准名（数据里已是标准名，但 dev-alias 仍可能再映射一层）
+    const canon = [];
+    raw.forEach((d) => {
+      const c = DEV_MAP[d] || d;
+      if (canon.indexOf(c) < 0) canon.push(c);
+    });
+    canon.forEach((c) => {
+      String(c).split(/[\/／]/).forEach((p) => {
+        const t = p.trim();
+        if (!t) return;
+        out.add(t);
+        variants(t, AG.dev || {}, DEV_L).forEach((v) => out.add(String(v)));
+      });
+    });
+    return [...out];
+  };
+
+  // 单条记录的「可搜平台名集合」
+  const platNamesOf = (x) => {
+    const out = new Set();
+    (x.pl || []).forEach((p) => {
+      out.add(String(p));
+      const v = variants(p, AG.plat || {}, PLAT_L);
+      (v.length ? v : [p]).forEach((n) => out.add(String(n)));
+    });
+    return [...out];
+  };
+
+  // 倒排索引：写法（小写）-> 条目 id 集合
+  const buildIndex = (field) => {
+    const idx = new Map();
+    pool.forEach((x) => {
+      const names = field === 'dev' ? devNamesOf(x) : platNamesOf(x);
+      const seen = new Set();
+      names.forEach((n) => {
+        const key = String(n || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        if (!idx.has(key)) idx.set(key, new Set());
+        idx.get(key).add(String(x.i));
+      });
+    });
+    return idx;
+  };
+
+  const checkGroups = (label2, groups, field) => {
+    const idx = buildIndex(field);
+    const bad = [];
+    Object.entries(groups).forEach(([std, aliases]) => {
+      const names = [std].concat(aliases || []);
+      if (names.length < 2) return;
+      const sets = names.map((n) => ({ n, s: idx.get(String(n).toLowerCase()) || new Set() }));
+      const union = new Set();
+      sets.forEach(({ s }) => s.forEach((id) => union.add(id)));
+      union.forEach((id) => {
+        const missing = sets.filter(({ s }) => !s.has(id));
+        if (missing.length) bad.push(`${id}「${std}」漏 ${missing.map((m) => m.n).join('/')}`);
+      });
+    });
+    if (bad.length) {
+      console.log(`FAIL ${label2}别名覆盖：${bad.length} 条同组写法不能互相命中`);
+      bad.slice(0, 8).forEach((b) => console.log(`     ${b}`));
+      total += 1;
+    } else {
+      const groupCount = Object.keys(groups).length;
+      console.log(`PASS ${label2}别名覆盖：${groupCount} 组内任一写法均能命中同一条`);
+    }
+  };
+
+  checkGroups('开发商', dedupe(AG.dev || {}), 'dev');
+  checkGroups('平台', dedupe(AG.plat || {}), 'pl');
+} catch (err) {
+  console.log(`FAIL 别名组不可用：${err.message}`);
+  total += 1;
+}
+
 // ---------- 体积预算 ----------
 const mainSize = Buffer.byteLength(raw, 'utf8');
 let vndbSize = 0;
