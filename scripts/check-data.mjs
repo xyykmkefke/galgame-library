@@ -406,6 +406,13 @@ try {
   let alEntries = 0;
   const AL_LANGS = new Set(['ja', 'zh-Hans', 'zh-Hant', 'zh']);
   const normAl = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
+  // 索引缺失（data/build/ 在 .gitignore 里，CI 与全新克隆都没有这个 16MB 文件）**不是缺陷**，
+  // 必须与「索引在、但查出越界」区分开。早期写法是把两者都塞进 alBad → 兜底成一条 FAIL，
+  // 结果 CI 上永远红：本地全绿、CI 全红，且报错文案指向「确认 AL_LANGS 是否生效」，
+  // 完全误导方向（AL_LANGS 是对的，只是索引不在）。
+  // 这不是新问题——同一段代码上方刚写过「追溯不到的单独计数提示、不阻断」，
+  // 索引整体缺失是该原则的极端情形，却漏掉了。降级为提示并写明「本轮未校验」。
+  let alSkipped = '';
   try {
     const tIdxRaw = await readFile(path.join(ROOT, 'data', 'build', 'vndb-titles.json'), 'utf8');
     const tIdx = new Map((JSON.parse(tIdxRaw).list || []).map((v) => [String(v.i), v]));
@@ -433,15 +440,41 @@ try {
       }
     }
   } catch (err) {
-    alBad = [`索引不可用：${err.message}`];
+    // 只把「文件不存在」降级为跳过；JSON 损坏之类的真问题仍应报出来
+    if (err.code === 'ENOENT') alSkipped = '本地索引缺失（data/build/ 未入库，CI 常态）';
+    else alBad = [`索引不可用：${err.message}`];
   }
   if (alBad.length) {
     console.log(`FAIL 扩展别名含非白名单语言来源：${alBad.length} 处（${alBad.slice(0, 3).join(', ')}）`);
     console.log('     修复：确认 fetch-vndb-extra.mjs / fill-extra-aliases.mjs 的 AL_LANGS 是否生效');
     total += 1;
+  } else if (alSkipped) {
+    console.log(`提示 扩展别名语言来源本轮未校验：${alSkipped}。本地有索引时会校验（${alEntries || list.length} 条待查）`);
   } else if (alEntries) {
     console.log(`PASS 扩展别名来源合法：${alEntries} 条 / ${alWrites} 个写法，均可追溯到 en 或 ja/zh` +
       (alUnverifiable ? `（${alUnverifiable} 处索引未覆盖，未校验）` : ''));
+  }
+
+  // ---- 兜底：非拉丁字符残留（不依赖索引，CI 上唯一生效的别名检查） ----
+  // 上面那条「可追溯」检查需要本地索引，而 data/build/ 未入库 → **CI 上一直跳过、从未执行**。
+  // 等于最重要的一道守卫在 CI 里是空转的，本地绿不绿都不代表 CI 在测。
+  // 这里补一条纯正则检查：抓 al 里的西里尔 / 谚文 / 泰文 / 阿拉伯文。
+  // 它抓不到「纯 ASCII 的俄语罗马化」（`Shkolnye Dni`）——那需要索引才能判，
+  // 所以只在本地跑；但非拉丁字符残留是更常见也更严重的形态（详情页直接显示外文），
+  // 有这一层至少让 CI 不是完全不查。两条互补，缺一不可。
+  const NONLATIN = /[\u0400-\u04ff\uac00-\ud7af\u0e00-\u0e7f\u0600-\u06ff]/;
+  const nonLatinBad = [];
+  for (const x of list) {
+    if (!Array.isArray(x.al)) continue;
+    for (const a of x.al) {
+      if (NONLATIN.test(String(a || ''))) nonLatinBad.push(`${x.i}:${String(a).slice(0, 20)}`);
+    }
+  }
+  if (nonLatinBad.length) {
+    console.log(`FAIL 扩展别名含非拉丁字符：${nonLatinBad.length} 处（${nonLatinBad.slice(0, 3).join(', ')}）`);
+    total += 1;
+  } else {
+    console.log('PASS 扩展别名无非拉丁字符残留（西里尔/谚文/泰文/阿拉伯文）');
   }
 
   // ---- 制作人员词典化的 id 可解析性（前瞻守卫） ----
