@@ -3,15 +3,21 @@
 // 退出码 0 表示全部通过，1 表示存在失败项
 
 import http from 'node:http';
+import net from 'node:net';
 import { readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const PORT = 8792;
-const CDP_PORT = 9338;
+const BASE_PORT = 8792;
+const BASE_CDP_PORT = 9338;
+// 端口在运行时才最终确定（见 listenWithFallback / pickFreePort）：
+// 上一个进程刚退出时端口常处于 TIME_WAIT，直接 listen 会 EADDRINUSE 整轮失败。
+// 端口进不了页面（页面走相对路径），顺延端口不影响任何断言。
+let PORT = BASE_PORT;
+let CDP_PORT = BASE_CDP_PORT;
 const KEEP = process.argv.includes('--keep');
 
 const EDGE_CANDIDATES = [
@@ -98,10 +104,40 @@ function startServer() {
       res.end('Not Found');
     }
   });
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(PORT, '127.0.0.1', () => resolve(server));
-  });
+  return server;
+}
+
+// 找一个能监听的端口：默认用 BASE_PORT，被占用就向后顺延几个。
+async function listenWithFallback(server) {
+  for (let i = 0; i < 12; i += 1) {
+    const port = BASE_PORT + i;
+    const ok = await new Promise((resolve) => {
+      const onErr = (e) => { server.removeListener('listening', onOk); resolve(e.code !== 'EADDRINUSE'); };
+      const onOk = () => { server.removeListener('error', onErr); resolve(true); };
+      server.once('error', onErr);
+      server.once('listening', onOk);
+      server.listen(port, '127.0.0.1');
+    });
+    if (ok && server.listening) { PORT = port; return port; }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`端口 ${BASE_PORT}~${BASE_PORT + 11} 都被占用，无法启动静态服务`);
+}
+
+// CDP 端口同理：浏览器绑定失败时只会静默退出，表现为「无法连接到浏览器调试端口」，
+// 与真正的浏览器崩溃难以区分。先探一个闲置端口再用。
+async function pickFreePort(base) {
+  for (let i = 0; i < 12; i += 1) {
+    const port = base + i;
+    const free = await new Promise((resolve) => {
+      const probe = net.createServer();
+      probe.once('error', () => resolve(false));
+      probe.once('listening', () => probe.close(() => resolve(true)));
+      probe.listen(port, '127.0.0.1');
+    });
+    if (free) return port;
+  }
+  throw new Error(`CDP 端口 ${base}~${base + 11} 都被占用`);
 }
 
 async function getDebugPage() {
@@ -163,13 +199,21 @@ function check(name, ok, detail) {
 
 async function main() {
   const browser = findBrowser();
-  const profile = path.join(os.tmpdir(), 'galgame-verify-profile');
-  await rm(profile, { recursive: true, force: true });
+  // profile 每次运行都用独立目录（pid + 时间戳）。
+  // 早先写死 'galgame-verify-profile'，连跑第二次会撞上一次还没退干净的浏览器锁，
+  // rm 抛 EBUSY（实测 ...\galgame-verify-profile\Functional SAN Data），整轮直接失败。
+  // 而且这里原本是 try 之外的裸 await，一旦抛错 finally 根本不执行，
+  // 浏览器进程和端口全部泄漏，下一次运行继续撞——三个问题互相放大。
+  const profile = path.join(os.tmpdir(), 'galgame-verify-profile-' + process.pid + '-' + Date.now());
   const shots = path.join(ROOT, '.verify');
   await rm(shots, { recursive: true, force: true });
   await mkdir(shots, { recursive: true });
 
   const server = await startServer();
+  const port = await listenWithFallback(server);
+  if (port !== BASE_PORT) console.log(`提示：端口 ${BASE_PORT} 被占用，改用 ${port}`);
+  CDP_PORT = await pickFreePort(BASE_CDP_PORT);
+  if (CDP_PORT !== BASE_CDP_PORT) console.log(`提示：CDP 端口 ${BASE_CDP_PORT} 被占用，改用 ${CDP_PORT}`);
   let child = null;
   let ws = null;
 
@@ -410,9 +454,15 @@ async function main() {
     check('搜索可命中开发商', devSearch === true, devToken);
 
     await typeSearch('Switch');
+    // 判据要容忍「标题/别名本身含该词」：搜 Switch 时出现 Tsuboi-kun no Switch!（PC 游戏）
+    // 是正确行为，不是误命中。此前这里只查 cn/n，扩展库补了 al 之后这类条目变多，
+    // 断言就开始失败——不是产品退步，是判据漏了一个维度。
     const platSearch = await cdp.evaluate(
-      "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); return ids.length > 0 && ids.every((id)=>{ const x=map[id]||{}; return (x.pl||[]).some((p)=>/^Switch/i.test(p)) || (x.dev||[]).some((d)=>/switch/i.test(d)) || /switch/i.test(x.cn||x.n||''); }); })()");
-    check('搜索可命中平台', platSearch === true, platSearch ? 'Switch' : '未命中');
+      "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); return ids.length > 0 && ids.every((id)=>{ const x=map[id]||{}; return (x.pl||[]).some((p)=>/^Switch/i.test(p)) || (x.dev||[]).some((d)=>/switch/i.test(d)) || /switch/i.test(x.cn||x.n||'') || (x.al||[]).some((a)=>/switch/i.test(a)); }); })()");
+    const platTotal = await cdp.evaluate("document.querySelectorAll('.card').length");
+    const platPure = await cdp.evaluate(
+      "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); return ids.filter((id)=>{ const x=map[id]||{}; return !((x.pl||[]).some((p)=>/^Switch/i.test(p)) || (x.dev||[]).some((d)=>/switch/i.test(d)) || /switch/i.test(x.cn||x.n||'') || (x.al||[]).some((a)=>/switch/i.test(a))); }).length; })()");
+    check('搜索可命中平台', platSearch === true, platSearch ? `Switch · ${platTotal} 条·越界 ${platPure}` : '未命中');
 
     // 跨源别名：VNDB 英文 / 罗马字标题参与搜索（主库原名不含该标题时才用于验证）
     const vAlias = await cdp.evaluate(`(() => {
@@ -2156,9 +2206,27 @@ async function main() {
     process.exitCode = passed === results.length ? 0 : 1;
   } finally {
     try { ws && ws.close(); } catch {}
-    if (child) child.kill();
+    // child.kill() 只杀父进程；Edge 会派生 renderer/GPU 子进程，父进程死了它们
+    // 可能仍抱着 profile 目录。Windows 用 taskkill /T 杀整棵树，其他平台退回 kill()。
+    if (child) {
+      if (process.platform === 'win32') {
+        try { spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); } catch {}
+      } else {
+        try { child.kill(); } catch {}
+      }
+    }
     server.close();
-    if (!KEEP) await rm(shots, { recursive: true, force: true });
+    if (!KEEP) {
+      await rm(shots, { recursive: true, force: true });
+      // taskkill 返回时浏览器可能仍有句柄未释放，立刻 rm 会 EBUSY；等一小会儿再清。
+      // 清理失败不能影响验收结论（它只是临时目录），但也不能静默——打印出来便于排查。
+      await new Promise((r) => setTimeout(r, 600));
+      try {
+        await rm(profile, { recursive: true, force: true });
+      } catch (err) {
+        console.log(`提示：profile 清理失败（可忽略）: ${err && err.code ? err.code : err}`);
+      }
+    }
   }
 }
 
