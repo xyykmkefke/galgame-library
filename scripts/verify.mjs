@@ -1137,6 +1137,60 @@ async function main() {
     const clearN = await cdp.evaluate("document.querySelectorAll('.card').length");
     check('清除筛选恢复全库', clearN === 240, clearN + ' 张');
 
+    // 制作人员深链冷启动（扩展库未合并时不能把 sv 判成无效）
+    //
+    // 这条守的是一个真实缺陷（2026-11-28 修掉）：启动顺序是 applyStateMap → render →
+    // scheduleExtraData，所以首屏校验 sv 时 DATA 只有主库 1968 条。若姓名只存在于扩展库
+    // 5737 条里，`found` 必为 false → state.staff 清空 → render 里的 writeHash 把 sv 写成空串
+    // → 深链彻底丢失，刷新后静默回到全库。同一条详情深链（d=）因为有 pendingDetail 机制
+    // 等合并后重试，反而不受影响，对比之下更说明问题只在 sv 这一处。
+    //
+    // 测试必须用「真正重载」而不是「只改 hash」：Page.navigate 到仅 hash 不同的 URL 不会重载
+    // 页面，只触发 hashchange，而那时扩展库早已合并，缺陷态也会通过。
+    // 这就是我第一版测试写成假阳性的原因 —— 加 ?salts= 时间戳强制走完整冷启动。
+    const deepStaff = await cdp.evaluate(`(() => {
+      ${STAFF_JS}
+      const d = window.GL_DATA || [];
+      const mainNames = new Set();
+      d.filter((x) => x.ex !== 1).forEach((x) => {
+        ['sc','ar','mu'].forEach((f) => staffOf(x, f).forEach((n) => mainNames.add(n)));
+      });
+      for (const x of d) {
+        if (x.ex !== 1) continue;
+        for (const f of ['sc','ar','mu']) {
+          const hit = staffOf(x, f).find((n) => n && !mainNames.has(n));
+          if (hit) return { name: hit, kind: f };
+        }
+      }
+      return null;
+    })()`);
+    if (deepStaff) {
+      const url = `http://127.0.0.1:${PORT}/?stalfix=${Date.now()}#tab=all&y=all&f=all&dv=` +
+        `&sk=${deepStaff.kind}&sv=` + encodeURIComponent(deepStaff.name);
+      await cdp.send('Page.navigate', { url });
+      for (let i = 0; i < 100; i += 1) {
+        await sleep(200);
+        if (await cdp.evaluate('window.__FULL_DATA_READY === true').catch(() => false)) break;
+      }
+      await sleep(600);
+      const cold = await cdp.evaluate(
+        "(() => ({ n: document.querySelectorAll('.card').length," +
+        " chips: document.getElementById('filterChips').textContent," +
+        " hash: decodeURIComponent(location.hash) }))()");
+      check('制作人员深链冷启动不丢失筛选',
+        cold.chips.includes(deepStaff.name) && cold.n > 0 && cold.hash.includes('sv=' + deepStaff.name),
+        `${deepStaff.kind} · ${deepStaff.name} → ${cold.n} 张`);
+      // 恢复干净状态供后续断言使用
+      await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?aftstaff=${Date.now()}` });
+      for (let i = 0; i < 100; i += 1) {
+        await sleep(200);
+        if (await cdp.evaluate('window.__FULL_DATA_READY === true').catch(() => false)) break;
+      }
+      await sleep(400);
+    } else {
+      check('制作人员深链冷启动不丢失筛选', false, '未找到仅在扩展库出现的制作人员姓名');
+    }
+
     // ---------- 详情 ----------
     await cdp.evaluate("document.querySelector('.card .card-link').click()");
     await waitFor("document.getElementById('modal').hidden === false");

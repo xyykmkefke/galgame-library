@@ -155,27 +155,66 @@ function mapStaff(staff) {
 // 词典放在顶层 staffDict，运行时由 index.html 的 staffValues() 查表还原成姓名，
 // 因此「返回姓名数组」这个契约不变，调用点无需改动。
 //
-// 幂等性：对已经词典化的数据（字段已是数组）直接跳过，避免重复打包把 id 当姓名。
-function packStaffDict(list) {
-  const freq = new Map();
+// 幂等性坑（2026-11-28 实测，务必理解再改）：
+// 早期写法只收集「字符串形态」的姓名，对已是数组的字段直接跳过。单看一次重建没问题，
+// 但 `--popularity-only` 会**读回现有 vndb-extra.js**（此时 list 已是 id 数组）再往里追新条目，
+// 于是新词典只由新条目的姓名构成 —— 旧条目的 id 还在，却指向了完全不同的姓名。
+// 实测：词典从 7867 塌缩到 3，旧条目 `[1669]` 从「Looseboy」变成 undefined，
+// 5737 条制作人员静默失效，且覆盖写入前没有任何阻断。
+//
+// 正确做法：先把已词典化的字段用**旧词典**还原成姓名，再和字符串形态的一起重新打包。
+// 这样无论跑几次、是否只追新，词典都是全量的。oldDict 缺失时不能猜，直接报错。
+function packStaffDict(list, oldDict) {
+  // 旧词典：来自读回文件的 staffDict。可为 null（首次全量抓取）。
+  const prev = Array.isArray(oldDict) ? oldDict : null;
+
+  // 第一步：把每个字段统一成「姓名数组」，无论原来是字符串还是 id 数组。
+  // 还原不了的（id 越界 / 没有旧词典）单独计数并保留原值，不能静默丢数据。
+  const unresolved = [];
+  const nameArrays = new Map(); // item -> { sc: [...], ar: [...], mu: [...] }
   for (const x of list) {
+    const rec = {};
     for (const f of ['sc', 'ar', 'mu']) {
-      if (!Array.isArray(x[f]) && typeof x[f] === 'string') {
-        x[f].split('、').map((s) => s.trim()).filter(Boolean)
-          .forEach((n) => freq.set(n, (freq.get(n) || 0) + 1));
+      const v = x[f];
+      if (v == null) { continue; }
+      if (Array.isArray(v)) {
+        if (!prev) { unresolved.push(`${x.i}:${f}:缺旧词典`); rec[f] = v; continue; }
+        const names = v.map((i) => prev[i]);
+        const badIdx = names.findIndex((n) => typeof n !== 'string' || !n);
+        if (badIdx >= 0) { unresolved.push(`${x.i}:${f}:id ${v[badIdx]} 越界（旧词典 ${prev.length}）`); rec[f] = v; continue; }
+        rec[f] = names;
+      } else if (typeof v === 'string') {
+        const names = v.split('、').map((s) => s.trim()).filter(Boolean);
+        if (names.length) rec[f] = names;
       }
     }
+    if (Object.keys(rec).length) nameArrays.set(x, rec);
   }
-  if (!freq.size) return null; // 已是数组形态或无 staff：不必写词典
+
+  // 第二步：按全量姓名统计频率，重建词典（频率降序 + 名字升序打破并列）。
+  // 排序规则必须与 scripts/pack-staff-dict.mjs 完全一致，否则两条产出路径结果不同。
+  const freq = new Map();
+  for (const rec of nameArrays.values()) {
+    for (const f of ['sc', 'ar', 'mu']) {
+      (rec[f] || []).forEach((n) => freq.set(n, (freq.get(n) || 0) + 1));
+    }
+  }
+  if (!freq.size) return null; // 无 staff：不必写词典
   const dict = [...freq.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([n]) => n);
   const idOf = new Map(dict.map((n, i) => [n, i]));
-  for (const x of list) {
+
+  // 第三步：写回 id 数组。还原失败的字段（unresolved）保持原样，交由 check-data 报出来，
+  // 而不是在这里猜一个值 —— 猜错会变成更难查的错位。
+  const badSet = new Set(unresolved.map((s) => s.split(':').slice(0, 2).join(':')));
+  for (const [x, rec] of nameArrays) {
     for (const f of ['sc', 'ar', 'mu']) {
-      if (Array.isArray(x[f]) || typeof x[f] !== 'string') continue;
-      const names = x[f].split('、').map((s) => s.trim()).filter(Boolean);
-      if (!names.length) continue;
-      x[f] = names.map((n) => idOf.get(n));
+      if (!rec[f]) continue;
+      if (badSet.has(`${x.i}:${f}`)) continue;
+      x[f] = rec[f].map((n) => idOf.get(n));
     }
+  }
+  if (unresolved.length) {
+    console.log(`制作人员词典：${unresolved.length} 处无法还原（示例 ${unresolved.slice(0, 3).join(', ')}），已保留原值`);
   }
   console.log(`制作人员词典：${dict.length} 个唯一姓名，已把 sc/ar/mu 转为 id 数组`);
   return dict;
@@ -382,6 +421,8 @@ async function main() {
   let blockRemoved = 0;
   let otomeRemoved = 0;
   let list = [];
+  // --popularity-only 读回的旧词典；全量抓取时为 null。必须贯穿到 packStaffDict。
+  let prevStaffDict = null;
   const extraKeys = new Set();
   let baseMeta = null;
   let baseCount = 0;
@@ -393,6 +434,12 @@ async function main() {
       const existing = JSON.parse(em[1]);
       list = Array.isArray(existing.list) ? existing.list : [];
       baseMeta = existing.meta || null;
+      // 读回旧词典：list 里若已是 id 数组（v2.40.0 之后），必须靠它才能还原成姓名。
+      // 丢了它 = 旧条目的 id 在新词典里指向别人，5737 条制作人员静默错位。
+      prevStaffDict = Array.isArray(existing.staffDict) ? existing.staffDict : null;
+      if (list.some((x) => Array.isArray(x.sc) || Array.isArray(x.ar) || Array.isArray(x.mu)) && !prevStaffDict) {
+        throw new Error('现有 vndb-extra.js 已是词典化形态但缺少 staffDict，无法安全重建；请先 git checkout data/vndb-extra.js');
+      }
       baseCount = list.length;
       list.forEach((x) => {
         if (x.vx) usedVndb.add(String(x.vx));
@@ -469,7 +516,7 @@ async function main() {
       blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
       otome: { configured: otomeSet.size, removed: otomeRemoved, source: 'data/blocklist-otome.json' },
     });
-    const staffDict = packStaffDict(list);
+    const staffDict = packStaffDict(list, prevStaffDict);
     const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
       'window.GL_VNDB_EXTRA = ' + JSON.stringify(staffDict ? { meta, staffDict, list } : { meta, list }) + ';\n';
     await writeFile(OUT_FILE, content, 'utf8');
@@ -636,7 +683,7 @@ async function main() {
     blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
     otome: { configured: otomeSet.size, removed: otomeRemoved, source: 'data/blocklist-otome.json' },
   };
-  const staffDict = packStaffDict(list);
+  const staffDict = packStaffDict(list, prevStaffDict);
   const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
     'window.GL_VNDB_EXTRA = ' + JSON.stringify(staffDict ? { meta, staffDict, list } : { meta, list }) + ';\n';
   await writeFile(OUT_FILE, content, 'utf8');

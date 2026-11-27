@@ -507,6 +507,46 @@ try {
   } else if (staffIdItems) {
     console.log(`PASS 制作人员词典 id 全部可解析：${staffIdItems} 个字段数组`);
   }
+
+  // ---- 词典完整性与一致性（2026-11-28 补，针对 --popularity-only 重建缺陷） ----
+  // 背景：`fetch-vndb-extra.mjs --popularity-only` 会读回现有 vndb-extra.js 再追新条目。
+  // 而 v2.40.0 之后读回的 list 已是 id 数组，早期 packStaffDict 只统计「字符串形态」的姓名
+  // → 新词典仅由新条目构成，旧条目的 id 全部指向越界或错位的下标。
+  // 实测过两种形态：词典从 7867 塌缩到 3，旧条目 [1669] 从「Looseboy」变成 undefined。
+  //
+  // 「id 越界」那类会被上面的守卫抓到，但更隐蔽的形态是 id 仍在范围内、却指向别人 ——
+  // 那种情况 id 合法，只是人名错了，任何「范围校验」都发现不了。
+  //
+  // 这里用结构性判据（不依赖外部索引、CI 上同样生效）：
+  // 词典是「按实际出现的姓名」构建的，所以每个 id 都必然被引用过 → 引用覆盖率必须 100%。
+  // 重建缺陷会让词典里出现大量从未被引用的条目（或反向：引用了词典里没有的 id）。
+  // 两个方向都查，任一不达标即 FAIL。
+  if (Array.isArray(extra.staffDict)) {
+    const dict = extra.staffDict;
+    const usedIds = new Set();
+    let refsTotal = 0;
+    for (const x of list) {
+      for (const f of ['sc', 'ar', 'mu']) {
+        if (!Array.isArray(x[f])) continue;
+        for (const id of x[f]) { if (Number.isInteger(id) && id >= 0 && id < dict.length) { usedIds.add(id); refsTotal += 1; } }
+      }
+    }
+    const orphan = dict.length - usedIds.size;
+    const dupNames = dict.length - new Set(dict).size;
+    const emptyNames = dict.filter((n) => typeof n !== 'string' || !n.trim()).length;
+    if (refsTotal === 0) {
+      // 词典存在但一条引用都没有：说明数据形态与词典脱节
+      console.log(`FAIL 制作人员词典无任何引用（词典 ${dict.length} 个，数据里 0 个 id 数组）`);
+      total += 1;
+    } else if (orphan > 0 || dupNames > 0 || emptyNames > 0) {
+      console.log(`FAIL 制作人员词典不完整：孤儿 ${orphan} 个 / 重名 ${dupNames} 个 / 空名 ${emptyNames} 个` +
+        `（词典 ${dict.length}，被引用 ${usedIds.size}）`);
+      console.log('     常见原因：--popularity-only 重建时未带上旧 staffDict');
+      total += 1;
+    } else {
+      console.log(`PASS 制作人员词典完整：${dict.length} 个全部被引用（引用 ${refsTotal} 次），无重名空名`);
+    }
+  }
 } catch (err) {
   console.log(`FAIL 扩展库不可用：${err.message}`);
   total += 1;

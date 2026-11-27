@@ -37,12 +37,35 @@ if (already === list.length && Array.isArray(obj.staffDict)) {
 }
 
 // ---- 与 fetch-vndb-extra.mjs 的 packStaffDict 保持同一份规则 ----
-const freq = new Map();
+// 对齐要点（2026-11-28）：两边都必须先「把 id 数组用旧词典还原成姓名」再统一重打包。
+// 早期这里只统计字符串形态，混合形态（部分数组 + 部分字符串）会把数组条目漏掉，
+// 重建出的词典不完整 → 那部分 id 指向错的姓名。与生成端同一个坑，必须同一套算法。
+const prevDict = Array.isArray(obj.staffDict) ? obj.staffDict : null;
+const unresolved = [];
+const nameArrays = new Map();
 for (const x of list) {
+  const rec = {};
   for (const f of ['sc', 'ar', 'mu']) {
-    if (Array.isArray(x[f]) || typeof x[f] !== 'string') continue;
-    x[f].split('、').map((s) => s.trim()).filter(Boolean)
-      .forEach((n) => freq.set(n, (freq.get(n) || 0) + 1));
+    const v = x[f];
+    if (v == null) continue;
+    if (Array.isArray(v)) {
+      if (!prevDict) { unresolved.push(`${x.i}:${f}:缺旧词典`); rec[f] = v; continue; }
+      const names = v.map((i) => prevDict[i]);
+      const badIdx = names.findIndex((n) => typeof n !== 'string' || !n);
+      if (badIdx >= 0) { unresolved.push(`${x.i}:${f}:id ${v[badIdx]} 越界（旧词典 ${prevDict.length}）`); rec[f] = v; continue; }
+      rec[f] = names;
+    } else if (typeof v === 'string') {
+      const names = v.split('、').map((s) => s.trim()).filter(Boolean);
+      if (names.length) rec[f] = names;
+    }
+  }
+  if (Object.keys(rec).length) nameArrays.set(x, rec);
+}
+
+const freq = new Map();
+for (const rec of nameArrays.values()) {
+  for (const f of ['sc', 'ar', 'mu']) {
+    (rec[f] || []).forEach((n) => freq.set(n, (freq.get(n) || 0) + 1));
   }
 }
 if (!freq.size) {
@@ -56,15 +79,18 @@ const idOf = new Map(dict.map((n, i) => [n, i]));
 
 let converted = 0;
 let refs = 0;
-for (const x of list) {
+const badSet = new Set(unresolved.map((s) => s.split(':').slice(0, 2).join(':')));
+for (const [x, rec] of nameArrays) {
   for (const f of ['sc', 'ar', 'mu']) {
-    if (Array.isArray(x[f]) || typeof x[f] !== 'string') continue;
-    const names = x[f].split('、').map((s) => s.trim()).filter(Boolean);
-    if (!names.length) continue;
-    x[f] = names.map((n) => idOf.get(n));
-    refs += names.length;
+    if (!rec[f]) continue;
+    if (badSet.has(`${x.i}:${f}`)) continue;
+    x[f] = rec[f].map((n) => idOf.get(n));
+    refs += rec[f].length;
     converted += 1;
   }
+}
+if (unresolved.length) {
+  console.log(`⚠ ${unresolved.length} 处无法还原（示例 ${unresolved.slice(0, 3).join(', ')}），已保留原值`);
 }
 
 const byFreq = [...freq.entries()].sort((a, b) => b[1] - a[1]);
