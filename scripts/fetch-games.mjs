@@ -548,6 +548,48 @@ async function main() {
   } catch { /* 白名单可选 */ }
 
   const all = [...byId.values()].filter((x) => !otomeMain.has(String(x.i)) && !(x.tg || []).includes('oto'));
+
+  // 重建前先体检快照：本次重建会整份重写 galgames.js，补全字段只能从快照叠回来。
+  // 快照若落后于「重建前的主库」，那些比快照新的字段会在下面被静默抹掉。
+  // 这里只告警不阻断——重建本身是合法操作（要收新条目），阻断会把流程卡死；
+  // 但必须让风险显式可见，而不是像 v2.31.0 那样丢了 877 条别名还没人知道。
+  try {
+    const prevRaw = await readFile(path.join(rootDir, 'data', 'galgames.js'), 'utf8');
+    const prev = JSON.parse(prevRaw.match(/window\.GL_DATA\s*=\s*(\[[\s\S]*\]);/)[1]);
+    const snapPeek = JSON.parse(await readFile(path.join(rootDir, 'data', 'enrich-main.json'), 'utf8'));
+    const peekItems = snapPeek.items || {};
+    const peekFields = Array.isArray(snapPeek.fields) && snapPeek.fields.length
+      ? snapPeek.fields
+      : ['al', 'dev', 'sc', 'ar', 'mu', 'tg'];
+    const hasVal = (v) => (Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null && String(v).trim() !== '');
+    let atRisk = 0;
+    const samples = [];
+    for (const x of prev) {
+      const rec = peekItems[String(x.i)];
+      const filled = peekFields.filter((f) => hasVal(x[f]));
+      if (!filled.length) continue;
+      if (!rec) {
+        atRisk += filled.length;
+        if (samples.length < 3) samples.push(`${x.i}:${filled.join('/')}`);
+        continue;
+      }
+      for (const f of filled) {
+        if (hasVal(rec[f])) continue;
+        atRisk += 1;
+        if (samples.length < 3) samples.push(`${x.i}:${f}`);
+      }
+    }
+    if (atRisk > 0) {
+      console.log('');
+      console.log('  ⚠ 补全快照落后于当前主库：本次重建将丢失 ' + atRisk + ' 处补全字段');
+      console.log('    示例：' + samples.join('  '));
+      console.log('    建议：先 Ctrl+C 中止，运行 npm run snapshot-enrich -- --apply，再重建');
+      console.log('    继续执行中（重建会补上新条目，但上述字段无法恢复）…');
+      console.log('');
+    } else {
+      console.log('补全快照体检：与当前主库一致，重建不会丢字段');
+    }
+  } catch { /* 首次重建（无旧主库）或快照缺失：跳过体检 */ }
   all.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
 
   // 叠加补全成果：别名 / 开发商 / 剧本 / 原画 / 音乐这些字段靠 enrich 类脚本补充，
