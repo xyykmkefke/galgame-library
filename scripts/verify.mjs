@@ -181,6 +181,14 @@ async function main() {
         '--disable-gpu',
         '--hide-scrollbars',
         '--no-first-run',
+        // 扩展必须禁用：即便用全新 profile，Windows 上的 Edge 仍会加载内置组件扩展，
+        // 它们注入的 content script 会抛「listener indicated an asynchronous response …
+        // message channel closed」，被「全程无 JS 异常」误判成页面缺陷。
+        // 实测 2026-11-27：同一份代码先后两次运行，一次 234/234、一次 233/234 卡在这条，
+        // 差别只在有没有撞上组件扩展的注入时机——属环境噪音，不是页面问题。
+        // 番剧项目（../番剧/scripts/verify.mjs）踩过同一个坑，这里照搬同一个修法。
+        '--disable-extensions',
+        '--disable-component-extensions-with-background-pages',
         ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
         `--remote-debugging-port=${CDP_PORT}`,
         `--user-data-dir=${profile}`,
