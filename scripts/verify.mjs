@@ -698,6 +698,56 @@ async function main() {
       check('开发商别名表已加载并可被运行时消费', orphanGroups > 200,
         `${orphanGroups} 个写法含拉丁别名`);
     }
+
+    // ---- 纯中文社名的拼音：白露社 / bailushe / bls 三边等价 ----
+    //
+    // 上一条只覆盖假名社名。库里 188 个纯中文社名（白露社 / 琉璃花糖制作组 / 零创游戏）
+    // 此前搜拼音是 0 条 —— 中文用户打不出中文、或用拼音输入法时完全搜不到。
+    // 判据与罗马字那条一致，只守「漏」：中文侧命中的条目，拼音侧必须全命中。
+    const cnDevCases = await cdp.evaluate(`(() => {
+      const AG = window.GL_ALIAS_GROUPS || {};
+      const dev = AG.dev || {};
+      const cn = /[\\u3400-\\u9fff]/;
+      const kana = /[\\u3040-\\u30ff]/;
+      const out = [];
+      Object.keys(dev).forEach((k) => {
+        if (!cn.test(k) || kana.test(k)) return;                 // 纯中文（不含假名）
+        const pys = (dev[k] || []).filter((v) => /^[a-z]+$/i.test(String(v)) && String(v).length >= 3);
+        if (!pys.length) return;
+        out.push([k, pys[0]]);
+      });
+      return out;
+    })()`);
+    // 守卫：候选为 0 时下面的循环会「0 个失败」而假通过，必须显式挡
+    check('纯中文社名已生成拼音别名（覆盖 >= 100 组）', cnDevCases.length >= 100,
+      `${cnDevCases.length} 个中文社名带拼音写法`);
+    let cnDevOk = 0;
+    const cnDevBad = [];
+    for (const [cnName, py] of cnDevCases.slice(0, 10)) {
+      const devHit = async (q) => cdp.evaluate(`(() => {
+        const el = document.getElementById('search');
+        el.value = ${JSON.stringify(q)};
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return null;
+      })()`).then(() => sleep(320)).then(() => cdp.evaluate(`(() => {
+        const q = ${JSON.stringify(q)}.toLowerCase();
+        const hit = [];
+        (window.GL_DATA || []).forEach((x) => {
+          const names = (x.dev || []).concat(x.dva || []).map((d) => String(d).toLowerCase());
+          if (names.some((d) => d === q || d.indexOf(q) === 0)) hit.push(String(x.i));
+        });
+        return hit;
+      })()`));
+      const A = await devHit(cnName);
+      const B = await devHit(py);
+      const onlyA = A.filter((id) => !B.includes(id));
+      if (A.length > 0 && onlyA.length === 0) cnDevOk += 1;
+      else cnDevBad.push(`${cnName}(${A.length}) vs ${py}(${B.length})${onlyA.length ? ' 漏' + onlyA.slice(0, 2).join(',') : ''}`);
+    }
+    check('中文社名与其拼音不丢目标（中文侧命中，拼音侧必全命中）',
+      cnDevCases.length >= 100 && cnDevOk > 0 && cnDevBad.length === 0,
+      cnDevBad.length ? cnDevBad.slice(0, 3).join('；')
+        : `${cnDevOk}/10 组无漏搜（候选 ${cnDevCases.length} 组）`);
     // 补入英译不能改变列表显示：アトラス 的作品仍应显示日文社名
     const devDisplayClean = await cdp.evaluate(`(() => {
       const map = {};

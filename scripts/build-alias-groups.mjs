@@ -27,6 +27,7 @@ import { PLATFORM_ALIAS } from './platform-alias.mjs';
 import { GENRES } from './genres.mjs';
 import { DEV_CROSS_LANG } from './dev-cross-lang.mjs';
 import { romajiAliases } from './dev-romaji.mjs';
+import { cnDevAliases } from './dev-cn-pinyin.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const DEV_ALIAS = path.join(ROOT, 'data', 'dev-alias.js');
@@ -201,6 +202,26 @@ for (const name of allDevNames) {
   romajiCount += 1;
 }
 if (romajiCount) console.log(`假名社名罗马字并入：${romajiCount} 社（另有 ${romajiSkipped} 个非纯假名社名，不需要/无法转写）`);
+
+// ---- 1e. 纯中文社名的拼音：打不出中文时用拼音也能搜到 ----
+//
+// 上一段解决了日文社名，但库里 200 个纯中文社名（白露社 / 琉璃花糖制作组 / 零创游戏）
+// 搜拼音仍是 0 条。它们和日文社名的差别是**读音确定**——中文社名读中文，
+// 拼音就是标准答案，不像日文汉字要看社名习惯。
+//
+// 判据、门槛、为何单独一个文件，见 dev-cn-pinyin.mjs 的注释。
+// 同样只灌并查集、不写 dev-alias 的 map：显示保持中文原名。
+let cnPinyinCount = 0;
+for (const name of allDevNames) {
+  // 已经有拉丁写法的不需要（可能是官方英文名，也可能是别的映射已经并进来了）
+  if (devWithLatin.has(name)) continue;
+  const list = cnDevAliases(name);
+  if (!list.length) continue;
+  uf.find(name);
+  list.forEach((p) => { uf.union(name, p); stats.edges += 1; });
+  cnPinyinCount += 1;
+}
+if (cnPinyinCount) console.log(`中文社名拼音并入：${cnPinyinCount} 社`);
 
 // ---- 2. 平台：platform-alias.mjs ----
 Object.entries(PLATFORM_ALIAS).forEach(([std, list]) => feed(uf, std, list, stats));
