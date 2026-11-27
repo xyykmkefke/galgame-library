@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.38.0">
+<meta name="version" content="2.39.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2762,7 +2762,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.38.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.39.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -4367,9 +4367,14 @@
   }
 
   // 宽松归一：全角转半角、忽略大小写、空格与标点，用于「steinsgate」「ＦＡＴＥ」这类输入
+  //
+  // 白名单必须覆盖**所有文字系统**，而不只是中日文。漏掉韩文时 `이세계에서 온 첫사랑` 
+  // 会被整串剥成空串，进而牵连两处：`isPunctOnly()` 把韩文关键词误判成纯标点直接丢弃，
+  // `matchesQueryLoose()` 也无从匹配 —— 表现为「韩文别名一条都搜不到」。
+  // 已补：谚文音节 \uac00-\ud7af、谚文字母 \u1100-\u11ff、兼容字母 \u3130-\u318f。
   function looseText(s) {
     return String(s == null ? '' : s).normalize('NFKC').toLowerCase()
-      .replace(/[^0-9a-z\u00c0-\u024f\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]+/g, '');
+      .replace(/[^0-9a-z\u00c0-\u024f\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]+/g, '');
   }
 
   // 严格匹配失败时的兜底命中：标题 / 别名 / 开发商 / 平台去掉空格与标点后仍包含关键词
@@ -4560,6 +4565,29 @@
     return anyNameMatches(aliasList(x), token);
   }
 
+  // 排除词判定：`-词` 表示排除。
+  //
+  // 三个必须排除在外的边界情况（v2.39.0）：
+  //   1. 孤立 `-`（长度 1）：`Do As I Say - Obedience to the Priest` 这种别名，
+  //      按空格切出来的 `-` 既不是排除词也不该是关键词，留着会让整条查询 0 结果。
+  //   2. 末尾是 `-` 的 token：`86 -不存在的战区- 2` 里的 `-不存在的战区-` 是标题的一部分，
+  //      用户写排除从不首尾各加连字符。
+  //   3. 纯标点 token（`,`、`&`、`~` 等）：`Love, Elections, & Chocolate` 原样粘贴时
+  //      会被拆成 4 个关键词，`,` 和 `&` 不可能出现在任何标题里，结果必然是 0 条。
+  function isExcludeToken(t) {
+    return t.charAt(0) === '-' && t.length > 1 && t.charAt(t.length - 1) !== '-';
+  }
+
+  // 该 token 去掉标点后还有没有实际字符。没有就说明它只是粘贴标题时带进来的分隔符，
+  // 不参与匹配（但仍可作排除词，见上）。
+  //
+  // 判据用 Unicode 属性，而不是「looseText 之后是否为空」：
+  // looseText 的白名单是手写的，漏掉某个文字系统时就会把整类文字误判成标点。
+  // 曾经漏韩文，导致韩文关键词被当成标点直接丢弃，一条都搜不到。
+  function isPunctOnly(t) {
+    return !/[\p{L}\p{N}]/u.test(t);
+  }
+
   function filteredList() {
     var list = baseList();
     var q = state.q.trim().toLowerCase();
@@ -4567,9 +4595,15 @@
     var qualParts = splitQualifiers(searchTokens(q));
     var allTokens = qualParts.rest;
     // 「-词」表示排除：含该词的条目不出现在结果里，可与普通关键词组合
-    var tokens = allTokens.filter(function (t) { return t.charAt(0) !== '-' || t.length < 2; });
-    var excludes = allTokens.filter(function (t) { return t.charAt(0) === '-' && t.length > 1; })
+    var tokens = allTokens.filter(function (t) { return !isExcludeToken(t) && !isPunctOnly(t); });
+    var excludes = allTokens.filter(isExcludeToken)
       .map(function (t) { return t.slice(1); });
+    // 用户只输入了标点（如「-」「,」）：既没有关键词也没有排除词。
+    // 不能落到「无条件展示全部」——那会让用户以为搜索被忽略了。给空结果，
+    // 由空态文案提示「换个关键词」。查询本身是空的（纯空白）仍走全量，那是正常清空搜索。
+    if (!tokens.length && !excludes.length && allTokens.length) {
+      return [];
+    }
     if (tokens.length || excludes.length) {
       var loose = false;
       if (tokens.length) {
@@ -4592,6 +4626,27 @@
             return loose ? matchesQueryLoose(x, t) : matchesQuery(x, t);
           });
         });
+      }
+      // 排除词把结果清空时的兜底：整串查询当别名去找。
+      //
+      // 有些标题本身就带「-词」：`闇夜に踊れ -Witch wishes to commit the Night-`、
+      // `真夏の夜の雪物語 -MIDSUMMER SNOW NIGHT-`。用户把别名原样粘进来时，中间的
+      // `-Witch` 会被当成排除词，而它要排除的恰恰就是要找的那一条 —— 结果必然是 0。
+      //
+      // 只在「同时有关键词」时才兜底。这一点很关键：用户只输入 `-witch` 表达的是
+      // 「把含 witch 的都排掉」，结果本来就可能为空，这时若也去整串匹配，
+      // 反而会返回 240 条（等于把排除语法废掉）。
+      if (!list.length && excludes.length && tokens.length) {
+        var whole = q;
+        var wholeLoose = looseText(whole);
+        // 整串都被标点吃掉（极端情况）时不要退化成「全命中」
+        if (wholeLoose) {
+          list = baseList().filter(function (x) {
+            return looseText(aliasText(x)).indexOf(wholeLoose) >= 0 ||
+              looseText(x.n).indexOf(wholeLoose) >= 0 ||
+              looseText(x.cn).indexOf(wholeLoose) >= 0;
+          });
+        }
       }
     } else if (state.tab === 'all' && state.year !== 'all') {
       list = list.filter(function (x) { return yearOf(x.d) === state.year; });

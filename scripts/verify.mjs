@@ -464,6 +464,106 @@ async function main() {
       "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); return ids.filter((id)=>{ const x=map[id]||{}; return !((x.pl||[]).some((p)=>/^Switch/i.test(p)) || (x.dev||[]).some((d)=>/switch/i.test(d)) || /switch/i.test(x.cn||x.n||'') || (x.al||[]).some((a)=>/switch/i.test(a))); }).length; })()");
     check('搜索可命中平台', platSearch === true, platSearch ? `Switch · ${platTotal} 条·越界 ${platPure}` : '未命中');
 
+    // ---------- 标题里的标点不应把整条查询变成 0 结果（v2.39.0） ----------
+    // 用户常把英文别名整条粘进搜索框：`Love, Elections, & Chocolate`、
+    // `Do As I Say - Obedience to the Priest`。按空格切词后 `,`/`&`/`-` 会变成
+    // 必须命中的关键词，而它们不可能出现在任何标题里 —— 结果必然是 0 条。
+    // 这里挑「别名本身带孤立标点」的条目，用别名原样查询，必须能命中它自己。
+    const punctAlias = await cdp.evaluate(`(() => {
+      const d = window.GL_DATA || [];
+      // 均匀取样：先收集全部候选再按步长取，避免只验到前段同质条目
+      const pool = [];
+      for (const x of d) {
+        if (!x.al || !x.al.length) continue;
+        const a = x.al.find((v) => {
+          const s = String(v);
+          if (s.length < 10) return false;
+          const toks = s.toLowerCase().split(/\\s+/).filter(Boolean);
+          // 带「被空格包围的纯标点」或「逗号/&」才算有区分力的用例
+          return toks.some((t) => t.length === 1 && !/[0-9a-z\\u3040-\\u30ff\\u4e00-\\u9fff]/.test(t)) || /[,&]/.test(s);
+        });
+        if (a) pool.push({ id: String(x.i), alias: a });
+      }
+      if (!pool.length) return null;
+      const step = Math.max(1, Math.floor(pool.length / 12));
+      const sample = [];
+      for (let i = 0; i < pool.length && sample.length < 12; i += step) sample.push(pool[i]);
+      return { poolSize: pool.length, sample };
+    })()`);
+    if (!punctAlias) {
+      check('带标点的别名可用原样查询命中', false, '找不到含孤立标点的别名 —— 用例为 0，断言会空跑');
+    } else {
+      const missed = [];
+      for (const cs of punctAlias.sample) {
+        await typeSearch(cs.alias);
+        const got = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c)=>String(c.dataset.id))");
+        if (!got.includes(cs.id)) missed.push({ id: cs.id, alias: cs.alias.slice(0, 48), got: got.length });
+      }
+      check('带标点的别名可用原样查询命中', missed.length === 0,
+        `${punctAlias.sample.length - missed.length}/${punctAlias.sample.length} 命中（候选池 ${punctAlias.poolSize}）` +
+        (missed.length ? ' · 漏 ' + JSON.stringify(missed.slice(0, 3)) : ''));
+    }
+
+    // 排除语法不能被上面的兜底改坏：`-词` 仍要真的把含该词的条目排掉。
+    //
+    // 判据要用「独立的 witch 词」，不能用 /witch/i 子串：
+    // `Switch` / `スイッチ` 里也含 witch，而严格匹配要求 `w` 左侧是词边界，
+    // 所以它们本来就不该被 `-witch` 排除。用子串判会把这个正确行为当成漏排除。
+    await typeSearch('witch');
+    const witchWordRe = "(^|[^a-z])witch([^a-z]|$)";
+    const witchHit = await cdp.evaluate(
+      "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); const re=new RegExp(" + JSON.stringify(witchWordRe) + ",'i'); return ids.filter((id)=>{ const x=map[id]||{}; return re.test(x.n||'') || re.test(x.cn||'') || (x.al||[]).some((a)=>re.test(a)); }).length; })()");
+    await typeSearch('-witch');
+    const witchNegHit = await cdp.evaluate(
+      "(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>Number(c.dataset.id)); const map={}; (window.GL_DATA||[]).forEach((x)=>{ map[x.i]=x; }); const re=new RegExp(" + JSON.stringify(witchWordRe) + ",'i'); return ids.filter((id)=>{ const x=map[id]||{}; return re.test(x.n||'') || re.test(x.cn||'') || (x.al||[]).some((a)=>re.test(a)); }).length; })()");
+    check('排除语法仍然生效', witchHit > 0 && witchNegHit === 0, `独立 witch 词 ${witchHit} 条 → -witch 后 ${witchNegHit} 条`);
+
+    // 标题本身带「-词」时，原样粘贴必须能搜到它自己（兜底分支）。
+    //
+    // 这类标题不少：`Lilac -side Witch-`、`ATRI -My Dear Moments-`、
+    // `灰色 -CHRONOS REBELLION-`。用户从别处复制标题粘进搜索框时，中间的
+    // `-side` / `-My` 会被当成排除词，把它自己排掉 —— 结果是 0 条。
+    //
+    // 这条断言和上面「排除语法仍然生效」是一对反例：
+    // 上面守「-词 必须真的排除」，这条守「整串命中不能因此丢失」。
+    // 两条都过，才说明兜底只在「排除后为空」时触发，没有把排除语法废掉。
+    //
+    // 必须用「整串查询」而不是拆词，且必须挑排除后确实为 0 的样本 ——
+    // 否则不会进入兜底分支，断言会空跑（曾经就是因此漏掉整段代码）。
+    const dashTitle = await cdp.evaluate(`(() => {
+      const d = window.GL_DATA || [];
+      const pool = [];
+      for (const x of d) {
+        if (!x.al || !x.al.length) continue;
+        for (const a of x.al) {
+          const s = String(a);
+          if (s.length < 12 || s.length > 46) continue;
+          // 别名里要有「被空格包围的 -词」，这才是会被误当排除词的形态
+          if (!/(^|\\s)-[A-Za-z]/.test(s)) continue;
+          pool.push({ id: String(x.i), alias: s });
+          break;
+        }
+      }
+      if (!pool.length) return null;
+      const step = Math.max(1, Math.floor(pool.length / 15));
+      const sample = [];
+      for (let i = 0; i < pool.length && sample.length < 15; i += step) sample.push(pool[i]);
+      return { poolSize: pool.length, sample };
+    })()`);
+    if (!dashTitle) {
+      check('标题自带「-词」时原样查询仍能命中', false, '找不到含「空格-词」的别名 —— 用例为 0，断言会空跑');
+    } else {
+      const missed = [];
+      for (const cs of dashTitle.sample) {
+        await typeSearch(cs.alias);
+        const got = await cdp.evaluate("[...document.querySelectorAll('.card')].map((c)=>String(c.dataset.id))");
+        if (!got.includes(cs.id)) missed.push({ id: cs.id, alias: cs.alias.slice(0, 44), got: got.length });
+      }
+      check('标题自带「-词」时原样查询仍能命中', missed.length === 0,
+        `${dashTitle.sample.length - missed.length}/${dashTitle.sample.length} 命中（候选池 ${dashTitle.poolSize}）` +
+        (missed.length ? ' · 漏 ' + JSON.stringify(missed.slice(0, 3)) : ''));
+    }
+
     // 跨源别名：VNDB 英文 / 罗马字标题参与搜索（主库原名不含该标题时才用于验证）
     const vAlias = await cdp.evaluate(`(() => {
       const vm = (window.GL_VNDB || {}).map || {};
@@ -2223,6 +2323,7 @@ async function main() {
       await new Promise((r) => setTimeout(r, 600));
       try {
         await rm(profile, { recursive: true, force: true });
+        if (process.env.VERIFY_DIAG) console.log('[diag] profile 已清理: ' + profile);
       } catch (err) {
         console.log(`提示：profile 清理失败（可忽略）: ${err && err.code ? err.code : err}`);
       }

@@ -32,7 +32,7 @@ const REL_DELAY_MS = 1600;
 const PROD_BATCH = 20;
 const PROD_PAGE_MAX = 3;
 const PROD_DELAY_MS = 2200;
-const FIELDS = 'id,title,alttitle,titles.title,titles.lang,image.url,released,rating,votecount,length_minutes,developers.name,platforms,staff{id,name,role},tags.name,tags.rating,tags.spoiler';
+const FIELDS = 'id,title,alttitle,aliases,titles.title,titles.latin,titles.lang,image.url,released,rating,votecount,length_minutes,developers.name,platforms,staff{id,name,role},tags.name,tags.rating,tags.spoiler';
 const FULL_FIELDS = FIELDS + ',olang';
 const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount', '>=', 10]];
 // 只跟随官方作品关系；char（共用角色）与 fan（同人）会引入大量衍生小游戏
@@ -166,6 +166,27 @@ function buildItem(c) {
   const tg = mapVndbGenres(c.tags);
   if (tg.length) item.tg = tg;
   Object.assign(item, mapStaff(c.staff));
+  // 别名：VNDB 的 aliases（官方收录的别称）与各语言标题里的 latin 写法（罗马字 / 英文名）。
+  // 为什么必须补：主库有 al（Bangumi 别名），扩展库此前一条没有，
+  // 于是「主库能用英文名搜到、扩展库搜不到」——同一部作品在两个库里行为不一致。
+  // 实测 5737 条里 5418 条可补，约 7212 个写法，而 al 覆盖率原本是 0%。
+  // 只收「与自身显示名不同」的写法，避免详情页把标题重复列一遍。
+  const al = [];
+  const seenAl = new Set([String(n).toLowerCase().replace(/\s+/g, '')]);
+  const pushAl = (v) => {
+    const t = String(v || '').trim();
+    if (!t) return;
+    const k = t.toLowerCase().replace(/\s+/g, '');
+    if (!k || seenAl.has(k)) return;
+    seenAl.add(k);
+    al.push(t);
+  };
+  // 顺序即详情页展示顺序：官方 aliases → 英文标题 → 罗马字 → 中文标题
+  String(c.aliases || '').split(/\n+/).forEach(pushAl);
+  titles.filter((t) => t.lang === 'en').forEach((t) => pushAl(t.title));
+  titles.filter((t) => t.lang !== 'en').forEach((t) => pushAl(t.latin));
+  if (cn) pushAl(cn);
+  if (al.length) item.al = al;
   return item;
 }
 
