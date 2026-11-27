@@ -38,6 +38,12 @@ const FILTERS = ['and', ['olang', '=', 'ja'], ['rating', '>=', 60], ['votecount'
 // 只跟随官方作品关系；char（共用角色）与 fan（同人）会引入大量衍生小游戏
 const RELATION_TYPES = new Set(['seq', 'preq', 'set', 'alt', 'side', 'par', 'ser', 'sub', 'orig']);
 
+// 罗马字别名的来源语言白名单，必须与 scripts/fill-extra-aliases.mjs 的同名常量一致。
+// VNDB 的 titles[].latin 覆盖所有语言：ja 5372 / zh-Hans 900 / zh-Hant 321，
+// 而 ko 54 + ru 35 + th 7 = 96 条是韩俄泰音译（如「Strana Koljos, Devochka-Podsolnuh」），
+// 对中文用户是纯噪声。两条产出路径（重建 / 离线补齐）用同一份白名单才不会互相打架。
+const AL_LANGS = new Set(['ja', 'zh-Hans', 'zh-Hant', 'zh']);
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 非 gal 黑名单（按 VNDB id）；缺失时返回空集，不阻塞抓取
@@ -140,6 +146,41 @@ function mapStaff(staff) {
   return result;
 }
 
+// 把全库制作人员字段从「、分隔字符串」打包成「词典 + id 数组」，再交给写出阶段。
+//
+// 为什么值得做：姓名高度重复（唯一 7867 个 / 总实例 34530 次 / 平均每人 4.39 部）。
+// 实测整文件 gzip 808818 → 729935（省 78.9KB），raw 降 393KB。
+//
+// 词典按「出现频率降序」排列：高频姓名拿到小整数 id，gzip 对小整数更友好。
+// 词典放在顶层 staffDict，运行时由 index.html 的 staffValues() 查表还原成姓名，
+// 因此「返回姓名数组」这个契约不变，调用点无需改动。
+//
+// 幂等性：对已经词典化的数据（字段已是数组）直接跳过，避免重复打包把 id 当姓名。
+function packStaffDict(list) {
+  const freq = new Map();
+  for (const x of list) {
+    for (const f of ['sc', 'ar', 'mu']) {
+      if (!Array.isArray(x[f]) && typeof x[f] === 'string') {
+        x[f].split('、').map((s) => s.trim()).filter(Boolean)
+          .forEach((n) => freq.set(n, (freq.get(n) || 0) + 1));
+      }
+    }
+  }
+  if (!freq.size) return null; // 已是数组形态或无 staff：不必写词典
+  const dict = [...freq.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([n]) => n);
+  const idOf = new Map(dict.map((n, i) => [n, i]));
+  for (const x of list) {
+    for (const f of ['sc', 'ar', 'mu']) {
+      if (Array.isArray(x[f]) || typeof x[f] !== 'string') continue;
+      const names = x[f].split('、').map((s) => s.trim()).filter(Boolean);
+      if (!names.length) continue;
+      x[f] = names.map((n) => idOf.get(n));
+    }
+  }
+  console.log(`制作人员词典：${dict.length} 个唯一姓名，已把 sc/ar/mu 转为 id 数组`);
+  return dict;
+}
+
 function buildItem(c) {
   const titles = c.titles || [];
   const ja = (titles.find((t) => t.lang === 'ja') || {}).title || '';
@@ -184,7 +225,12 @@ function buildItem(c) {
   // 顺序即详情页展示顺序：官方 aliases → 英文标题 → 罗马字 → 中文标题
   String(c.aliases || '').split(/\n+/).forEach(pushAl);
   titles.filter((t) => t.lang === 'en').forEach((t) => pushAl(t.title));
-  titles.filter((t) => t.lang !== 'en').forEach((t) => pushAl(t.latin));
+  // 罗马字转写只收 ja / zh 来源。
+  // 曾经的写法是 `t.lang !== 'en'`，等于除英语外全收：实测混进 ru / ko / uk / th 音译
+  // （详情页会出现 Школьные Дни 这类写法）。与离线脚本 fill-extra-aliases.mjs 的白名单
+  // 必须一致，否则「重建一次就变样」——同一条数据走不同产出路径得到不同结果，
+  // 这类不一致最难排查（数据看着没问题，取决于上次是谁生成的）。
+  titles.filter((t) => t.lang !== 'en' && AL_LANGS.has(t.lang)).forEach((t) => pushAl(t.latin));
   if (cn) pushAl(cn);
   if (al.length) item.al = al;
   return item;
@@ -423,8 +469,9 @@ async function main() {
       blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
       otome: { configured: otomeSet.size, removed: otomeRemoved, source: 'data/blocklist-otome.json' },
     });
+    const staffDict = packStaffDict(list);
     const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
-      'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
+      'window.GL_VNDB_EXTRA = ' + JSON.stringify(staffDict ? { meta, staffDict, list } : { meta, list }) + ';\n';
     await writeFile(OUT_FILE, content, 'utf8');
     console.log(`完成（热度补全）：新增 ${list.length - baseCount} 条，扩展共 ${list.length} 条，请求 ${page} 页 / ${fetched} 条候选`);
     console.log(`输出：${OUT_FILE}`);
@@ -589,8 +636,9 @@ async function main() {
     blocklist: { configured: blockSet.size, removed: blockRemoved, source: 'data/blocklist.json' },
     otome: { configured: otomeSet.size, removed: otomeRemoved, source: 'data/blocklist-otome.json' },
   };
+  const staffDict = packStaffDict(list);
   const content = '// 由 scripts/fetch-vndb-extra.mjs 生成，请勿手动修改\n' +
-    'window.GL_VNDB_EXTRA = ' + JSON.stringify({ meta, list }) + ';\n';
+    'window.GL_VNDB_EXTRA = ' + JSON.stringify(staffDict ? { meta, staffDict, list } : { meta, list }) + ';\n';
   await writeFile(OUT_FILE, content, 'utf8');
 
   console.log(`完成：扩展 ${list.length} 条（关系补全 ${relAdded}，开发商补全 ${devAdded}），请求 ${page} 页 / ${fetched} 条候选，跳过 主库 ${skippedUsed}、重名 ${skippedDup}、无效 ${skippedInvalid}`);

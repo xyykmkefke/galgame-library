@@ -47,6 +47,20 @@ const MIME = {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// 在页面里求值时复用的「制作人员字段解码」片段。
+// sc/ar/mu 有两种存法：主库是「、」分隔字符串，扩展库（v2.40.0 起）是词典 id 数组。
+// 断言里若仍写 x[k].split('、')，对数组会直接抛 TypeError；即便不抛也会把 5737 条扩展库
+// 全部漏掉，于是「期望值」和「页面真实渲染」用的是两套口径——断言照样全绿，但测的不是同一件事。
+// 所以这里统一成与 index.html staffValues() 同规则的实现，供各处断言注入。
+const STAFF_JS = `const staffOf = (x, k) => {
+  const v = x && x[k];
+  if (Array.isArray(v)) {
+    const d = (window.GL_VNDB_EXTRA && window.GL_VNDB_EXTRA.staffDict) || [];
+    return v.map((i) => d[i]).filter((n) => typeof n === 'string' && n);
+  }
+  return String(v || '').split('、').map((s) => s.trim()).filter(Boolean);
+};`;
+
 // 注入页面的 GitHub API mock：只拦截 api.github.com，其余请求原样放行
 const MOCK_GIST_SCRIPT = `(() => {
   var FILE = 'yuc-galgame-list.json';
@@ -1126,8 +1140,9 @@ async function main() {
     await sleep(300);
 
     // 制作人员（剧本 / 原画 / 音乐 / 发行）逐项可点，并按该人员筛选全库
+    // 样本刻意从「带 staff 的条目」里挑，但不再假设字段一定是字符串（扩展库是 id 数组）
     const staffId = await cdp.evaluate(
-      "(() => { const x=(window.GL_DATA||[]).find((x)=>x.sc&&x.sc.split('、').map((s)=>s.trim()).filter(Boolean).length); return x ? String(x.i) : ''; })()");
+      "(() => { " + STAFF_JS + " const x=(window.GL_DATA||[]).find((x)=>staffOf(x,'sc').length); return x ? String(x.i) : ''; })()");
     await cdp.evaluate(`location.hash = '#d=${staffId}'`);
     await waitFor("document.getElementById('modal').hidden === false");
     const staffLinks = await cdp.evaluate("document.querySelectorAll('#detailMeta [data-jump-staff]').length");
@@ -1136,15 +1151,95 @@ async function main() {
       "(() => { const b=document.querySelector('#detailMeta [data-jump-staff]'); if (!b) return null; const v=b.dataset.jumpStaff; const k=b.dataset.staffKind; b.click(); return { v, k }; })()");
     await sleep(450);
     const staffFiltered = await cdp.evaluate(
-      `(() => { const ids=[...document.querySelectorAll('.card')].map((c)=>c.dataset.id);` +
+      `(() => { ${STAFF_JS} const ids=[...document.querySelectorAll('.card')].map((c)=>c.dataset.id);` +
       ` const ok=ids.every((id)=>{ const x=(window.GL_DATA||[]).find((y)=>String(y.i)===id);` +
-      ` return x && String(x['${staffJump ? staffJump.k : 'sc'}']||'').split('、').map((s)=>s.trim()).indexOf(${JSON.stringify(staffJump ? staffJump.v : '')})>=0; });` +
+      ` return x && staffOf(x, '${staffJump ? staffJump.k : 'sc'}').indexOf(${JSON.stringify(staffJump ? staffJump.v : '')})>=0; });` +
       ` return [ids.length, ok, document.getElementById('modal').hidden, document.getElementById('filterChips').textContent]; })()`);
     check('详情点制作人员即按该人员筛选', !!staffJump && staffFiltered[0] > 0 && staffFiltered[1] === true && staffFiltered[2] === true,
       (staffJump ? staffJump.k + ' · ' + staffJump.v : '无') + ' → ' + staffFiltered[0] + ' 张');
     check('筛选标签显示制作人员筛选', /剧本|原画|音乐|发行/.test(staffFiltered[3]) && staffFiltered[3].includes(staffJump ? staffJump.v : ''), String(staffFiltered[3]).slice(0, 40));
     await cdp.evaluate("document.getElementById('clearFiltersBtn').click()");
     await sleep(300);
+
+    // 扩展库制作人员词典可还原（防「词典读错全局名」这类静默失效）
+    // 背景：v2.40.0 把扩展库 sc/ar/mu 改成词典 id 数组，前端需读 GL_VNDB_EXTRA.staffDict 还原。
+    // 一旦读错来源（例如写了个不存在的全局名），dict 恒为空 → 数组里每个 id 都查不到姓名 →
+    // staffValues() 返回空数组 → 5737 条扩展库的剧本/原画/音乐**全部显示「未标注」**，
+    // 不抛错、check-data 的 id 越界守卫也照样 PASS（它只校验 id 范围，不校验能否查到人）。
+    //
+    // 判据必须走页面自己的读取路径，不能自己再算一遍：
+    // 第一版这里用断言内自带的解码器去重算，缺陷态下照样 PASS 5558/5558 —— 因为它读的是
+    // 正确的数据来源，测的是「数据能否还原」，而缺陷在「页面读错来源」。空转的断言等于没有。
+    // 改为挑一个**只出现在扩展库**的剧本姓名，用页面的筛选入口去查：
+    // 页面若能还原 → 结果 >0 且每条都含该姓名；页面读不到词典 → 筛选结果 0 条（或全越界），必然 FAIL。
+    const dictRender = await cdp.evaluate(`(() => {
+      ${STAFF_JS}
+      const d = window.GL_DATA || [];
+      const ext = d.filter((x) => x.ex === 1);
+      const arrItems = ext.filter((x) => ['sc','ar','mu'].some((f) => Array.isArray(x[f]) && x[f].length));
+      // 主库出现过的所有姓名（字符串形态），用于排除「主库也有同名」的样本
+      const inMain = new Set();
+      d.filter((x) => x.ex !== 1).forEach((x) => {
+        ['sc','ar','mu'].forEach((f) => staffOf(x, f).forEach((n) => inMain.add(n)));
+      });
+      // 找一个只在扩展库出现的剧本姓名（页面读不到词典时，这个筛选必然 0 条）
+      let pick = '';
+      for (const x of ext) {
+        if (!Array.isArray(x.sc)) continue;
+        for (const n of staffOf(x, 'sc')) {
+          if (n && !inMain.has(n)) { pick = n; break; }
+        }
+        if (pick) break;
+      }
+      return {
+        ext: ext.length, arrItems: arrItems.length,
+        okItems: arrItems.filter((x) => ['sc','ar','mu'].some((f) => staffOf(x, f).length)).length,
+        pick
+      };
+    })()`);
+    check('扩展库存在可筛选的词典化制作人员',
+      dictRender.arrItems > 1000 && dictRender.okItems === dictRender.arrItems && !!dictRender.pick,
+      `${dictRender.okItems}/${dictRender.arrItems} 条有姓名（扩展库 ${dictRender.ext} 条）· 样本「${dictRender.pick}」`);
+
+    // 用上面那个「仅扩展库独有」的姓名走页面筛选，验证页面确实还原得出人名
+    if (dictRender.pick) {
+      await cdp.evaluate(`location.hash = '#sk=sc&sv=' + encodeURIComponent(${JSON.stringify(dictRender.pick)})`);
+      await sleep(450);
+      const extFilter = await cdp.evaluate(`(() => {
+        ${STAFF_JS}
+        const ids = [...document.querySelectorAll('.card')].map((c) => c.dataset.id);
+        const bad = ids.filter((id) => {
+          const x = (window.GL_DATA || []).find((y) => String(y.i) === id);
+          return !x || staffOf(x, 'sc').indexOf(${JSON.stringify(dictRender.pick)}) < 0;
+        }).length;
+        return { n: ids.length, bad, chips: document.getElementById('filterChips').textContent };
+      })()`);
+      check('扩展库制作人员可被页面筛选命中',
+        extFilter.n > 0 && extFilter.bad === 0 && extFilter.chips.includes(dictRender.pick),
+        `${dictRender.pick} → ${extFilter.n} 张 · 越界 ${extFilter.bad}`);
+      await cdp.evaluate("document.getElementById('clearFiltersBtn').click(); location.hash = ''");
+      await sleep(300);
+
+      // 详情页也必须把姓名渲染出来（而不是「未标注」或一串裸露的 id 数字）
+      const sampleId = await cdp.evaluate(`(() => {
+        ${STAFF_JS}
+        const x = (window.GL_DATA || []).find((y) => y.ex === 1 && Array.isArray(y.sc) && staffOf(y, 'sc').indexOf(${JSON.stringify(dictRender.pick)}) >= 0);
+        return x ? String(x.i) : '';
+      })()`);
+      await cdp.evaluate(`location.hash = '#d=${sampleId}'`);
+      await waitFor("document.getElementById('modal').hidden === false");
+      await sleep(250);
+      const extDetail = await cdp.evaluate(
+        "(() => { const rows=[...document.querySelectorAll('#detailMeta .chip')];" +
+        " const r=rows.find((x)=>(x.querySelector('i')||{}).textContent==='剧本'); return r ? r.textContent : ''; })()");
+      check('扩展条目的剧本显示姓名而非未标注',
+        extDetail.includes(dictRender.pick) && extDetail !== '' && !extDetail.includes('未标注'),
+        extDetail.slice(0, 50));
+      await cdp.evaluate("document.getElementById('modal').hidden = true; location.hash = ''");
+      await sleep(250);
+    } else {
+      check('扩展库制作人员可被页面筛选命中', false, '未找到仅在扩展库出现的剧本姓名');
+    }
 
     // 系列聚合：详情展示系列入口，点击后按系列筛选全库，非法系列链接自动忽略
     const seriesData = await cdp.evaluate(
@@ -1327,16 +1422,16 @@ async function main() {
     await cdp.evaluate("document.querySelector('[data-more=\"staffs\"]').click()");
     await waitFor("document.getElementById('staffModal') && document.getElementById('staffModal').hidden === false");
     const staffPanel = await cdp.evaluate(`(() => {
-      const staffValues = (x, k) => String(x[k] || '').split('、').map((v) => v.trim()).filter(Boolean);
+      ${STAFF_JS}
       const d = window.GL_DATA || [];
       const counts = {};
-      d.forEach((x) => staffValues(x, 'sc').forEach((n) => { counts[n] = (counts[n] || 0) + 1; }));
+      d.forEach((x) => staffOf(x, 'sc').forEach((n) => { counts[n] = (counts[n] || 0) + 1; }));
       const names = Object.keys(counts);
       return {
         rows: document.querySelectorAll('#staffBody [data-staff-pick]').length,
         expected: names.filter((n) => counts[n] >= 2).length,
         names: names.length,
-        covered: d.filter((x) => staffValues(x, 'sc').length).length,
+        covered: d.filter((x) => staffOf(x, 'sc').length).length,
         total: document.getElementById('staffTotal').textContent
       };
     })()`);
@@ -1347,10 +1442,10 @@ async function main() {
     const staffAr = await cdp.evaluate(`(() => {
       document.getElementById('staffKind').value = 'ar';
       document.getElementById('staffKind').dispatchEvent(new Event('change', { bubbles: true }));
-      const staffValues = (x, k) => String(x[k] || '').split('、').map((v) => v.trim()).filter(Boolean);
+      ${STAFF_JS}
       const d = window.GL_DATA || [];
       const counts = {};
-      d.forEach((x) => staffValues(x, 'ar').forEach((n) => { counts[n] = (counts[n] || 0) + 1; }));
+      d.forEach((x) => staffOf(x, 'ar').forEach((n) => { counts[n] = (counts[n] || 0) + 1; }));
       const names = Object.keys(counts);
       return {
         rows: document.querySelectorAll('#staffBody [data-staff-pick]').length,

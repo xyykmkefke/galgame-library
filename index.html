@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.39.0">
+<meta name="version" content="2.40.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2762,7 +2762,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.39.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.40.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3360,10 +3360,39 @@
     return 'long';
   }
 
-  // 制作人员字段在数据里是用「、」连接的单串，这里拆成数组用于匹配
+  // 制作人员字段有两种存法，这里统一拆成姓名数组用于匹配：
+  //   ① 字符串 + 「、」分隔（主库、bgm-extra、历史数据）
+  //   ② 词典 id 数组 + 扩展库自身携带的 staffDict（v2.40.0 起的 vndb-extra.js）
+  // 为什么要词典化：制作人员姓名高度重复（唯一 7867 个、总出现 34530 次、平均每人 4.39 部），
+  // 换成「词典 + 频率降序 id」实测整文件 gzip 808818 → 729935（省 78.9KB）。
+  // 保持返回「姓名数组」这个契约不变，下面 5 处调用点（详情/筛选/一览/覆盖率）全部无需改动。
+  //
+  // 词典的读取位置：vndb-extra.js 把词典写在自己文件顶层（window.GL_VNDB_EXTRA.staffDict），
+  // 没有单独的全局变量。早期版本这里读的是 window.GL_STAFF_DICT，那个名字并不存在——
+  // dict 恒为空数组时所有 id 都查不到姓名，表现为扩展库 5737 条的剧本/原画/音乐**静默全空**
+  // （不抛错、不进 check-data 的 bad 列表）。所以这里按「字典随数据走」取，并留一个
+  // 独立全局变量作为后路，避免将来改数据布局时又要改这里。
+  function staffDictOf() {
+    if (Array.isArray(window.GL_STAFF_DICT)) return window.GL_STAFF_DICT;
+    var ex = window.GL_VNDB_EXTRA;
+    return (ex && Array.isArray(ex.staffDict)) ? ex.staffDict : [];
+  }
+
   function staffValues(item, kind) {
-    return String(item[kind] || '').split('、')
-      .map(function (v) { return v.trim(); })
+    var v = item && item[kind];
+    if (Array.isArray(v)) {
+      var dict = staffDictOf();
+      var out = [];
+      for (var i = 0; i < v.length; i += 1) {
+        var name = dict[v[i]];
+        // id 越界时 dict[id] 为 undefined，此处直接跳过而不是塞 undefined 进去，
+        // 避免污染计数表（会在「制作人员一览」里出现空名行）。
+        if (typeof name === 'string' && name) out.push(name);
+      }
+      return out;
+    }
+    return String(v || '').split('、')
+      .map(function (s) { return s.trim(); })
       .filter(Boolean);
   }
 
@@ -5380,9 +5409,11 @@
       ['平台', item.pl && item.pl.length ? item.pl.join('、') : '未标注'],
       ['开发', item.dev && item.dev.length ? item.dev.join('、') : '未标注'],
       ['发行', item.pub || '未标注'],
-      ['剧本', item.sc || '未标注'],
-      ['原画', item.ar || '未标注'],
-      ['音乐', item.mu || '未标注'],
+      // sc/ar/mu 走 staffValues：扩展库已词典化为 id 数组，直接显示会变成一串数字。
+      // 用 join 而不是原样引用，两种存法（字符串 / id 数组）都能正确显示。
+      ['剧本', staffValues(item, 'sc').join('、') || '未标注'],
+      ['原画', staffValues(item, 'ar').join('、') || '未标注'],
+      ['音乐', staffValues(item, 'mu').join('、') || '未标注'],
       ['游戏类型', item.gt || '未标注'],
       ['评分', item.s ? Number(item.s).toFixed(1) : '暂无'],
       ['排名', item.rk ? '#' + item.rk : '未上榜']
