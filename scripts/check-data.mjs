@@ -390,28 +390,58 @@ try {
 
   // ---- 别名（al）语言白名单 ----
   // 扩展库的 al 有两个产出路径：构建期 fetch-vndb-extra.mjs 直接写、离线 fill-extra-aliases.mjs 补。
-  // 两条路都必须只收 ja/zh 的拉丁转写 —— 实测 ru 1807 / ko 934 / uk 234 条音译混进来过，
-  // 会让详情页别名列表被「Школьные Дни」这类写法塞满，对中文用户不是可输入的搜索词。
-  // 这里用「图案特征」兜底校验：西里尔 / 谚文 / 泰文出现在 al 里即视为越界。
-  // 之所以不按语言标注校验：产物已剥离 lang 字段，只看得到字符串。
-  const AL_SCRIPT_BAD = /[\u0400-\u04ff\uac00-\ud7af\u0e00-\u0e7f]/;
-  const alBad = [];
-  let alEntries = 0;
+  // 两条路都必须只收 ja/zh 的拉丁转写 —— 实测 ru / ko / uk / th 音译混进来过。
+  //
+  // 判据演进（2026-11-27，两次都错了才落到最终版）：
+  //   ① 初版用「西里尔/谚文/泰文正则」。**漏报**——生成端取的是 titles[].latin（罗马字转写），
+  //      产物是纯 ASCII（`G-Seonsangui Mawang` 而非 `G선상의 마왕`），正则一个都抓不到。
+  //   ② 改成「可追溯」：拿 data/build/vndb-titles.json 反查每个写法的来源语言，
+  //      只有 lang ∈ AL_LANGS 或 en 才算合法。这才是真正在检查「白名单是否生效」，
+  //      而不是在检查「结果长什么样」——后者换个产出形态就失效。
+  // 副作用：索引覆盖不到的新条目会无法追溯，因此只把「能追溯到、且追溯到非白名单语言」
+  // 判为越界；追溯不到的单独计数提示，不阻断（否则上游索引滞后会误伤）。
+  let alBad = [];
+  let alUnverifiable = 0;
   let alWrites = 0;
-  list.forEach((x, idx) => {
-    if (!Array.isArray(x.al) || !x.al.length) return;
-    alEntries += 1;
-    x.al.forEach((a) => {
-      alWrites += 1;
-      if (AL_SCRIPT_BAD.test(String(a))) alBad.push(`${idx}:${x.i}:${String(a).slice(0, 20)}`);
-    });
-  });
+  let alEntries = 0;
+  const AL_LANGS = new Set(['ja', 'zh-Hans', 'zh-Hant', 'zh']);
+  const normAl = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
+  try {
+    const tIdxRaw = await readFile(path.join(ROOT, 'data', 'build', 'vndb-titles.json'), 'utf8');
+    const tIdx = new Map((JSON.parse(tIdxRaw).list || []).map((v) => [String(v.i), v]));
+    for (const x of list) {
+      if (!Array.isArray(x.al) || !x.al.length) continue;
+      alEntries += 1;
+      const src = tIdx.get(String(x.vx || '').replace(/^v/, ''));
+      // 该条目所有「合法来源」写法（en 的 title + 白名单语言的 latin）
+      const okSet = new Set();
+      if (src) {
+        (src.ti || []).forEach((z) => {
+          if (z.l === 'en' && z.t) okSet.add(normAl(z.t));
+          if (AL_LANGS.has(z.l) && z.la) okSet.add(normAl(z.la));
+        });
+      }
+      for (const a of x.al) {
+        alWrites += 1;
+        if (!src) { alUnverifiable += 1; continue; }
+        const k = normAl(a);
+        if (okSet.has(k)) continue;
+        // 自身标题 / 中文名 / 官方 aliases 也是合法来源（生成端顺序里包含它们）
+        if (k === normAl(x.n) || (x.cn && k === normAl(x.cn))) continue;
+        if (String(src.a || '').split(/\n+/).some((v) => normAl(v) === k)) continue;
+        alBad.push(`${x.i}:${String(a).slice(0, 24)}`);
+      }
+    }
+  } catch (err) {
+    alBad = [`索引不可用：${err.message}`];
+  }
   if (alBad.length) {
-    console.log(`FAIL 扩展别名含非目标语言音译：${alBad.length} 处（${alBad.slice(0, 3).join(', ')}）`);
-    console.log('     修复：确认 fetch-vndb-extra.mjs / fill-extra-aliases.mjs 的 AL_LANGS 白名单是否生效');
+    console.log(`FAIL 扩展别名含非白名单语言来源：${alBad.length} 处（${alBad.slice(0, 3).join(', ')}）`);
+    console.log('     修复：确认 fetch-vndb-extra.mjs / fill-extra-aliases.mjs 的 AL_LANGS 是否生效');
     total += 1;
   } else if (alEntries) {
-    console.log(`PASS 扩展别名语言干净：${alEntries} 条 / ${alWrites} 个写法，无西里尔·谚文·泰文`);
+    console.log(`PASS 扩展别名来源合法：${alEntries} 条 / ${alWrites} 个写法，均可追溯到 en 或 ja/zh` +
+      (alUnverifiable ? `（${alUnverifiable} 处索引未覆盖，未校验）` : ''));
   }
 
   // ---- 制作人员词典化的 id 可解析性（前瞻守卫） ----
