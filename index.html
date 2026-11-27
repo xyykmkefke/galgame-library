@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.40.1">
+<meta name="version" content="2.41.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2762,7 +2762,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.40.1</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.41.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3019,6 +3019,17 @@
   })();
   // 数据量约 7000 条，一次加载，无需分层
   var fullReady = false;
+  // 筛选条件里「依赖全库才能判定有效性」的待恢复项。
+  // 首屏 applyStateMap 跑在扩展库合并之前（启动顺序 applyStateMap → render → scheduleExtraData），
+  // 那时 DATA 只有主库 1968 条。任何靠遍历 DATA 建出来的可选值集合都缺扩展库那一半：
+  //   dv → devs（扩展独有 1040 个开发商 / 4642 处引用）
+  //   se → seriesInfo（仅扩展库构成的系列 492 个）
+  //   sv → staffValues（扩展独有 7678 个姓名 / 32558 处引用）
+  // 若在此时判定「不存在」，state 被清空，紧接着 render → writeHash 把参数写成空串，深链彻底丢失。
+  // 所以这三个键一律先登记，等 mergeExtraData 后再用全库校验一次。
+  // 声明位置放在 fullReady 旁边：必须早于任何 applyStateMap 调用（含第 5167 行的 applyView），
+  // 否则 `var` 的提升会让赋值把已登记的内容清掉。
+  var pendingFilters = null;
   // 扩展库加载失败标记：失败时 fullReady 保持 false，才能提示「仅主库」并允许重试
   var extraFailed = false;
   var extraLoading = false;
@@ -3191,21 +3202,41 @@
     renderYears();
     fillFilterOptions();
     syncControls();
-    // 恢复首屏因扩展库未就绪而暂存的制作人员筛选。
-    // 必须在 fullReady = true 与 render() 之前：此时 DATA 已是全库，才能真判断该姓名是否存在；
+    // 恢复首屏因扩展库未就绪而暂存的筛选条件（开发商 / 系列 / 制作人员）。
+    // 必须在 fullReady = true 与 render() 之前：此时 DATA 已是全库，才能真判断该值是否存在；
     // 放在 render 之后会导致先渲染一次「无筛选」的全库结果，再闪一下变成筛选结果。
-    if (pendingStaff) {
-      var ps = pendingStaff;
-      pendingStaff = null;
-      var stillExists = DATA.some(function (x) {
-        return staffValues(x, ps.kind).indexOf(ps.name) >= 0;
-      });
-      if (stillExists) {
-        state.staff = ps.name;
-        state.staffKind = ps.kind;
-        syncControls();
+    if (pendingFilters) {
+      var pf = pendingFilters;
+      pendingFilters = null;
+      var restored = false;
+      // 开发商：直接用整库的 dev 判断，不再依赖 applyStateMap 里的 devs 临时表
+      if (pf.dev) {
+        var wantDev = pf.dev.value;
+        var hasDev = DATA.some(function (x) { return (x.dev || []).indexOf(wantDev) >= 0; });
+        if (hasDev) { state.dev = wantDev; restored = true; }
       }
-      // 不存在就彻底丢弃：那是真的过期链接，不能让它留下空结果
+      // 系列：seriesInfo 刚由 buildSeriesIndex() 用全库重建过
+      if (pf.series) {
+        var wantSeries = pf.series.value;
+        if (Object.prototype.hasOwnProperty.call(seriesInfo, wantSeries)) {
+          state.series = wantSeries;
+          restored = true;
+        }
+      }
+      // 制作人员：按登记的维度在全库里找一遍
+      if (pf.staff) {
+        var ps = pf.staff;
+        var hasStaff = DATA.some(function (x) {
+          return staffValues(x, ps.extra).indexOf(ps.value) >= 0;
+        });
+        if (hasStaff) {
+          state.staff = ps.value;
+          state.staffKind = ps.extra;
+          restored = true;
+        }
+      }
+      // 不存在的就彻底丢弃：那是真的过期链接，不能让它留下空结果
+      if (restored) syncControls();
     }
     // 先置就绪标记再 render：否则 render 里的空结果判断会把「已合并完成」误认成「仍在加载」
     fullReady = true;
@@ -3819,6 +3850,13 @@
     return map;
   }
 
+  // 登记「首屏无法判定、需等全库合并后再校验」的筛选条件。
+  // 只记第一个：hash 里同一个键只出现一次，且这几种筛选本就不该同时存在多个待定项。
+  function pend(kind, value, extra) {
+    if (!pendingFilters) pendingFilters = Object.create(null);
+    if (!pendingFilters[kind]) pendingFilters[kind] = { value: value, extra: extra || null };
+  }
+
   function applyStateMap(map) {
     if (!map) return false;
     var start = META.startYear || 1980;
@@ -3837,6 +3875,10 @@
     var dv = typeof map.dv === 'string' ? (DEV_ALIAS_MAP[map.dv] || map.dv) : map.dv;
     if (dv === '') state.dev = '';
     else if (typeof dv === 'string' && Object.prototype.hasOwnProperty.call(devs, dv)) state.dev = dv;
+    else if (typeof dv === 'string' && !fullReady) {
+      // 扩展库未就绪，无法判断该开发商是否真实存在：先登记，合并后再校验（原因见 pendingFilters 定义处）
+      pend('dev', dv);
+    }
     // 制作人员筛选：只接受已知维度且该名字确实存在于数据中，避免旧链接留下空结果
     //
     // ⚠ 这里有个陷阱（2026-11-28 实测确认）：首屏调用本函数时扩展库还没合并
@@ -3855,7 +3897,7 @@
         state.staffKind = staffKind;
       } else if (!fullReady) {
         // 扩展库还没来，无法判断真伪：先记住，等 mergeExtraData 后再决定
-        pendingStaff = { name: map.sv, kind: staffKind };
+        pend('staff', map.sv, staffKind);
       }
     }
     if (map.gr === 'all' || Object.prototype.hasOwnProperty.call(GENRE_LABEL, map.gr)) state.genre = map.gr;
@@ -3866,6 +3908,7 @@
     if (typeof map.se === 'string' && map.se) {
       var sname = resolveSeriesName(map.se);
       if (Object.prototype.hasOwnProperty.call(seriesInfo, sname)) state.series = sname;
+      else if (!fullReady) pend('series', sname);
     }
     if (['score', 'heat', 'date', 'name'].indexOf(map.o) >= 0) state.sort = map.o;
     if (['all'].concat(STATUS_ORDER).indexOf(map.st) >= 0) state.status = map.st;
@@ -5364,9 +5407,7 @@
   var modalId = null;
   // 深链目标尚未进入当前数据（首屏仅最近一年）时暂存，全库补齐后自动打开
   var pendingDetail = null;
-  // 制作人员筛选的待恢复项：首屏 applyStateMap 时扩展库未合并，无法判断 sv 是否有效，
-  // 先暂存，mergeExtraData 里再校验。见 applyStateMap 里的注释。
-  var pendingStaff = null;
+  // 筛选条件里「依赖全库才能判定有效性」的待恢复项，定义见 fullReady 声明处。
   var lastModalFocus = null;
 
   // 题材重叠数：详情推荐优先展示同题材作品

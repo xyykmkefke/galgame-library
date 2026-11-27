@@ -1191,6 +1191,83 @@ async function main() {
       check('制作人员深链冷启动不丢失筛选', false, '未找到仅在扩展库出现的制作人员姓名');
     }
 
+    // 开发商（dv）与系列（se）是同一条根因的另两个受害者：
+    // applyStateMap 在首屏跑，此时 DATA 只有主库 1968 条，devs / seriesInfo 都只由主库构建。
+    // 只存在于扩展库的开发商（1040 个 / 4642 处引用）和系列（492 个）在首屏都会被判「不存在」→ 清空 → 深链丢失。
+    // 测法：从「扩展库独有」里挑样本，用带 salt 的 URL 强制冷启动，再看筛选是否还在。
+    const coldDeep = async (hash) => {
+      await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?cold=${Date.now()}#${hash}` });
+      for (let i = 0; i < 100; i += 1) {
+        await sleep(200);
+        if (await cdp.evaluate('window.__FULL_DATA_READY === true').catch(() => false)) break;
+      }
+      await sleep(600);
+      return cdp.evaluate(
+        "(() => ({ n: document.querySelectorAll('.card').length," +
+        " chips: document.getElementById('filterChips').textContent," +
+        " hash: decodeURIComponent(location.hash) }))()");
+    };
+
+    const deepDev = await cdp.evaluate(
+      "(() => { const mainIds=new Set(((window.GL_META||{}).mainIds||[]));" +
+      " const d=window.GL_DATA||[];" +
+      // 主库 id 集合取不到时，退化为「前 1968 条」——加载顺序决定主库始终在前
+      " const head = mainIds.size ? d.filter((x)=>mainIds.has(x.i)) : d.slice(0, 1968);" +
+      " const seen=new Set(); head.forEach((x)=>(x.dev||[]).forEach((v)=>seen.add(v)));" +
+      " for (const x of d) { if (mainIds.size ? mainIds.has(x.i) : d.indexOf(x) < 1968) continue;" +
+      "   const hit=(x.dev||[]).find((v)=>!seen.has(v)); if (hit) return hit; }" +
+      " return ''; })()");
+    if (deepDev) {
+      const cold = await coldDeep(`tab=all&y=all&f=all&dv=${encodeURIComponent(deepDev)}`);
+      check('开发商深链冷启动不丢失筛选',
+        cold.chips.includes(deepDev) && cold.n > 0 && cold.hash.includes('dv=' + deepDev),
+        `${deepDev} → ${cold.n} 张`);
+    } else {
+      check('开发商深链冷启动不丢失筛选', false, '未找到仅在扩展库出现的开发商');
+    }
+
+    const deepSeries = await cdp.evaluate(
+      "(() => { const n=(window.GL_SERIES||{}).n||[]; const m=(window.GL_SERIES||{}).m||{};" +
+      " const d=window.GL_DATA||[]; const cut=1968;" +
+      " const key=(x)=>x.vx?String(x.vx):(x.vo&&x.vo.v?String(x.vo.v):'b:'+x.i);" +
+      " const nameOf=(x)=>{const s=m[key(x)]||0; return s?n[s]||'':'';};" +
+      " const cntHead=Object.create(null), cntAll=Object.create(null);" +
+      " const bump=(bag,x)=>{const nm=nameOf(x); if(nm) bag[nm]=(bag[nm]||0)+1;};" +
+      " d.slice(0,cut).forEach((x)=>bump(cntHead,x)); d.forEach((x)=>bump(cntAll,x));" +
+      " for (const nm of Object.keys(cntAll)) { if (!cntHead[nm] && cntAll[nm]>=2) return { name: nm, n: cntAll[nm] }; }" +
+      " return null; })()");
+    if (deepSeries) {
+      const cold = await coldDeep(`tab=all&y=all&f=all&se=${encodeURIComponent(deepSeries.name)}`);
+      check('系列深链冷启动不丢失筛选',
+        cold.chips.includes(deepSeries.name) && cold.n > 0 && cold.hash.includes('se=' + deepSeries.name),
+        `${deepSeries.name} → ${cold.n} 张（全库 ${deepSeries.n} 部）`);
+    } else {
+      check('系列深链冷启动不丢失筛选', false, '未找到仅在扩展库构成的系列');
+    }
+
+    // 反向边界：暂存机制不能变成「无条件接受脏值」。
+    // 上面三条只证明「合法的扩展库值能被恢复」，若实现写成「登记了就一律恢复」，
+    // 过期/伪造的深链也会被接受，反而从「丢筛选」变成「留下空结果」。
+    // 这里用三个绝不存在的值走同一条冷启动路径，要求它们全部被丢弃、且不留下空结果。
+    const ghost = {};
+    for (const [k, v] of Object.entries({ dv: '__NO_SUCH_DEV__', se: '__NO_SUCH_SERIES__', sv: '__NO_SUCH_STAFF__' })) {
+      const q = k === 'sv' ? `sk=sc&sv=${v}` : `${k}=${v}`;
+      const r = await coldDeep(`tab=all&y=all&f=all&${q}`);
+      ghost[k] = { n: r.n, leaked: r.chips.includes(v) || r.hash.includes(k + '=' + v) };
+    }
+    const ghostLeak = Object.entries(ghost).filter(([, v]) => v.leaked).map(([k]) => k);
+    check('过期深链的脏值被丢弃且不留空结果',
+      ghostLeak.length === 0 && Object.values(ghost).every((v) => v.n > 0),
+      ghostLeak.length ? `未丢弃: ${ghostLeak.join('/')}` : `dv/se/sv 三键均已丢弃，回落到 ${ghost.dv.n} 张`);
+
+    // 恢复干净状态供后续断言使用
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?aftcold=${Date.now()}` });
+    for (let i = 0; i < 100; i += 1) {
+      await sleep(200);
+      if (await cdp.evaluate('window.__FULL_DATA_READY === true').catch(() => false)) break;
+    }
+    await sleep(400);
+
     // ---------- 详情 ----------
     await cdp.evaluate("document.querySelector('.card .card-link').click()");
     await waitFor("document.getElementById('modal').hidden === false");
