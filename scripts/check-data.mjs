@@ -4,7 +4,7 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { GENRES } from './genres.mjs';
+import { GENRES, suppressRelationalGenres } from './genres.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const raw = await readFile(path.join(ROOT, 'data', 'galgames.js'), 'utf8');
@@ -666,6 +666,72 @@ try {
   }
 } catch (err) {
   console.log(`FAIL 别名组不可用：${err.message}`);
+  total += 1;
+}
+
+// ---------- 补全快照新鲜度 ----------
+// 为什么必须有这道检查：
+//   fetch-games.mjs 重建时会整份重写 galgames.js，补全字段（别名/开发商/制作人员/题材）
+//   只能靠 data/enrich-main.json 快照叠回来。快照一旦落后于主库，重建就会静默丢掉
+//   比快照新的那些字段 —— 而「静默」正是最贵的：v2.31.0 就是这么丢了 877 条别名，
+//   直到有人去看详情页才发现。HANDOVER 68.8 把「自动比对快照新鲜度并告警」列为未做，
+//   这里补上。判据必须与 fetch-games.mjs 的合并逻辑完全一致，否则会误报。
+//
+// 语义对齐要点：重建时是「抓取侧没值才用快照兜底」（hasCur 为真就跳过快照）。
+//   所以「主库有值、快照没值」本身不构成丢失；只有当该字段在快照里「一条都没有」
+//   时，重建后才会整段消失。据此把风险分两级：缺整字段=FAIL，缺单条=仅提示。
+try {
+  const snapRaw = await readFile(path.join(ROOT, 'data', 'enrich-main.json'), 'utf8');
+  const snap = JSON.parse(snapRaw);
+  const snapItems = snap.items || {};
+  const snapFields = Array.isArray(snap.fields) && snap.fields.length
+    ? snap.fields
+    : ['al', 'dev', 'sc', 'ar', 'mu', 'tg'];
+  const hasVal = (v) => (Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null && String(v).trim() !== '');
+  // 与 fetch-games.mjs 同款：快照里存的是「过完抑制」的题材，比对前主库侧也要过一遍
+  const curVal = (x, f) => (f === 'tg' && Array.isArray(x[f]) ? suppressRelationalGenres(x[f], x.gt || '', x.cn || x.n || '') : x[f]);
+
+  let snapAbsentEnt = 0;   // 主库有补全字段、但整条不在快照里
+  let snapAbsentFld = 0;   // 同上，按字段计
+  let snapGapFld = 0;      // 条目在快照里，但该字段快照没存
+  const snapGapSample = [];
+  for (const x of data) {
+    const rec = snapItems[String(x.i)];
+    const filledFields = snapFields.filter((f) => hasVal(curVal(x, f)));
+    if (!filledFields.length) continue;
+    if (!rec) {
+      snapAbsentEnt += 1;
+      snapAbsentFld += filledFields.length;
+      if (snapGapSample.length < 3) snapGapSample.push(`${x.i}:${filledFields.join('/')}`);
+      continue;
+    }
+    for (const f of filledFields) {
+      if (hasVal(rec[f])) continue;
+      snapGapFld += 1;
+      if (snapGapSample.length < 3) snapGapSample.push(`${x.i}:${f}`);
+    }
+  }
+
+  const snapDate = String(snap.updatedAt || '');
+  const snapAge = snapDate ? Math.round((Date.now() - new Date(snapDate + 'T00:00:00Z').getTime()) / 86400000) : -1;
+  const snapTotal = snapAbsentFld + snapGapFld;
+
+  if (snapTotal === 0) {
+    console.log(`PASS 补全快照新鲜：无重建丢失风险（快照 ${Object.keys(snapItems).length} 条，${snapDate || '日期未知'}）`);
+  } else if (snapAbsentFld > 0) {
+    // 整条缺失是硬伤：重建后这些条目的补全字段会全部蒸发
+    console.log(`FAIL 补全快照落后主库：${snapAbsentEnt} 条主库条目不快照里，重建将丢失 ${snapAbsentFld} 处字段（示例 ${snapGapSample.join(' ')}）`);
+    console.log('     修复：node scripts/snapshot-enrich.mjs --apply');
+    total += 1;
+  } else {
+    // 仅个别字段缺失：重建会丢，但不至于整条清空，提示即可，避免阻断正常流程
+    console.log(`提示 补全快照有 ${snapGapFld} 处字段缺口（不影响整条，重建时会丢这些值）：node scripts/snapshot-enrich.mjs --apply 可补齐`);
+  }
+  if (snapAge > 30) {
+    console.log(`提示 补全快照已 ${snapAge} 天未更新（${snapDate}），主库新增条目不会自动进快照`);
+  }
+} catch (err) {
+  console.log(`FAIL 补全快照不可用：${err.message}`);
   total += 1;
 }
 
