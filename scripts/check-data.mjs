@@ -387,6 +387,63 @@ try {
     console.log(`FAIL 扩展条目异常：${bad.slice(0, 5).join(', ')}`);
     total += bad.length;
   }
+
+  // ---- 别名（al）语言白名单 ----
+  // 扩展库的 al 有两个产出路径：构建期 fetch-vndb-extra.mjs 直接写、离线 fill-extra-aliases.mjs 补。
+  // 两条路都必须只收 ja/zh 的拉丁转写 —— 实测 ru 1807 / ko 934 / uk 234 条音译混进来过，
+  // 会让详情页别名列表被「Школьные Дни」这类写法塞满，对中文用户不是可输入的搜索词。
+  // 这里用「图案特征」兜底校验：西里尔 / 谚文 / 泰文出现在 al 里即视为越界。
+  // 之所以不按语言标注校验：产物已剥离 lang 字段，只看得到字符串。
+  const AL_SCRIPT_BAD = /[\u0400-\u04ff\uac00-\ud7af\u0e00-\u0e7f]/;
+  const alBad = [];
+  let alEntries = 0;
+  let alWrites = 0;
+  list.forEach((x, idx) => {
+    if (!Array.isArray(x.al) || !x.al.length) return;
+    alEntries += 1;
+    x.al.forEach((a) => {
+      alWrites += 1;
+      if (AL_SCRIPT_BAD.test(String(a))) alBad.push(`${idx}:${x.i}:${String(a).slice(0, 20)}`);
+    });
+  });
+  if (alBad.length) {
+    console.log(`FAIL 扩展别名含非目标语言音译：${alBad.length} 处（${alBad.slice(0, 3).join(', ')}）`);
+    console.log('     修复：确认 fetch-vndb-extra.mjs / fill-extra-aliases.mjs 的 AL_LANGS 白名单是否生效');
+    total += 1;
+  } else if (alEntries) {
+    console.log(`PASS 扩展别名语言干净：${alEntries} 条 / ${alWrites} 个写法，无西里尔·谚文·泰文`);
+  }
+
+  // ---- 制作人员词典化的 id 可解析性（前瞻守卫） ----
+  // 计划把 sc/ar/mu 从「顿号分隔字符串」改成「词典 id 数组」（见 docs/staff-dict-plan.md）。
+  // 切换后若 id 越界，staffValues() 会静默返回空字符串 —— 表现为「某作品的剧本/原画/music 突然没了」，
+  // 且不会抛错、不会进 bad 列表。这条断言就是为那个时刻准备的：
+  // 现在 staff 还是字符串，断言自动跳过；改成数组后开始生效。
+  const staffBad = [];
+  let staffIdItems = 0;
+  for (const x of list) {
+    for (const f of ['sc', 'ar', 'mu']) {
+      const v = x[f];
+      if (!Array.isArray(v)) continue;
+      staffIdItems += 1;
+      const dict = extra.staffDict;
+      if (!Array.isArray(dict)) {
+        staffBad.push(`${x.i}:${f}:缺少 staffDict`);
+        continue;
+      }
+      v.forEach((id) => {
+        if (!Number.isInteger(id) || id < 0 || id >= dict.length) {
+          staffBad.push(`${x.i}:${f}:id ${id} 越界（词典 ${dict.length}）`);
+        }
+      });
+    }
+  }
+  if (staffBad.length) {
+    console.log(`FAIL 制作人员 id 无法解析：${staffBad.length} 处（${staffBad.slice(0, 3).join(', ')}）`);
+    total += 1;
+  } else if (staffIdItems) {
+    console.log(`PASS 制作人员词典 id 全部可解析：${staffIdItems} 个字段数组`);
+  }
 } catch (err) {
   console.log(`FAIL 扩展库不可用：${err.message}`);
   total += 1;
