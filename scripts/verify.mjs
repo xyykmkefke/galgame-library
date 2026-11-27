@@ -211,6 +211,40 @@ function check(name, ok, detail) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  → ' + detail : ''}`);
 }
 
+// 杀掉本次验收启动的整个浏览器进程树。
+//
+// 为什么不能只 taskkill /PID child.pid /T：
+//   Edge 首次用新的 --user-data-dir 启动时，spawn 出来的可能只是 launcher，
+//   它拉起真正的 browser 进程后自己就退了。child.pid 一旦失效，`/T` 无从展开子树，
+//   一个子进程都杀不到 —— 但 taskkill 仍返回 0，从外部看像「已经处理过了」。
+//   现象是临时 profile 一直被占、rm 报 EBUSY，容易被误判成「Edge 子进程没杀干净」。
+//   实测 2026-11-27：跑完一轮后残留 11 个 msedge.exe 仍引用着临时 profile。
+//
+// 兜底判据：命令行里含本轮 profile 的**目录名**。不依赖父子关系，也不依赖 pid 存活。
+// 注意 PowerShell 的 -like 里 `\` 是字面量、不要转义（曾把路径的反斜杠写成双反斜杠，
+// 导致匹配恒假、兜底静默失效，且因为 stdio 是 ignore 连报错都没有）。
+// 用 PowerShell 而非 wmic：新版 Windows 已移除 wmic。
+function killBrowserTree(child, profileDir) {
+  if (process.platform !== 'win32') {
+    try { child?.kill('SIGTERM'); } catch {}
+    return;
+  }
+  // 先按 pid 试一次（正常情况够用，也最快）
+  if (child && child.pid) {
+    try { spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); } catch {}
+  }
+  // 再按 profile 目录名兜底，覆盖 launcher 模式
+  const tag = path.basename(profileDir);
+  const ps = [
+    'Get-CimInstance Win32_Process -Filter "Name=\'msedge.exe\'"',
+    `| Where-Object { $_.CommandLine -like '*${tag}*' }`,
+    '| ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }',
+  ].join(' ');
+  try {
+    spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: 'ignore' });
+  } catch {}
+}
+
 async function main() {
   const browser = findBrowser();
   // profile 每次运行都用独立目录（pid + 时间戳）。
@@ -2401,19 +2435,13 @@ async function main() {
     process.exitCode = passed === results.length ? 0 : 1;
   } finally {
     try { ws && ws.close(); } catch {}
-    // child.kill() 只杀父进程；Edge 会派生 renderer/GPU 子进程，父进程死了它们
-    // 可能仍抱着 profile 目录。Windows 用 taskkill /T 杀整棵树，其他平台退回 kill()。
-    if (child) {
-      if (process.platform === 'win32') {
-        try { spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); } catch {}
-      } else {
-        try { child.kill(); } catch {}
-      }
-    }
+    // 杀整个浏览器进程树（含 launcher 模式兜底），再等句柄释放后清 profile。
+    // 只用 pid 版 taskkill 会漏杀，详见 killBrowserTree 的注释。
+    killBrowserTree(child, profile);
     server.close();
     if (!KEEP) {
       await rm(shots, { recursive: true, force: true });
-      // taskkill 返回时浏览器可能仍有句柄未释放，立刻 rm 会 EBUSY；等一小会儿再清。
+      // 进程被杀掉时浏览器可能仍有句柄未释放，立刻 rm 会 EBUSY；等一小会儿再清。
       // 清理失败不能影响验收结论（它只是临时目录），但也不能静默——打印出来便于排查。
       await new Promise((r) => setTimeout(r, 600));
       try {
@@ -2426,7 +2454,14 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    // 主动退出：WebSocket / 浏览器子进程 / HTTP server 可能残留事件循环引用，
+    // 导致验收跑完后 node 进程不退出（CI 上会挂到 workflow 超时；本地表现为
+    // 命令行不返回，而已删掉的临时 profile 因为进程还活着又被重建/占用）。
+    setImmediate(() => process.exit(process.exitCode || 0));
+  });
