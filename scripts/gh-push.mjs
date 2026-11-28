@@ -258,3 +258,75 @@ if (NO_TAG) {
     console.log(`标签 ${TAG} 已存在且指向 ${commit.sha.slice(0, 7)}，视为成功`);
   }
 }
+
+// ── 收尾自检：CI 到底有没有跑起来，Pages 有没有重新构建 ────────────────────────
+//
+// 为什么必须写在脚本里、而不是写在交接文档里让人记住：
+// 用 Git Data API PATCH refs/heads/main 时，GitHub **有时**生成 push 事件、有时不生成。
+// 2026-11-28 同一天三次推送实测：
+//   4de0c49 (06:01) → 没有 push 事件，CI 没跑，只能手动 dispatch 补
+//   03e8e1a (06:08) → 有 push 事件，CI 自动跑
+//   0b4f32d (08:08) → 有 push 事件，CI 自动跑
+// 所以「一定不触发」（旧版 43.2.1 的结论）和「push 会自动跑」都是错的：
+// 它是**不可依赖**的。凡是不可依赖的环节，就不能交给人的记忆去兜底 ——
+// 忘了的后果是线上静默停在旧版本，而脚本、远端 SHA、tree 校验全部显示成功。
+//
+// 因此这里主动查一次：有该 SHA 的 run 就报「已自动触发」；没有就补 dispatch。
+// 查不到但也没补成功，属于必须让人知道的失败，用非零退出。
+function listRunsFor(lookback) {
+  const raw = execFileSync('gh', [
+    'run', 'list', '--workflow=ci.yml', '--limit', String(lookback),
+    '--json', 'databaseId,headSha,status,conclusion,event',
+  ], { cwd: ROOT, encoding: 'utf8', timeout: 60000 });
+  return JSON.parse(raw || '[]');
+}
+
+if (DRY) {
+  console.log('（--dry-run：跳过 CI/Pages 自检）');
+} else {
+  try {
+    // 等一小会儿再查：push 事件触发的 run 不是瞬时可见的，偶尔要十几秒才出现在列表里。
+    // 不用 execFileSync('sleep')：Windows 上不保证有 sleep.exe，跨平台会直接抛错。
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 8000);
+    const runs = listRunsFor(12);
+    const mine = runs.filter((r) => r.headSha === commit.sha);
+    if (mine.length) {
+      console.log(`CI 已自动触发：${mine.map((r) => `${r.event}#${r.databaseId}`).join(', ')}`);
+    } else {
+      console.log('CI 未自动触发（本次 ref 更新没有产生 push 事件），手动补触发…');
+      gh(['workflow', 'run', 'ci.yml', '--ref', 'main']);
+      const retry = listRunsFor(12).filter((r) => r.headSha === commit.sha);
+      if (retry.length) {
+        console.log(`已补触发 CI：${retry.map((r) => `${r.event}#${r.databaseId}`).join(', ')}`);
+      } else {
+        fail(
+          '补触发 CI 后仍查不到该 commit 的 run。\n' +
+          `commit ${commit.sha.slice(0, 7)} 已在远端，请手动确认：\n` +
+          '  gh run list --workflow=ci.yml --limit 5\n' +
+          '  gh workflow run ci.yml --ref main',
+        );
+      }
+    }
+
+    // Pages 是 legacy 构建，没有 workflow_dispatch 可调，只能 POST 一次构建请求。
+    // 重复请求无害（同一 commit 的构建会被合并），所以不用先判断有没有跑。
+    const before = (() => {
+      try { return ghJson([`repos/${REPO}/pages/builds/latest`]); } catch { return null; }
+    })();
+    if (before && before.commit === commit.sha && before.status === 'built') {
+      console.log('Pages 已为本次 commit 构建完成');
+    } else {
+      try {
+        gh(['-X', 'POST', `repos/${REPO}/pages/builds`]);
+        console.log('已请求 Pages 重新构建（legacy 构建无法用 workflow_dispatch）');
+      } catch (e) {
+        // Pages 请求失败不该让「代码已推上去」这件事变成失败：明确告知即可
+        console.log('Pages 构建请求失败，请手动补：' + String(e.message).split('\n')[0]);
+      }
+    }
+    console.log('\n线上核验（Pages 构建需 1–3 分钟）：');
+    console.log('  curl -s https://xyykmkefke.github.io/galgame-library/ | grep \'name="version"\'');
+  } catch (e) {
+    console.log('CI/Pages 自检出错（代码已推送成功，请手动核对）：' + String(e.message).split('\n')[0]);
+  }
+}

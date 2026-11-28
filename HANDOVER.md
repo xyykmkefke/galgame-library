@@ -1043,36 +1043,44 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 4. Pages 构建完成后线上复核：`https://xyykmkefke.github.io/galgame-library/` 的 meta 版本、全库条数、SW 缓存名。
 5. 线上复核通过后再更新交接文档与会话日志（HEAD、版本、条数、验收结果）。
 
-#### 43.2.1 用 `scripts/gh-push.mjs` 推送时，CI 和 Pages 都不会自动跑（2026-11-28 实测）
+#### 43.2.1 用 `scripts/gh-push.mjs` 推送时，CI/Pages 会不会自动跑是**不确定的**（2026-11-28 两次修正）
 
-**这一条必须记住：`gh-push.mjs` 走 Git Data API 直接 PATCH `refs/heads/main`，
-这种 ref 更新不产生 `push` 事件，因此 `on: push` 的 workflow 一个都不触发。**
+**结论：不可依赖，所以不自检就等于赌。**
 
-表现：脚本报「已更新 main → `<sha>`」，远端 SHA 也对，但
+`gh-push.mjs` 走 Git Data API 直接 PATCH `refs/heads/main`。按 GitHub 文档，这种 ref 更新应当
+**不**产生 `push` 事件；但实测同一天三次推送，结果不一致：
 
-- `gh run list` 里看不到该 commit 的任何 run（CI 不跑）；
-- Pages 的 legacy 构建也不跑 —— `gh api .../pages/builds/latest` 的 `commit` 还停在上一个；
-- 线上 `index.html` 的 meta 版本**静默停在旧版本**，SW 缓存名同样不动。
+| commit | 时间 | push 事件 | CI |
+|---|---|---|---|
+| `4de0c49` | 06:01 | **没有** | 没跑，只能手动 `workflow_dispatch` 补 |
+| `03e8e1a` | 06:08 | 有 | 自动跑了 |
+| `0b4f32d` | 08:08 | 有 | 自动跑了 |
 
-v2.45.0 就踩了这个坑：推送后等了 10 分钟，CI 列表里始终只有上一个 commit 的记录，
-线上一直是 2.44.0。
+**两次踩坑、两次改结论，最后落到的判据是：**
 
-补救（两步都要做，缺一个就有一半没生效）：
+- 第一版（v2.45.0 时）：以为「push 会自动跑」，推完就去 curl 线上，结果等了 10 分钟线上还是旧版本。
+- 第二版（本文件稍早）：写成「**一定**不触发，必须手动补两步」。这条也不对 —— 它只是把「忘了补」
+  的风险换成了「补了两次」的浪费，而且下一次有人看到 CI 自动跑了，就会怀疑这条是不是过时了。
+- 现行：**行为不确定，不由人的记忆兜底，改由脚本自检。** `gh-push.mjs` 推送完成后会自己
+  查有没有该 SHA 的 CI run：有就报「已自动触发」，没有就补 dispatch；Pages 若尚未为该
+  commit 构建就 POST 一次构建请求。两条路径都会在终端留一行明确结论。
+
+失败的表现仍然值得记住（因为它是「所有信号都绿、线上是旧的」这种最难查的形态）：
+脚本报「已更新 main → `<sha>`」、tree 校验一致、远端 SHA 也对，但 `gh run list` 里没有该 commit
+的记录，`pages/builds/latest.commit` 停在上一个，线上 meta 版本和 SW 缓存名都不动。
+
+万一自检本身也没跑成（脚本会打印「CI/Pages 自检出错」），手动兜底：
 
 ```bash
-# 1. 手动跑 CI（workflow_dispatch 已在 ci.yml 里声明）
-gh workflow run ci.yml --ref main
-
-# 2. 请求 Pages 重新构建（legacy 构建无法用 workflow_dispatch）
+gh run list --workflow=ci.yml --limit 5        # 看有没有该 SHA 的 run
+gh workflow run ci.yml --ref main              # 没有就补
 gh api -X POST repos/xyykmkefke/galgame-library/pages/builds
 ```
 
-然后分别确认：`gh run list` 里出现该 SHA 的 CI run 且 success；
-`gh api .../pages/builds/latest --jq .status` 变成 `built` 且 `.commit` 是新 SHA；
-最后才 curl 线上核 meta 版本与 SW 名。
+确认顺序：`gh run list` 里该 SHA 的 run **conclusion=success** →
+`gh api .../pages/builds/latest` 的 `status=built` 且 `.commit` 是新 SHA →
+最后才 curl 线上核 meta 版本与 SW 名。**前两步没验完就 curl，等于拿旧页面验新代码。**
 
-**判据：只要这次用了 `gh-push.mjs`，就必须显式触发 CI 与 Pages，不能靠「push 会自动跑」。**
-直连 `git push` 成功时不需要这两步。
 
 ## 44. VNDB relations 边表（P1，2026-11-23）
 
@@ -2817,7 +2825,8 @@ if (saveViews(views)) renderViewsMenu();
 
 `check-data` 0 问题、`verify` **255/255**（新增 3 条，三方向分别反向验证）。
 版本 2.45.0，SW `yuc-gl-shell-v64`。
-发布时踩到 `gh-push.mjs` 不触发 workflow 的坑，补救过程见 43.2.1。
+发布时一度以为 `gh-push.mjs` 推送后 workflow 不会触发；后来实测发现是「有时触发、有时不触发」，
+现已改成脚本自检兜底，经过与判据见 43.2.1。
 
 ### 80.6 剩余静默 catch 的处置结论
 
