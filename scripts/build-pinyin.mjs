@@ -73,6 +73,9 @@ export async function addPinyinMain() {
     const py = initials(x.cn || x.n);
     if (x.py !== py) { x.py = py; changed += 1; }
   });
+  // 没有实际变化就不写盘：此前每次都会重置 meta.generatedAt，
+  // 让「跑一遍拼音」看起来像数据更新，逼着升 SW、污染 diff。
+  if (!changed) return { total: all.length, changed };
   meta.generatedAt = new Date().toISOString();
   const content = '// 由 scripts/fetch-games.mjs 生成，请勿手动修改\n' +
     `window.GL_META = ${JSON.stringify(meta)};\n` +

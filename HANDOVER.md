@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.51.2**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **275/275**，`check-data` **0 问题**）
+- 当前状态：**v2.51.3**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **275/275**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -1032,13 +1032,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.51.2 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.51.2 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.51.2 |
-| `README.md` | 「状态：**vN**」 | v2.51.2 |
-| `manifest.webmanifest` | `version` | 2.51.2 |
+| `package.json` | `version` | 2.51.3 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.51.3 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.51.3 |
+| `README.md` | 「状态：**vN**」 | v2.51.3 |
+| `manifest.webmanifest` | `version` | 2.51.3 |
 | `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v72 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.51.2 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.51.3 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 9054），数据规模大幅变化时应同步修改。
@@ -3755,3 +3755,23 @@ const retryClicked = await cdp.evaluate(`(() => {
 ### 88.3 验收
 
 `check-version` 19/19、`check-data` 0 问题、`verify` **275/275**；体积 **3546KB**（新作 322KB），预算 4000KB 内。版本 **2.51.2**，SW `yuc-gl-shell-v72`。
+
+## 89. 构建脚本空写修复（v2.51.3，2026-11-29）
+
+### 89.1 问题
+
+`build-pinyin.mjs` 每次运行都会重置主库 `GL_META.generatedAt` 并整份重写 `data/galgames.js`，**即使 0 条 py 需要更新**。后果：
+
+- 例行「跑一下拼音同步」被误判成数据更新（git 出现 data diff、页面「数据更新于」时间跳动），按发布纪律还得升 SW；
+- 上一次新作索引刷新后，`build-pinyin` 更新了 1336 条新作 py，同时也把主库文件只改时间戳重写了一遍，v2.51.2 的 SW 升级里混着这类噪声。
+
+扩展库 / 新作的写入路径本来就写了 `if (changed)` 才写盘，只有主库这条漏了。
+
+### 89.2 修复
+
+- `addPinyinMain()` 补上同样的短路：`changed === 0` 直接返回，不碰 `generatedAt`、不写文件。
+- 验证：干净树上连跑两次，`git status` 无 data diff；故意把一条 `py` 改坏再跑，仍能正确修复并写回（changed=1）。
+
+### 89.3 验收
+
+`check-version` 19/19、`check-data` 0 问题、`verify` **275/275**；版本 **2.51.3**。本次只改构建脚本，数据与页面行为不变，SW 缓存名保持 `yuc-gl-shell-v72`，未升。

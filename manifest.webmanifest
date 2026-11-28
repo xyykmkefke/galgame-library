@@ -2,7 +2,7 @@
   "name": "Galgame 库 · 我的游玩",
   "short_name": "Galgame",
   "description": "本地优先的 Galgame 浏览与游玩记录：9061 部作品（205 部非 gal 默认隐藏），支持中英日任一写法搜索、筛选、统计、离线与云同步",
-  "version": "2.51.2",
+  "version": "2.51.3",
   "lang": "zh-CN",
   "start_url": "./",
   "scope": "./",
