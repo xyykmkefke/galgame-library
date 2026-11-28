@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.48.0">
+<meta name="version" content="2.49.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.48.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.49.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -8724,7 +8724,32 @@
   $('syncDisconnectBtn').addEventListener('click', function () {
     if (!confirm('断开云同步？已保存的 Gist 不会被删除。')) return;
     clearSyncRetry();
-    try { localStorage.removeItem(GIST_KEY); } catch (e) { /* 忽略 */ }
+    // 删除能不能成功必须当真，不能 `catch {}` 吞掉。
+    //
+    // 原来这里是 `try { localStorage.removeItem(GIST_KEY); } catch (e) { /* 忽略 */ }`，
+    // 然后无条件 syncCfg = {} + 显示「已断开」。可 removeItem 失败时（存储被禁用、
+    // 配额/权限异常）localStorage 里的 token 原样还在：
+    // 用户看到「已断开云同步」，刷新后 loadSyncCfg() 又把 token 读回来，
+    // 启动逻辑发现 token+gistId 齐全就自动同步 —— 用户会看到「明明断开了，怎么又在同步」，
+    // 而且在界面上怎么点都断不掉。
+    // 实测（Edge 无头，打桩让 removeItem 抛 SecurityError）：点完显示「已断开」，
+    // localStorage 里仍是 {"token":"ghp_fake","gistId":"abc123"}，刷新后 willAutoSync=true。
+    var removed = false;
+    try {
+      localStorage.removeItem(GIST_KEY);
+      removed = !localStorage.getItem(GIST_KEY);
+    } catch (e) {
+      removed = false;
+    }
+    if (!removed) {
+      // 没删掉就别说断开。保住内存里的配置，让界面仍然显示「已连接」——
+      // 说成断开、实际还连着，比明说失败更糟。
+      markStorageFail(GIST_KEY);
+      setSyncStatus('断开失败：本地凭据删不掉，刷新后可能仍会同步', 'err');
+      toast('断开失败：本地凭据没能删除，请清除本站数据后重试');
+      return;
+    }
+    clearStorageFail(GIST_KEY);
     syncCfg = {};
     $('gistToken').value = '';
     $('gistId').value = '';

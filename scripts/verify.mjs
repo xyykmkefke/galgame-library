@@ -2624,6 +2624,66 @@ async function main() {
     check('Token 无效立即报错且不自动重试', /Token/.test(authText) && !/自动重试/.test(authText), authText);
     await cdp.evaluate("window.__mockGist.mode = ''; localStorage.removeItem('yuc_gl_gist_v1');");
 
+    // ---------- 断开云同步：删不掉就不能说断开 ----------
+    //
+    // 缺陷形态：`try { localStorage.removeItem(GIST_KEY); } catch (e) { /* 忽略 */ }`
+    // 然后无条件 `syncCfg = {}` + 显示「已断开」。
+    // 但 removeItem 失败时（存储被禁用、权限异常）localStorage 里的 token 原样还在：
+    // 用户看到「已断开云同步」，刷新后 loadSyncCfg() 又把 token 读回来，
+    // 启动逻辑看到 token+gistId 齐全就自动同步 ——
+    // 「明明断开了，怎么又在同步」，而且在界面上怎么点都断不掉。
+    //
+    // 先测正常路径（真能删掉时必须报断开），再测失败路径（删不掉时必须报失败）。
+    // 两条都要，只测失败路径的话「永远报失败」也会通过。
+    const dcNormal = await cdp.evaluate(`(() => {
+      localStorage.setItem('yuc_gl_gist_v1', JSON.stringify({ token: 'ghp_fake', gistId: 'abc123' }));
+      window.confirm = () => true;
+      document.getElementById('syncDisconnectBtn').click();
+      return {
+        left: localStorage.getItem('yuc_gl_gist_v1'),
+        status: (document.getElementById('syncStatus') || {}).textContent || '',
+        toast: (document.querySelector('.toast') || {}).textContent || '',
+      };
+    })()`);
+    check(
+      '断开云同步真的删掉凭据并报断开',
+      dcNormal.left === null && /已断开/.test(dcNormal.toast),
+      `剩 ${dcNormal.left === null ? '无' : dcNormal.left} · ${dcNormal.toast}`,
+    );
+
+    const dcFail = await cdp.evaluate(`(() => {
+      localStorage.setItem('yuc_gl_gist_v1', JSON.stringify({ token: 'ghp_fake', gistId: 'abc123' }));
+      const orig = Storage.prototype.removeItem;
+      Storage.prototype.removeItem = function (k) {
+        if (k === 'yuc_gl_gist_v1') throw new DOMException('denied', 'SecurityError');
+        return orig.call(this, k);
+      };
+      window.confirm = () => true;
+      document.getElementById('syncDisconnectBtn').click();
+      Storage.prototype.removeItem = orig;
+      const raw = localStorage.getItem('yuc_gl_gist_v1') || '{}';
+      let parsed = {}; try { parsed = JSON.parse(raw); } catch (e) {}
+      return {
+        stillThere: !!parsed.token,
+        willAutoSync: !!(parsed.token && parsed.gistId),
+        toast: (document.querySelector('.toast') || {}).textContent || '',
+        status: (document.getElementById('syncStatus') || {}).textContent || '',
+      };
+    })()`);
+    // 关键：不能声称「已断开」。要么说失败，要么说会重连 —— 不能说断开。
+    check(
+      '凭据删不掉时不谎称已断开',
+      dcFail.stillThere === true && !/^已断开/.test(dcFail.toast) && /失败/.test(dcFail.toast),
+      `凭据仍在 · ${dcFail.toast}`,
+    );
+    check(
+      '凭据删不掉时状态条说明刷新后仍会同步',
+      /失败/.test(dcFail.status) && /刷新/.test(dcFail.status),
+      dcFail.status.slice(0, 60),
+    );
+    // 复原：把配置真正删掉，避免污染后续断言
+    await cdp.evaluate("localStorage.removeItem('yuc_gl_gist_v1'); window.confirm = () => true;");
+
     // ---------- 设置 / 命令面板 / 无障碍 ----------
     await cdp.evaluate("document.getElementById('moreBtn').click()");
     await cdp.evaluate("(() => { const b=[...document.querySelectorAll('#moreMenu [data-more]')].find((x)=>x.dataset.more==='settings'); b.click(); })()");
