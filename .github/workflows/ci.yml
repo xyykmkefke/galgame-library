@@ -21,6 +21,9 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      - name: 版本一致性校验
+        run: npm run check-version
+
       - name: 数据质量校验
         run: npm run check-data
 

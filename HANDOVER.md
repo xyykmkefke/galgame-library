@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.51.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **275/275**，`check-data` **0 问题**）
+- 当前状态：**v2.51.1**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **275/275**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -32,7 +32,7 @@
 | v2.50.0 | 统计页把半截数字当权威，复制摘要把它带出页面也无说明 | 见第 85 章 |
 | v2.51.0 | 扩展库未加载完就导入备份，扩展库作品全被当成无效记录丢弃 | 见第 86 章 |
 
-**当前验收基线：`check-data` 0 问题、`verify` 260/260。** 改动前先跑这两个确认基线。
+**当前验收基线：`check-data` 0 问题、`verify` 275/275。** 改动前先跑这两个确认基线。
 
 **已知遗留（第 69.9 节详述）：**
 - 含汉字的 48 个社名仍无拉丁别名（读音不唯一，需人工整理）
@@ -1032,16 +1032,16 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.29.3 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.29.3 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.29.3 |
-| `README.md` | 「状态：**vN**」 | v2.29.3 |
-| `manifest.webmanifest` | `version` | 2.29.3 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v46 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.29.3 |
+| `package.json` | `version` | 2.51.1 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.51.1 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.51.1 |
+| `README.md` | 「状态：**vN**」 | v2.51.1 |
+| `manifest.webmanifest` | `version` | 2.51.1 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v71 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.51.1 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
-- `manifest.webmanifest` 的 `description` 含作品数（当前 7729），数据规模大幅变化时应同步修改。
+- `manifest.webmanifest` 的 `description` 含作品数（当前 9054），数据规模大幅变化时应同步修改。
 - 有数据文件变化时必须升级 `sw.js` 缓存名（vN+1）；仅改文档或元数据可不升。`verify.mjs` 的缓存断言从 `sw.js` 动态读取，升级后无需改测试。
 
 ### 43.2 发布流程
@@ -3712,3 +3712,29 @@ const retryClicked = await cdp.evaluate(`(() => {
 
 `check-data` 0 问题、`verify` **275/275**（新增 4 条，反向验证 3 条 FAIL，耗时约 6 分钟）。
 版本 **2.51.0**，SW `yuc-gl-shell-v70`。
+
+## 87. 版本漂移收口与 check-version 门禁（v2.51.1，2026-11-28）
+
+### 87.1 发现的问题
+
+- **系列快照过期**：`data/series.js` 还是 v2.29.2 时生成的（629 系列 / 1797 部 / blocked 35），而主库在 v2.31 已清理到 1968 条、205 条非 gal 隐藏。用当前数据重建是 **621 / 1775 / blocked 205**；旧快照被 `verify` 的硬编码断言（629 / 1797）和 README 一起锁住，所以一直没暴露。
+- **版本号只同步了一半**：`package.json` 已到 2.51.0，但 `package-lock.json` 停在 **2.40.1**、README 状态行停在 **v2.40.0**；`HANDOVER` 43.1 版本表停在 2.29.3 / SW v46。
+- **描述与数据脱节**：`index.html` 三处 description 写 9058 部 / 1972 主库 / 35 隐藏，实际 9054 / 1968 / 205（manifest 已是对的）。
+- **文档内部矛盾**：HANDOVER 第 4 行写 verify 275/275，第 35 行基线仍写 260/260；README 开发段写「verify 236 项」。
+- `SESSION-LOG.md` 停在 v2.31.0（第 28 节），v2.32.0 起实际由 HANDOVER 第 66 章起逐版记录，日志未同步说明。
+
+### 87.2 修复
+
+- 重建 `data/series.js`：621 / 1775，别名 201，强关系边 2254，blocked 205；`verify` 快照与 README 系列一览同步。
+- 同步版本：`package-lock.json` 两处 2.51.1、README 状态 v2.51.1、HANDOVER 文档头与 43.1 版本表（2.51.1 / SW v71）。
+- 修正 `index.html` 三处描述为 9054 / 1968 / 205；HANDOVER 基线 260 → 275；README 开发段 verify 项数 236 → 275。
+- `SESSION-LOG` 开头补范围说明（到 v2.31.0，之后见 HANDOVER 66+），并加一节记录本版。
+
+### 87.3 新增门禁
+
+- `scripts/check-version.mjs`（`npm run check-version`）：19 项检查——7 个版本点（package / lock×2 / index meta + 页脚 / manifest / sw 格式）、43.1 版本表 7 行、3 处描述里的作品数、README 系列数；任一不一致即退出 1。
+- CI 顺序改为 **check-version → check-data → verify**，漏改任何一个版本位都会在 CI 首步变红，不再依赖人肉记忆。
+
+### 87.4 验收
+
+`check-version` 19/19、`check-data` 0 问题、`verify` **275/275**；体积 3544KB；版本 **2.51.1**，SW `yuc-gl-shell-v71`。
