@@ -654,6 +654,45 @@ try {
   total += 1;
 }
 
+// ---------- 系列映射新鲜度 ----------
+// series.js 是构建物，主库/扩展库变了但没重建时会静默给旧分组；
+// v2.51.1 曾出现 blocked 仍为 35、隐藏数已 205 的过期快照，靠人工才发现。
+try {
+  const sraw = await readFile(path.join(ROOT, 'data', 'series.js'), 'utf8');
+  const sm = sraw.match(/window\.GL_SERIES\s*=\s*(\{[\s\S]*\});/);
+  if (!sm) throw new Error('未找到 window.GL_SERIES');
+  const series = JSON.parse(sm[1]);
+  const meta = series.meta || {};
+  const names = Array.isArray(series.n) ? series.n : [];
+  const map = series.m && typeof series.m === 'object' ? series.m : {};
+  const hidden = data.filter((x) => x.k === 'off').length;
+  const named = names.filter(Boolean).length;
+  const keyCount = Object.keys(map).length;
+  const bad = [];
+  if (Number(meta.blocked) !== hidden) {
+    bad.push(`blocked ${meta.blocked} != 当前隐藏 ${hidden}（数据变更后未重建 series）`);
+  }
+  if (named !== Number(meta.series)) bad.push(`系列名 ${named} != meta.series ${meta.series}`);
+  if (keyCount !== Number(meta.items)) bad.push(`映射键 ${keyCount} != meta.items ${meta.items}`);
+  const visibleMainIds = new Set(data.filter((x) => x.k !== 'off').map((x) => String(x.i)));
+  Object.entries(map).forEach(([key, idx]) => {
+    if (!(Number.isInteger(idx) && idx >= 0 && idx < names.length)) bad.push(`${key}:系列索引 ${idx} 越界`);
+    if (key.startsWith('b:')) {
+      if (!visibleMainIds.has(key.slice(2))) bad.push(`${key}:主库已无此条`);
+    } else if (!mainVx.has(key) && !extraVxAll.has(key)) {
+      bad.push(`${key}:VNDB id 不在库内`);
+    }
+  });
+  console.log(`系列映射：${meta.series} 个系列 / ${meta.items} 部（blocked ${meta.blocked}），异常 ${bad.length} 条`);
+  if (bad.length) {
+    console.log(`FAIL 系列映射异常：${bad.slice(0, 5).join(', ')}`);
+    total += bad.length;
+  }
+} catch (err) {
+  console.log(`FAIL 系列映射不可用：${err.message}`);
+  total += 1;
+}
+
 // ---------- 别名覆盖：同组内任一写法都要能搜到同一条 ----------
 //
 // 这是「中英日任一写法搜索都命中同一条」的守护断言。
