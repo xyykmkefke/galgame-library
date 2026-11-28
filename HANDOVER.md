@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.44.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **252/252**，`check-data` **0 问题**）
+- 当前状态：**v2.45.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **255/255**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → **v2.44.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
+- 本次会话：v2.19.0 → **v2.45.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
 
 ## 0. 接手先读这里（2026-11-26 收尾状态）
 
@@ -24,8 +24,9 @@
 | v2.42.0 | 收藏保存失败时误报成功（数据丢了、界面说存住了） | 见第 77 章 |
 | v2.43.0 | 删除标记静默丢失 → 已删记录会自己复活 | 见第 78 章 |
 | v2.44.0 | 备份不带删除标记 → 导出再导入，删掉的会自己回来 | 见第 79 章 |
+| v2.45.0 | 视图保存失败被「已保存」盖掉，超上限静默挤掉旧视图 | 见第 80 章 |
 
-**当前验收基线：`check-data` 0 问题、`verify` 252/252。** 改动前先跑这两个确认基线。
+**当前验收基线：`check-data` 0 问题、`verify` 255/255。** 改动前先跑这两个确认基线。
 
 **已知遗留（第 69.9 节详述）：**
 - 含汉字的 48 个社名仍无拉丁别名（读音不唯一，需人工整理）
@@ -2674,4 +2675,125 @@ if (ts < tombCutoff) { tombStale += 1; return; }
 
 `check-data` 0 问题、`verify` **252/252**（新增 2 条，已三方向反向验证）。
 版本 2.44.0，SW `yuc-gl-shell-v63`。
+
+## 80. 视图保存失败被「已保存」盖掉，超上限静默挤掉旧视图（v2.45.0，2026-11-28）
+
+### 80.1 问题：同一形态的第 3 处
+
+第 77 章修了收藏本体的「写失败却报成功」，第 78 章修了墓碑的静默丢失。全库盘了一遍 31 个
+catch，`saveViews()` 是第三处**一模一样**的形状：
+
+```js
+function saveViews(arr) {
+  if (!canStore) return;
+  try { localStorage.setItem(VIEWS_KEY, JSON.stringify(arr.slice(0, 12))); } catch (e) { /* 忽略 */ }
+}
+```
+
+调用方：
+
+```js
+saveViews(arr);
+renderViewsMenu();
+toast('已保存视图：' + name.trim());     // ← 无条件
+```
+
+浏览器实测（`Storage.prototype.setItem` 对该键抛 `QuotaExceededError`，`MutationObserver` 记全部历史）：
+
+```
+toast 历史: ["已保存视图：测试视图"]
+存储内容: null
+常驻横幅隐藏: true
+```
+
+**注意 history 只有一条** —— 失败提示从来没进过 DOM，不是「被覆盖」，是根本没执行到。
+这和 77 章结论一致：`toast` 是单例元素，同一任务里连续两次 toast 浏览器不绘制中间帧。
+
+为什么这条不能像搜索历史那样静默：**视图是用户自己命名的筛选组合**，丢了不能再生。
+它跟收藏本体同等级，跟「最近浏览」「搜索历史」完全不同级。
+
+### 80.2 第二个问题：`slice(0, 12)` 静默丢数据
+
+上限本身是合理设计，问题是**一个字都不说**。实测预置 12 个视图后保存第 13 个：
+
+```
+保存后条数: 12 | 名称: 第13个,v0,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10
+toast: 已保存视图：第13个
+```
+
+`v11` 消失了，提示只说「已保存」。用户不会发现少了哪一个 —— 而那是他自己命名的东西。
+
+### 80.3 修法
+
+`saveViews` 返回布尔量，调用方据此决定提示什么：
+
+```js
+function saveViews(arr) {
+  if (!canStore) return false;
+  var out = arr.slice(0, VIEWS_MAX);
+  try {
+    localStorage.setItem(VIEWS_KEY, JSON.stringify(out));
+    clearStorageFail(VIEWS_KEY);
+    return true;
+  } catch (e) {
+    markStorageFail(VIEWS_KEY);
+    toast('视图没能保存到浏览器，刷新后会丢失');
+    return false;
+  }
+}
+```
+
+上限提成常量 `VIEWS_MAX`。原来写死在 `slice(0, 12)` 里，提示文案那边**没法引用同一个值** ——
+这种「同一个数字写在两个地方」迟早会分叉。
+
+保存侧：只在成功时提示，并把挤掉的条数说出来：
+
+```js
+var dropped = Math.max(0, arr.length - VIEWS_MAX);
+if (saveViews(arr)) {
+  renderViewsMenu();
+  toast('已保存视图：' + name.trim() +
+    (dropped ? '（已达 ' + VIEWS_MAX + ' 个上限，最旧的 ' + dropped + ' 个已移除）' : ''));
+}
+```
+
+删除侧还有个更细的问题：原来 `saveViews(views); renderViewsMenu();` —— 没存住时，
+`renderViewsMenu()` 按**存储内容**重画，那个刚删掉的视图又出现在列表里，看起来像
+「点了删除没反应」。改成失败时不重绘：
+
+```js
+if (saveViews(views)) renderViewsMenu();
+```
+
+留着旧列表 + 常驻横幅，至少状态是自洽的（列表里还有它，说明确实没删掉）。
+
+### 80.4 反向验证：一条断言一个性质，三次分别注入
+
+| 注入的缺陷 | 结果 |
+|---|---|
+| `saveViews` 恢复成空 catch（`catch (e) { return true; }`） | 仅 `FAIL 视图写失败时如实告知 → 横幅未显示 · 失败提示无 · 误报成功有 · history=["已保存视图：验收视图"]` |
+| 去掉上限提示（`''`） | 仅 `FAIL 视图超出上限时说明挤掉了几条` |
+| 无条件报「已移除」 | 仅 `FAIL 视图未超上限时不误报移除 → 已保存视图：验收视图（已达 12 个上限，最旧的 1 个已移除）` |
+
+第三条断言（未超上限时不误报）是**独立的边界性质**：只有它才能区分
+「会提示上限」和「任何时候都提示上限」。前两条全绿也证明不了这一点。
+
+第一条断言里的 `!viewFail.stored` 是守卫：它确认这次确实没写进去。
+没有它，正常环境下这条也会 PASS —— 那时根本没走失败路径（第 78 章踩过同样的坑）。
+
+### 80.5 验收
+
+`check-data` 0 问题、`verify` **255/255**（新增 3 条，三方向分别反向验证）。
+版本 2.45.0，SW `yuc-gl-shell-v64`。
+
+### 80.6 剩余静默 catch 的处置结论
+
+全库 31 个 catch 已逐个看过。剩下静默的都属于「丢了只影响便利性、不影响任何用户数据」：
+`saveHist`（搜索历史）、`pushRecent`（最近浏览）、`saveSettings`/`loadSettings`（显示设置）、
+`savePrefs`（浏览偏好，hash 里也有一份）、`WARN_KEY`/`INSTALL_KEY`（去重标记、
+`pushRecent` 里的 `VIEWS` 读取）。`loadViews`/`loadMine`/`loadDeleted` 的 `return []`/`{}`
+是**读**失败兜底，不丢数据，不需要告警。
+
+**这一轮之后，「静默失败」在数据类写入上已经清干净了。** 再往下查要换方向。
+
 

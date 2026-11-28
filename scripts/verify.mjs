@@ -2026,6 +2026,91 @@ async function main() {
       await sleep(300);
     }
 
+    // ---------- 保存筛选视图：写失败要如实告知、超上限要说明挤掉了谁 ----------
+    // 缺陷形态（与第 77 章收藏本体完全同一形状，第 3 处）：
+    //   saveViews() 是 `catch (e) { /* 忽略 */ }`，调用方紧接着无条件 toast('已保存视图：X')。
+    //   toast 是单例元素，失败提示在同一帧被「已保存」盖掉 —— 用户看到的是保存成功。
+    //   而视图是用户自己命名的筛选组合，丢了不能再生，跟收藏本体同一等级。
+    // 另有一处：slice(0, 12) 会在第 13 个视图时静默挤掉最旧的，一个字都不提。
+    await cdp.evaluate(`(() => {
+      window.__viewSeen = [];
+      const t = document.getElementById('toast');
+      window.__viewMo = new MutationObserver(() => window.__viewSeen.push(t.textContent));
+      window.__viewMo.observe(t, { childList: true, subtree: true, characterData: true });
+      window.__viewOrig = Storage.prototype.setItem;
+      window.prompt = () => '验收视图';
+      return 'ok';
+    })()`);
+    await cdp.evaluate(`(() => {
+      Storage.prototype.setItem = function (k, v) {
+        if (String(k).indexOf('yuc_gl_views') === 0) throw new DOMException('quota', 'QuotaExceededError');
+        return window.__viewOrig.call(this, k, v);
+      };
+      return 'ok';
+    })()`);
+    const viewSaveBtn = await cdp.evaluate(`(() => {
+      const b = document.getElementById('viewsBtn');
+      if (!b) return false;
+      b.click();
+      return !!document.querySelector('[data-view-save]');
+    })()`);
+    await sleep(250);
+    await cdp.evaluate("document.querySelector('[data-view-save]').click()");
+    await sleep(700);
+    const viewFail = await cdp.evaluate(`(() => ({
+      seen: window.__viewSeen || [],
+      stored: localStorage.getItem('yuc_gl_views_v1'),
+      warnHidden: document.getElementById('storageWarn').hidden
+    }))()`);
+    await cdp.evaluate("Storage.prototype.setItem = window.__viewOrig; 'ok'");
+    const viewSawOk = viewFail.seen.some((t) => /已保存视图/.test(t));
+    const viewSawFail = viewFail.seen.some((t) => /视图没能保存/.test(t));
+    check('视图写失败时如实告知且不误报成功',
+      viewSaveBtn && viewFail.warnHidden === false && viewSawFail && !viewSawOk &&
+        // 守卫：确认这次确实没写进去。没有它，正常环境下这条也会 PASS（那时根本没走失败路径）
+        !viewFail.stored,
+      `入口${viewSaveBtn ? '有' : '无'} · 横幅${viewFail.warnHidden ? '未显示' : '已显示'} · ` +
+        `失败提示${viewSawFail ? '有' : '无'} · 误报成功${viewSawOk ? '有' : '无'} · ` +
+        `存储${viewFail.stored ? '写进去了(测的不是失败路径)' : '确实没写进去'} · ` +
+        `history=${JSON.stringify(viewFail.seen)}`);
+
+    // 超上限要说明挤掉了谁。独立性质，单独测：上限内保存不该提「已移除」。
+    await cdp.evaluate(`(() => {
+      const arr = [];
+      for (let i = 0; i < 12; i++) arr.push({ name: 'v' + i, tab: 'all' });
+      localStorage.setItem('yuc_gl_views_v1', JSON.stringify(arr));
+      return 'ok';
+    })()`);
+    await cdp.evaluate("document.getElementById('viewsBtn').click()");
+    await sleep(250);
+    await cdp.evaluate("document.querySelector('[data-view-save]').click()");
+    await sleep(600);
+    const viewCap = await cdp.evaluate(`(() => {
+      const s = JSON.parse(localStorage.getItem('yuc_gl_views_v1') || '[]');
+      return { n: s.length, names: s.map((x) => x.name), toast: document.getElementById('toast').textContent };
+    })()`);
+    check('视图超出上限时说明挤掉了几条',
+      viewCap.n === 12 && viewCap.names[0] === '验收视图' &&
+        /已达 12 个上限/.test(viewCap.toast) && /最旧的 1 个已移除/.test(viewCap.toast),
+      `${viewCap.n} 个 · 首位 ${viewCap.names[0]} · ${viewCap.toast}`);
+
+    // 上限内保存不该出现「已移除」—— 否则上面那条断言只证明了「会提」，没证明「只在超限时提」
+    await cdp.evaluate(`(() => {
+      localStorage.setItem('yuc_gl_views_v1', JSON.stringify([{ name: 'only', tab: 'all' }]));
+      document.getElementById('viewsBtn').click();
+      return 'ok';
+    })()`);
+    await sleep(250);
+    await cdp.evaluate("document.querySelector('[data-view-save]').click()");
+    await sleep(500);
+    const viewUnder = await cdp.evaluate("document.getElementById('toast').textContent");
+    check('视图未超上限时不误报移除',
+      // 不用 $ 锚定：toast 元素里可能还有撤销按钮的文字，锚定会假失败
+      /已保存视图：验收视图/.test(viewUnder) && !/已移除/.test(viewUnder), viewUnder);
+    // 清理：别把测试视图留给后续断言
+    await cdp.evaluate("localStorage.removeItem('yuc_gl_views_v1'); 'ok'");
+    await cdp.evaluate("document.getElementById('viewsBtn').click(); 'ok'");
+    await sleep(200);
 
     await cdp.evaluate("document.getElementById('groupBtn').click()");
     await sleep(300);

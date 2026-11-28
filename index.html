@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.44.0">
+<meta name="version" content="2.45.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.44.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.45.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -5267,6 +5267,8 @@
 
   // ---- 保存筛选视图 ----
   var VIEWS_KEY = 'yuc_gl_views_v1';
+  // 上限单列成常量：原来写死在 slice(0, 12) 里，提示文案那边没法引用同一个值
+  var VIEWS_MAX = 12;
   function loadViews() {
     if (!canStore) return [];
     try {
@@ -5276,9 +5278,22 @@
         : [];
     } catch (e) { return []; }
   }
+  // 返回是否真的存住了。调用方据此决定要不要提示成功 —— 原来无论成败都提示「已保存」。
   function saveViews(arr) {
-    if (!canStore) return;
-    try { localStorage.setItem(VIEWS_KEY, JSON.stringify(arr.slice(0, 12))); } catch (e) { /* 忽略 */ }
+    if (!canStore) return false;
+    var out = arr.slice(0, VIEWS_MAX);
+    try {
+      localStorage.setItem(VIEWS_KEY, JSON.stringify(out));
+      clearStorageFail(VIEWS_KEY);
+      return true;
+    } catch (e) {
+      // 视图是用户自己命名的筛选组合，丢了不能再生 —— 与收藏本体同一等级。
+      // 原来这里是空 catch，调用方紧接着又 toast('已保存视图：X')，
+      // 于是「没存住」被同一帧的「已保存」盖掉（与第 77 章收藏本体完全同一形态）。
+      markStorageFail(VIEWS_KEY);
+      toast('视图没能保存到浏览器，刷新后会丢失');
+      return false;
+    }
   }
   function currentView(name) {
     return {
@@ -6928,8 +6943,9 @@
       e.stopPropagation();
       var views = loadViews();
       views.splice(Number(del.dataset.viewDel), 1);
-      saveViews(views);
-      renderViewsMenu();
+      // 没存住时菜单不重绘：重绘会按存储内容重画，那个视图又出现在列表里，
+      // 看起来像「点了删除没反应」。留着旧列表 + 常驻横幅，至少状态是一致的。
+      if (saveViews(views)) renderViewsMenu();
       return;
     }
     var apply = e.target.closest('[data-view-apply]');
@@ -6948,9 +6964,14 @@
       if (!name || !name.trim()) return;
       var arr = loadViews();
       arr.unshift(currentView(name.trim()));
-      saveViews(arr);
-      renderViewsMenu();
-      toast('已保存视图：' + name.trim());
+      var dropped = Math.max(0, arr.length - VIEWS_MAX);
+      // 失败时 saveViews 已经挂好常驻横幅 + 失败提示，这里不能再报「已保存」把它盖掉
+      if (saveViews(arr)) {
+        renderViewsMenu();
+        toast('已保存视图：' + name.trim() +
+          // 超出上限时会被挤掉最旧的，必须说出来：那个视图是用户自己命名的，不是可再生数据
+          (dropped ? '（已达 ' + VIEWS_MAX + ' 个上限，最旧的 ' + dropped + ' 个已移除）' : ''));
+      }
     }
   });
 
