@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.42.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **249/249**，`check-data` **0 问题**）
+- 当前状态：**v2.43.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **250/250**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -22,8 +22,9 @@
 | v2.40.1 | 修 `--popularity-only` 词典塌缩 + 制作人员深链冷启动丢失 | 见第 75 章 |
 | v2.41.0 | 开发商/系列深链冷启动同样丢失（同一根因的另两处） | 见第 76 章 |
 | v2.42.0 | 收藏保存失败时误报成功（数据丢了、界面说存住了） | 见第 77 章 |
+| v2.43.0 | 删除标记静默丢失 → 已删记录会自己复活 | 见第 78 章 |
 
-**当前验收基线：`check-data` 0 问题、`verify` 249/249。** 改动前先跑这两个确认基线。
+**当前验收基线：`check-data` 0 问题、`verify` 250/250。** 改动前先跑这两个确认基线。
 
 **已知遗留（第 69.9 节详述）：**
 - 含汉字的 48 个社名仍无拉丁别名（读音不唯一，需人工整理）
@@ -2468,3 +2469,122 @@ return el.hidden;       // true 就算通过
   失败时不告知。它们丢的是删除标记、偏好这类可再生数据，危害远低于收藏记录，
   但严格说也不该静默。**留作后续，别忘。**
 - 云同步失败已有独立状态显示（`syncState`），本次未动。
+
+## 78. 删除标记静默丢失：已删的记录会自己复活（v2.43.0，2026-11-28）
+
+### 78.1 问题
+
+第 77 章修好了「收藏本体写失败」的告知。但同一个 try/catch 形状在 `persistDeleted()` 里还有一份：
+
+```js
+function persistDeleted() {
+  if (!canStore) return;
+  try {
+    localStorage.setItem(DEL_KEY, JSON.stringify(myDeleted));
+  } catch (e) { /* 忽略存储失败 */ }   // ← 空的
+}
+```
+
+空 catch 本身不致命 —— 致命的是它丢的东西：
+
+`myDeleted` 是云端同步用的**墓碑（tombstone）**。`mergeRemote()` 里判「云端这条该不该拉回来」看的就是它：
+
+```js
+var tomb = Number(remoteDeleted[id]) || Number(myDeleted[id]) || 0;
+if (tomb && tomb >= r.u) return;      // 有墓碑且不旧于远端 → 不回填
+```
+
+墓碑只活在 `localStorage` 里。一旦没写进去，**刷新后它就是空的** → `tomb` 取到 0 →
+云端那条被判为「本地没有、也没删过」→ 直接拉回来。
+
+用户看到的是：**我明明删了，过一阵它自己回来了。** 中间隔了一次刷新和一次同步，
+极难归因，几乎必然被当成「玄学 bug」。
+
+### 78.2 实测证据
+
+只让 `yuc_gl_deleted_v1` 这个键写入失败（收藏本体照常），走真实 UI「加入 → 移出」：
+
+```
+加入后 收藏: ["662427"]  删除标记: null
+移出后 收藏数: 0  删除标记(持久化): null  条数: 0
+刷新后 收藏数: 0  删除标记: null
+
+模拟云端同步判定: {"tomb":0,"wouldBePulledBack":true}
+⚠ 已删除的记录会被云端拉回来（tombstone 丢失）
+```
+
+界面上却只有一条：
+
+```
+移出时 toast 历史: ["已移出我的游玩：妹控计划撤销"]
+常驻横幅隐藏: true
+```
+
+—— 成功提示照报，没有任何警告。
+
+### 78.3 修法：按 key 粒度记账
+
+第 77 章用的是单个 `storageBroken` 布尔。这次不能直接复用它，因为**两个键是两份独立数据**：
+若共用一个标志，「删除标记写失败 → 接着收藏本体写成功」会把提示撤掉，而删除标记其实已经丢了。
+
+改成一张按 key 记录的表：
+
+```js
+var storageFailKeys = Object.create(null);
+function markStorageFail(key)  { storageFailKeys[key] = true; showStorageBroken(); }
+function clearStorageFail(key) { delete storageFailKeys[key];
+                                 if (!Object.keys(storageFailKeys).length) hideStorageBroken(); }
+function anyStorageFail()      { return Object.keys(storageFailKeys).length > 0; }
+```
+
+`persistDeleted` / `saveMine` / `markBackup` / `saveSyncCfg` 各自 `markStorageFail(自己的 KEY)`，
+14 个成功提示统一改成 `if (!anyStorageFail())`。
+
+`persistDeleted` 失败时给自己的文案（比通用文案更具体）：
+
+> 删除记录没能保存，下次同步可能会把它拉回来，请尽快导出备份
+
+### 78.4 顺手修的两处同源问题
+
+| 位置 | 症状 | 修法 |
+|---|---|---|
+| `markBackup()` | 备份时间没存上 → 横幅仍显示「尚未备份」，用户以为导出失败、反复再导 | 记账 + 文案「备份文件已导出，但备份时间没能记录」 |
+| `saveSyncCfg()` | Token 没存上 → 刷新后配置丢失，用户以为「同步坏了」反复重配 | 记账 + 文案「同步配置没能保存，刷新页面后需要重新填写」 |
+
+**刻意保持静默的 5 处**（都在注释里写明了理由，避免以后被当成漏改）：
+`saveHist`（搜索历史）、`pushRecent`（最近浏览）、`saveSettings`（显示设置）、
+`savePrefs`（浏览偏好，hash 里也有）、`WARN_KEY`/`INSTALL_KEY`（去重标记）。
+共同点是**丢了只影响便利性、不影响任何用户数据**。为这类键弹告警会稀释真正的告警。
+
+### 78.5 反向验证
+
+把 `persistDeleted` 改回空 catch：
+
+```
+FAIL  删除标记写失败时如实告知且不误报  → 目标 662427 · 横幅未显示 · 失败提示无 · 误报成功有 · tombstone确实没存进去
+通过 249/250
+```
+
+断言里那个 `tombstone确实没存进去` 是**守卫**：它确认持久化的 `deleted` 里真的没有这条。
+没有它，这条断言在正常环境下也会 PASS（因为那时 tombstone 确实存进去了，测的根本不是失败路径）。
+
+### 78.6 一条偶发失败的排查
+
+首次跑出 249/250 但看不出是哪条。连跑 4 次全绿、1 次失败，定位到新加的删除标记断言：
+它依赖「我的游玩里有一条收藏」，而这条由前面的断言产生 —— 前序清理一旦把收藏清空，
+这条就会因「找不到目标」而假失败。
+
+修法不是加长等待，而是**不依赖前序状态**：检测到收藏为空就自己去全库补一条再测。
+连跑两次确认稳定 250/250。
+
+### 78.7 验收
+
+`check-data` 0 问题（9 条 PASS）、`verify` **250/250**（新增 1 条，已反向验证）。
+版本 2.43.0，SW `yuc-gl-shell-v62`。
+
+### 78.8 遗留（已评估但本轮未做）
+
+- **导出的 JSON 备份不含 `deleted`。** 场景：导出 → 清空 → 导入，且开了云同步时，
+  已删记录会被云端拉回。评估结论是**导入侧本来是安全的**（导入时对每条 `clearDeleted`，
+  不会误删重新收藏的条目），所以补 `deleted` 到导出是可行的。没做的原因是该场景较窄
+  （需要同时满足「清空过」和「开着云同步」），优先级低于本轮已修的项。**留作后续。**

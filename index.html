@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.42.0">
+<meta name="version" content="2.43.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.42.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.43.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3375,7 +3375,8 @@
   function saveSettings() {
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    } catch (e) { /* 隐私模式下忽略 */ }
+      // 字号/密度/动效这类显示设置，丢了只是下次打开回到默认，不影响任何用户数据
+    } catch (e) { /* 忽略：显示设置可再生，失败仅回到默认 */ }
   }
 
   loadSettings();
@@ -3743,11 +3744,39 @@
     }
   }
 
+  // 各存储键的写入失败状态，按 key 粒度分别记账。
+  //
+  // 为什么要分 key、不用一个全局布尔：删除标记（DEL_KEY）和收藏本体（STORAGE_KEY）
+  // 是两份独立的数据。若共用一个标志，「删除标记写失败、接着收藏本体写成功」会把
+  // 提示撤掉 —— 而删除标记其实已经丢了，下次同步那条记录就会复活。
+  //
+  // 删除标记丢失的后果（2026-11-28 实测）：tombstone 只活在 localStorage 里，
+  // 一旦没写进去，刷新后 mergeRemote() 里 `remoteDeleted[id] || myDeleted[id]` 取到 0，
+  // 云端那条记录被判为「本地没有、也没删过」→ 直接拉回来。用户看到的是
+  //「我明明删了，过一阵它自己回来了」，中间隔了一次刷新和一次同步，极难归因。
+  var storageFailKeys = Object.create(null);
+  function markStorageFail(key) {
+    storageFailKeys[key] = true;
+    showStorageBroken();
+  }
+  function clearStorageFail(key) {
+    if (!storageFailKeys[key]) return;
+    delete storageFailKeys[key];
+    if (!Object.keys(storageFailKeys).length) hideStorageBroken();
+  }
+  function anyStorageFail() {
+    return Object.keys(storageFailKeys).length > 0;
+  }
+
   function persistDeleted() {
     if (!canStore) return;
     try {
       localStorage.setItem(DEL_KEY, JSON.stringify(myDeleted));
-    } catch (e) { /* 忽略存储失败 */ }
+      clearStorageFail(DEL_KEY);
+    } catch (e) {
+      markStorageFail(DEL_KEY);
+      toast('删除记录没能保存，下次同步可能会把它拉回来，请尽快导出备份');
+    }
   }
 
   function markDeleted(id) {
@@ -3769,21 +3798,15 @@
   // 而 localStorage 里确实什么都没写进去 —— 数据丢了、界面说成功，是最坏的一种组合。
   // 所以修法是两件事一起做：
   //   1. 失败状态挂到常驻通道（storageWarn 横幅），不依赖 toast 的显示窗口；
-  //   2. 所有成功提示都以返回值为前提（见各调用点的 `if (saveMine())`）。
-  var storageBroken = false;
+  //   2. 所有成功提示都以「该 key 没处于失败态」为前提（见各调用点的 `if (!anyStorageFail())`）。
   function saveMine(opts) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(myMap));
+      clearStorageFail(STORAGE_KEY);
     } catch (e) {
-      storageBroken = true;
-      showStorageBroken();
+      markStorageFail(STORAGE_KEY);
       toast('保存失败：浏览器拒绝写入本地存储');
       return false;
-    }
-    // 之前失败过、这次成功了（比如用户清理了空间）：把常驻提示收回去
-    if (storageBroken) {
-      storageBroken = false;
-      hideStorageBroken();
     }
     // 云同步写入本机时不计数，也不触发回推，避免同步循环
     if (!opts || !opts.fromSync) {
@@ -3858,7 +3881,13 @@
     try {
       localStorage.setItem(BACKUP_KEY, String(Date.now()));
       localStorage.removeItem(DIRTY_KEY);
-    } catch (e) { /* 忽略存储失败 */ }
+      clearStorageFail(BACKUP_KEY);
+    } catch (e) {
+      // 备份时间没记下来，横幅会一直显示「尚未备份」。
+      // 用户刚导出完却看到「尚未备份」，很可能以为导出失败、反复再导一遍。
+      markStorageFail(BACKUP_KEY);
+      toast('备份文件已导出，但备份时间没能记录，提示会继续显示「尚未备份」');
+    }
     renderBackupHint();
   }
 
@@ -3888,7 +3917,8 @@
     try {
       if (localStorage.getItem(WARN_KEY) === today) return;
       localStorage.setItem(WARN_KEY, today);
-    } catch (e) { /* 忽略存储失败 */ }
+      // 这是「今天已经提醒过别再提醒」的去重标记，写不进去只会导致多提醒一次
+    } catch (e) { /* 忽略：去重标记，失败仅导致重复提醒 */ }
     toast('已有 ' + n + ' 处改动，建议导出一次备份');
   }
 
@@ -4048,7 +4078,7 @@
         gb: state.group ? state.groupBy : '',
         t: state.theme
       }));
-    } catch (e) { /* 存储失败不影响浏览 */ }
+    } catch (e) { /* 忽略：浏览偏好在 hash 里也有，丢失仅导致下次回到默认视图 */ }
   }
 
   // ---- 搜索历史：最多保留 8 条，去重且最近使用排前 ----
@@ -4071,7 +4101,9 @@
     if (!canStore) return;
     try {
       localStorage.setItem(HIST_KEY, JSON.stringify(searchHist));
-    } catch (e) { /* 忽略存储失败 */ }
+      // 搜索历史是可再生的便利数据：丢了只是下拉建议变少，不影响任何用户数据。
+      // 这类「丢了也无所谓」的键刻意静默处理，避免为小事弹提示、稀释真正的告警。
+    } catch (e) { /* 忽略：搜索历史可再生，不值得打扰用户 */ }
   }
 
   function pushHist(q) {
@@ -4136,7 +4168,8 @@
     recentList = [id].concat(recentList.filter(function (x) { return x !== id; })).slice(0, RECENT_MAX);
     try {
       localStorage.setItem(RECENT_KEY, JSON.stringify(recentList));
-    } catch (e) { /* 忽略存储失败 */ }
+      // 同 saveHist：最近浏览是可再生的便利数据，静默处理
+    } catch (e) { /* 忽略：最近浏览可再生，不值得打扰用户 */ }
   }
 
   function writeHash() {
@@ -5201,7 +5234,7 @@
     render();
     var verb = kind === 'remove' ? '移出' : '标记为' + STATUS[kind];
     // 保存失败时不能再报「已…」：那会让用户以为数据存住了（失败提示会被这句覆盖）
-    if (!storageBroken) {
+    if (!anyStorageFail()) {
       toast('已' + verb + ' ' + ids.length + ' 部', {
         label: '撤销',
         fn: function () {
@@ -5212,7 +5245,7 @@
           });
           saveMine();
           render();
-          if (!storageBroken) toast('已撤销批量操作');
+          if (!anyStorageFail()) toast('已撤销批量操作');
         }
       });
     }
@@ -6549,7 +6582,7 @@
 
   $('installTipClose').addEventListener('click', function () {
     $('installTip').hidden = true;
-    try { localStorage.setItem(INSTALL_KEY, '1'); } catch (e) { /* 忽略存储失败 */ }
+    try { localStorage.setItem(INSTALL_KEY, '1'); } catch (e) { /* 忽略：安装引导是否已读，失败仅导致再提示一次 */ }
   });
 
   function setStatus(id, status) {
@@ -6559,7 +6592,7 @@
     myMap[id].u = Date.now();
     saveMine();
     // 失败时 saveMine 已经把常驻横幅挂上了，这里不再报「已标记为」把它盖掉
-    if (!storageBroken) toast('已标记为「' + STATUS[status] + '」：' + (item.cn || item.n));
+    if (!anyStorageFail()) toast('已标记为「' + STATUS[status] + '」：' + (item.cn || item.n));
     render();
   }
 
@@ -6573,14 +6606,14 @@
       markDeleted(id);
       saveMine();
       render();
-      if (!storageBroken) toast('已移出我的游玩：' + (item.cn || item.n), {
+      if (!anyStorageFail()) toast('已移出我的游玩：' + (item.cn || item.n), {
         label: '撤销',
         fn: function () {
           myMap[id] = prev;
           clearDeleted(id);
           saveMine();
           render();
-          if (!storageBroken) toast('已恢复：' + (item.cn || item.n));
+          if (!anyStorageFail()) toast('已恢复：' + (item.cn || item.n));
         }
       });
     } else {
@@ -6588,7 +6621,7 @@
       clearDeleted(id);
       saveMine();
       render();
-      if (!storageBroken) toast('已加入我的游玩：' + (item.cn || item.n));
+      if (!anyStorageFail()) toast('已加入我的游玩：' + (item.cn || item.n));
     }
   }
 
@@ -7458,7 +7491,7 @@
       markDeleted(id);
       saveMine();
       closeCardMenu();
-      if (!storageBroken) toast('已移出我的游玩：' + (ritem ? (ritem.cn || ritem.n || '') : ''));
+      if (!anyStorageFail()) toast('已移出我的游玩：' + (ritem ? (ritem.cn || ritem.n || '') : ''));
       render();
       return;
     }
@@ -7475,7 +7508,7 @@
       }
       saveMine();
       closeCardMenu();
-      if (!storageBroken) {
+      if (!anyStorageFail()) {
         toast((isNew ? '已加入并标记为「' : '已标记为「') + STATUS[status] + '」：' +
           (item.cn || item.n || ''));
       }
@@ -7550,12 +7583,12 @@
       markDeleted(id);
       // 先保存、后提示：反过来会让失败提示被「已移除」盖掉
       saveMine();
-      if (!storageBroken) toast('已移除：' + (item.cn || item.n));
+      if (!anyStorageFail()) toast('已移除：' + (item.cn || item.n));
     } else {
       myMap[id] = { s: 'want', t: Date.now(), u: Date.now() };
       clearDeleted(id);
       saveMine();
-      if (!storageBroken) toast('已加入我的游玩：' + (item.cn || item.n));
+      if (!anyStorageFail()) toast('已加入我的游玩：' + (item.cn || item.n));
     }
     render();
     renderDetail(id);
@@ -8090,7 +8123,7 @@
           saveMine();
           render();
           // 导入是最需要如实回报的场景：几百条记录没写进去却提示「导入完成」，后果最严重
-          if (!storageBroken) {
+          if (!anyStorageFail()) {
             toast('导入完成：新增 ' + added + ' 条，合并 ' + merged + ' 条' +
               (skipped ? '，跳过 ' + skipped + ' 条无效记录' : ''));
           }
@@ -8116,7 +8149,7 @@
     persistDeleted();
       saveMine();
       render();
-      if (!storageBroken) toast('已清空我的游玩（' + ids.length + ' 条）', {
+      if (!anyStorageFail()) toast('已清空我的游玩（' + ids.length + ' 条）', {
         label: '撤销',
         fn: function () {
           ids.forEach(clearDeleted);
@@ -8124,7 +8157,7 @@
           persistDeleted();
           saveMine();
           render();
-          if (!storageBroken) toast('已恢复 ' + ids.length + ' 部');
+          if (!anyStorageFail()) toast('已恢复 ' + ids.length + ' 部');
         }
       });
   });
@@ -8155,7 +8188,13 @@
     if (!canStore) return;
     try {
       localStorage.setItem(GIST_KEY, JSON.stringify(syncCfg));
-    } catch (e) { /* 忽略存储失败 */ }
+      clearStorageFail(GIST_KEY);
+    } catch (e) {
+      // Token/Gist ID 没存下来：本次会话内同步能用，刷新后配置就没了。
+      // 不说清楚的话，用户会以为「同步坏了」，反复重新配置同一份 Token。
+      markStorageFail(GIST_KEY);
+      toast('同步配置没能保存，刷新页面后需要重新填写');
+    }
   }
 
   function setSyncStatus(text, tone) {

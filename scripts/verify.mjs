@@ -1897,13 +1897,102 @@ async function main() {
     `);
     check('存储异常横幅的关闭按钮可用', closeBtn === 'closed', String(closeBtn));
 
-    const firstMineId = await cdp.evaluate(`
+    // ---------- 删除标记写失败时也必须告知（否则同步会把已删记录拉回来） ----------
+    // 缺陷形态：persistDeleted() 的 catch 是空的，tombstone 没写进去也没人知道。
+    // 后果比收藏本体丢失更隐蔽：刷新后 mergeRemote() 里
+    //   `remoteDeleted[id] || myDeleted[id]` 取到 0 → 云端那条被判为「本地没删过」→ 拉回来。
+    // 用户看到「我明明删了，过一阵它自己回来了」，中间隔了一次刷新和一次同步，极难归因。
+    //
+    // 这条断言要同时满足：
+    //   1. 常驻横幅显示（说明失败被记账）；
+    //   2. toast 历史里没有「已移出」这类成功文案（不能误报）；
+    //   3. 持久化的 deleted 里确实**没有**这条 —— 证明我们测的确实是失败路径，
+    //      而不是碰巧写成功了。没有第 3 点，这条在正常环境下也会 PASS，属于空跑。
+    await cdp.evaluate(`
       (() => {
-        var m = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
-        return Object.keys(m)[0] || '';
+        // 让删除标记这个键写入失败，收藏本体照常
+        window.__origSetItem = window.__origSetItem || Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+          if (String(k).indexOf('yuc_gl_deleted') >= 0) {
+            var e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e;
+          }
+          return window.__origSetItem.call(this, k, v);
+        };
+        window.__delSeen = [];
+        var el = document.getElementById('toast');
+        window.__delMo && window.__delMo.disconnect();
+        window.__delMo = new MutationObserver(() => { window.__delSeen.push(el.textContent); });
+        window.__delMo.observe(el, { childList: true, subtree: true, characterData: true });
+        return 'ok';
       })()
     `);
-    void firstMineId;
+    // 走真实 UI：先在「我的游玩」里补一条收藏，再点「移出」
+    await cdp.evaluate(`
+      (() => {
+        var t = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'mine');
+        if (t) t.click();
+        return 'ok';
+      })()
+    `);
+    await sleep(300);
+    // 不依赖前序断言留下收藏：空了就自己补一条，否则这条断言会因「找不到目标」而假失败。
+    // （实测出现过一次 249/250，就是前序清理把收藏清空了。）
+    const ensured = await cdp.evaluate(`
+      (() => {
+        var m = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
+        if (Object.keys(m).length) return 'have:' + Object.keys(m).length;
+        var a = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'all');
+        if (a) a.click();
+        return 'empty';
+      })()
+    `);
+    if (ensured === 'empty') {
+      await sleep(350);
+      await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
+      await sleep(350);
+      await cdp.evaluate(`
+        (() => {
+          var t = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'mine');
+          if (t) t.click();
+          return 'ok';
+        })()
+      `);
+      await sleep(350);
+    }
+    const delTarget = await cdp.evaluate(`
+      (() => {
+        var m = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
+        var id = Object.keys(m)[0];
+        if (!id) return '';
+        var cards = [...document.querySelectorAll('.card')];
+        var card = cards.find((c) => c.dataset.id === id) || cards[0];
+        if (!card) return '';
+        var b = card.querySelector('[data-act="toggle"]');
+        if (!b) return '';
+        b.click();
+        return card.dataset.id || id;
+      })()
+    `);
+    await sleep(700);
+    const delState = await cdp.evaluate(`
+      (() => ({
+        warnHidden: document.getElementById('storageWarn').hidden,
+        seen: window.__delSeen || [],
+        persistedTomb: (() => {
+          try { return JSON.parse(localStorage.getItem('yuc_gl_deleted_v1') || '{}'); } catch { return {}; }
+        })()
+      }))()
+    `);
+    await cdp.evaluate("Storage.prototype.setItem = window.__origSetItem; window.__delMo && window.__delMo.disconnect(); 'ok'");
+    const delSawOk = delState.seen.some((t) => /已移出/.test(t));
+    const delSawFail = delState.seen.some((t) => /删除记录没能保存|保存失败/.test(t));
+    const tombMissing = !delTarget || !delState.persistedTomb[delTarget];
+    check('删除标记写失败时如实告知且不误报',
+      !!delTarget && delState.warnHidden === false && delSawFail && !delSawOk && tombMissing,
+      delTarget
+        ? `目标 ${delTarget} · 横幅${delState.warnHidden ? '未显示' : '已显示'} · 失败提示${delSawFail ? '有' : '无'} · ` +
+          `误报成功${delSawOk ? '有' : '无'} · tombstone${tombMissing ? '确实没存进去' : '存进去了(测的不是失败路径)'}`
+        : '找不到可移出的收藏');
 
     // 前面的失败点击把那条收藏从「想玩」变走了，后面「按年份分组」「看板四列」
     // 都依赖「我的游玩」里有卡片。这里补一条回去，恢复到本段开始时的状态。
