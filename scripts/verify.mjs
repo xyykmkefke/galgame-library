@@ -2890,10 +2890,89 @@ async function main() {
         /VNDB 扩展/.test(partialState.statusText),
       partialState.statusText.slice(0, 70),
     );
+
+    // ---------- 统计页在「数据不全」时不得把半截数字当权威 ----------
+    //
+    // 时机正好：此刻 vndb-extra 被阻断，DATA 只有主库 + recent + bgm。
+    // 缺陷形态：openStats/renderStats 直接写「共 3317 部」，没有任何一句说明这是临时/偏小的；
+    // 用户会把它当成全库规模（真实约 9060 条），而且「复制摘要」会把数字带出这个页面。
+    //
+    // 注意这条要测的是 dataScope() 的**部分失败**分支，不是「仍在加载」分支：
+    // mergeExtraData() 只要有一个文件到了就会被调用，内部无条件 fullReady = true，
+    // 所以此刻 fullReady 已经是 true 且 extraPartial 为 true —— 只判 !fullReady 会漏掉整个状态。
+    const statsPartial = await cdp.evaluate(`(() => {
+      document.getElementById('statsLink').click();
+      const count = (document.getElementById('statsCount') || {}).textContent || '';
+      const note = document.getElementById('statsPartial');
+      const noteText = note ? note.textContent : '';
+      // 摘要走真实出口：把 clipboard.writeText 打桩，截获真正会离开界面的那串文字
+      let summary = null;
+      const hadClip = !!(navigator.clipboard && navigator.clipboard.writeText);
+      const origWrite = hadClip ? navigator.clipboard.writeText : null;
+      if (hadClip) {
+        navigator.clipboard.writeText = (t) => { summary = t; return Promise.resolve(); };
+      }
+      document.getElementById('statsCopy').click();
+      if (hadClip) navigator.clipboard.writeText = origWrite;
+      document.getElementById('statsClose').click();
+      return {
+        count, hasNote: !!note, noteText,
+        summaryHead: summary ? summary.split('\\n').slice(0, 2).join(' / ') : '(未截获)',
+        total: (window.GL_DATA || []).length,
+      };
+    })()`);
+    check(
+      '统计页在数据不全时标注统计范围',
+      /主库|部分扩展库/.test(statsPartial.count) && statsPartial.hasNote,
+      `${statsPartial.count} · 提示${statsPartial.hasNote ? '有' : '无'} · 全库 ${statsPartial.total} 条`,
+    );
+    // 光有标记不够：提示必须说清「少了什么、为什么会偏小」，否则只是个看不懂的括号
+    check(
+      '统计页未就绪提示说明数字偏小及原因',
+      /偏小|只含|只统计/.test(statsPartial.noteText) &&
+        /加载|重试|变/.test(statsPartial.noteText),
+      statsPartial.noteText || '(无提示元素)',
+    );
+    // 另一条出口：复制出去的摘要脱离界面，必须自带范围说明
+    check(
+      '复制摘要数据不全时自带范围说明',
+      /主库|部分扩展库/.test(statsPartial.summaryHead),
+      statsPartial.summaryHead,
+    );
     await cdp.send('Network.setBlockedURLs', { urls: [] });
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?restored=${Date.now()}` });
     await waitFor("window.__FULL_DATA_READY === true", 20000);
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    // 反方向：完整态必须不残留标注。
+    // 上面三条只守「不全时要标注」，一条 `return {complete:false,...}` 的 dataScope
+    // 能让它们全绿，而用户永远看到一句「还在加载」——这类恒亮标注比不标更糟，
+    // 它会让用户以为库一直是坏的，久而久之彻底忽略它。
+    await waitFor(
+      "(() => { const e=document.getElementById('extraStatus'); return !!(e && e.hidden); })()",
+      20000,
+    );
+    const statsFull = await cdp.evaluate(`(() => {
+      document.getElementById('statsLink').click();
+      const count = (document.getElementById('statsCount') || {}).textContent || '';
+      const hasNote = !!document.getElementById('statsPartial');
+      let summary = null;
+      const hadClip = !!(navigator.clipboard && navigator.clipboard.writeText);
+      const origWrite = hadClip ? navigator.clipboard.writeText : null;
+      if (hadClip) navigator.clipboard.writeText = (t) => { summary = t; return Promise.resolve(); };
+      document.getElementById('statsCopy').click();
+      if (hadClip) navigator.clipboard.writeText = origWrite;
+      document.getElementById('statsClose').click();
+      return {
+        count, hasNote, total: (window.GL_DATA || []).length,
+        summaryHead: summary ? summary.split('\\n')[1] : '(未截获)',
+      };
+    })()`);
+    check(
+      '统计页在数据完整时不残留范围标注',
+      !/主库|部分扩展库/.test(statsFull.count) && statsFull.hasNote === false &&
+        !/主库|部分扩展库/.test(statsFull.summaryHead || ''),
+      `${statsFull.count} · 提示${statsFull.hasNote ? '残留' : '已清'} · 全库 ${statsFull.total} 条`,
+    );
 
     await cdp.evaluate("localStorage.clear()");
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?deep=${Date.now()}#d=1126` });

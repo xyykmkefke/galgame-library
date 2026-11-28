@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.49.0">
+<meta name="version" content="2.50.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.49.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.50.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3058,6 +3058,43 @@
   // 而实际上不会再加载了 —— 那句话承诺了一件不会发生的事。
   var extraPartial = false;
   var extraLoading = false;
+
+  // 「当前 DATA 是不是完整全库」的唯一判据。
+  //
+  // 为什么要抽成一个函数：fullReady 单独一个变量**不足以**描述这件事。
+  // 部分失败时 mergeExtraData() 照样会被调用（只要有一个文件到了就合并），
+  // 而它内部无条件 `fullReady = true` —— 于是「已合并了 recent-extra 的 1329 条、
+  // 但 2MB 的 vndb-extra 5737 条没到」这种情况，fullReady 也是 true。
+  // 只判 !fullReady 的话，统计页会把「3317 条里的 3317」当成全库报出去（真实全库 9060 条级别），
+  // 这比「加载中显示 1968」更糟：它看起来是最终数字，没有任何临时感。
+  // 全库规模、覆盖率、字段统计都会因此偏小且无人察觉。
+  function dataScope() {
+    if (fullReady && !extraPartial) {
+      return { complete: true, tag: '', note: '' };
+    }
+    if (fullReady && extraPartial) {
+      return {
+        complete: false,
+        tag: '（含部分扩展库，有文件未加载）',
+        note: '部分扩展库未加载，下面的数字只统计了已加载的部分，比真实规模偏小。' +
+          '重试补齐后关掉重开即可看到完整统计。',
+      };
+    }
+    if (extraFailed) {
+      return {
+        complete: false,
+        tag: '（仅主库，扩展库加载失败）',
+        note: '扩展库加载失败，下面的数字只含主库，比真实规模偏小。' +
+          '重新加载扩展库后关掉重开即可看到完整统计。',
+      };
+    }
+    return {
+      complete: false,
+      tag: '（主库，扩展库仍在加载）',
+      note: '扩展库还在加载，下面的数字只含主库，加载完成后会变大。' +
+        '关掉重开即可看到完整统计。',
+    };
+  }
   var DATA = [];
   var byId = new Map();
 
@@ -6037,8 +6074,17 @@
         }).join('') + '</div>'
       : '<p class="hint">打开过的作品会出现在这里</p>';
 
-    $('statsCount').textContent = '共 ' + total + ' 部';
+    // 扩展库状态由 dataScope() 统一给出，不在这里再判一次 fullReady。
+    // 实测：加载中点开显示「共 1968 部」，加载完变成「共 3317 部」——
+    // 两个自相矛盾的库规模，而界面从没说明前一个是临时的。
+    // 统计页是用户最会当成「权威数字」的地方，必须标注统计范围。
+    var scope = dataScope();
+    var partial = !scope.complete;
+    $('statsCount').textContent = '共 ' + total + ' 部' + scope.tag;
     $('statsBody').innerHTML =
+      (partial
+        ? '<p class="hint" id="statsPartial">' + scope.note + '</p>'
+        : '') +
       '<div class="stats-sec">' + statCards([
         [total, '全库条目'],
         [minY <= maxY ? minY + '–' + maxY : '未知', '发售年份跨度'],
@@ -6082,7 +6128,11 @@
   }
 
   function statsSummary() {
-    var lines = ['Galgame 库 · 数据统计', '全库 ' + DATA.length + ' 部'];
+    // 复制出去的摘要必须自带范围说明：它离开界面之后没有任何上下文，
+    // 用户几个月后翻聊天记录看到「全库 1968 部」，会无法判断那是不是当时的真实规模
+    // （实际全库 3317 部，少的 1349 条是还没合并的扩展库）。
+    var head = '全库 ' + DATA.length + ' 部' + dataScope().tag;
+    var lines = ['Galgame 库 · 数据统计', head];
     var platforms = {};
     var devs = {};
     DATA.forEach(function (x) {
