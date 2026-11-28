@@ -1795,6 +1795,148 @@ async function main() {
     const undone = await cdp.evaluate("JSON.parse(localStorage.getItem('yuc_gl_mine_v1'))['" + targetId + "'].s");
     check('撤销批量操作恢复原状态', undoBtn && undone === 'doing', String(undone));
 
+    // ---------- 存储写入失败时必须如实告知（不能报成功） ----------
+    // 缺陷形态（2026-11-28 实测）：7 处调用点写成 `saveMine(); toast('已标记为…')`，
+    // 两次 toast 在同一个任务里，浏览器连一帧都来不及绘制 —— 失败提示**一次都没显示过**，
+    // 用户只看到「已加入我的游玩」，而 localStorage 里什么都没写进去。
+    //
+    // 这条断言的要求（两点缺一不可）：
+    //   1. 常驻通道（storageWarn 横幅）必须显示 —— toast 一闪而过，不能作为唯一告知手段；
+    //   2. 不允许出现任何「已…」成功文案 —— 用 MutationObserver 记录 toast 的**全部历史**，
+    //      不能只读最终文本（最终文本可能被后续其他 toast 覆盖，例如 PWA 安装提示）。
+    //
+    // 测试替身改 Storage.prototype，不能改 localStorage 实例：
+    // 给实例加自有属性会让 Object.keys(localStorage) 多出一项，污染其他键名断言。
+    await cdp.evaluate(`
+      (() => {
+        window.__toastSeen = [];
+        var el = document.getElementById('toast');
+        window.__toastMo && window.__toastMo.disconnect();
+        window.__toastMo = new MutationObserver(() => { window.__toastSeen.push(el.textContent); });
+        window.__toastMo.observe(el, { childList: true, subtree: true, characterData: true });
+        window.__origSetItem = window.__origSetItem || Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+          if (String(k).indexOf('yuc_gl_mine') >= 0) {
+            var e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e;
+          }
+          return window.__origSetItem.call(this, k, v);
+        };
+        return 'ok';
+      })()
+    `);
+    // 走真实 UI：卡片上的「加入/移出」按钮
+    const failClick = await cdp.evaluate(`
+      (() => {
+        var b = [...document.querySelectorAll('.card [data-act="toggle"]')][0];
+        if (!b) return 'no-btn';
+        b.click();
+        return 'clicked';
+      })()
+    `);
+    await sleep(900);
+    const failState = await cdp.evaluate(`
+      (() => ({
+        warnHidden: document.getElementById('storageWarn').hidden,
+        warnText: document.getElementById('storageWarn').textContent,
+        seen: window.__toastSeen || [],
+        finalToast: document.getElementById('toast').textContent
+      }))()
+    `);
+    await cdp.evaluate("Storage.prototype.setItem = window.__origSetItem; window.__toastMo.disconnect(); 'restored'");
+    const sawFailMsg = failState.seen.some((t) => /保存失败|禁止本地存储/.test(t));
+    const sawOkMsg = failState.seen.some((t) => /已加入|已移出|已标记|已恢复|已清空/.test(t));
+    check('存储写入失败时如实告知且不误报成功',
+      failClick === 'clicked' && failState.warnHidden === false && sawFailMsg && !sawOkMsg,
+      `${failClick} · 横幅${failState.warnHidden ? '未显示' : '已显示'} · 失败提示${sawFailMsg ? '有' : '无'} · ` +
+      `误报成功${sawOkMsg ? '有:' + failState.seen.filter((t) => /已/.test(t)).join('/') : '无'}`);
+
+    // 自动收回：写入恢复正常后，下一次成功保存应把横幅自己收回去。
+    //
+    // 此刻的处境：上面那次失败点击把「我的游玩」里唯一一条收藏移出了，
+    // 当前标签下已经没有可点的卡片（实测 .card [data-act=toggle] 为 0）。
+    // 所以先去全库补一张回来，再在新卡片的按钮上观察横幅是否被收回。
+    //
+    // 守卫：必须确认进入这一步时横幅**是显示着的**（即上一步的失败确实挂上了它）。
+    // 否则「点一下之后 hidden===true」在缺陷态也能通过 —— 因为横幅从来没出现过，
+    // hidden 天然为真，这条就成了恒真断言。
+    await cdp.evaluate(`
+      (() => {
+        var a = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'all');
+        if (a) a.click();
+        return 'ok';
+      })()
+    `);
+    await sleep(350);
+    const autoHide = await cdp.evaluate(`
+      (() => {
+        var el = document.getElementById('storageWarn');
+        var shownBefore = el && !el.hidden;      // 守卫前提：横幅此刻确实可见
+        var b = [...document.querySelectorAll('.card [data-act="toggle"]')][0];
+        if (!b) return 'no-btn(' + document.querySelectorAll('.card').length + ')';
+        b.click();
+        if (!shownBefore) return 'not-shown-before';   // 前提不成立就明确失败，不要空跑
+        return el.hidden ? 'hidden' : 'visible';
+      })()
+    `);
+    check('写入恢复正常后横幅自动收回', autoHide === 'hidden', String(autoHide));
+
+    // 手动关闭：横幅控件本身要能用（用户看过后能自己收起来）。
+    // 这条与上面两条是独立性质 —— 它只保证「显示态下点 × 能收起」，
+    // 不负责判断横幅是否该被挂起来（那是第一条断言的职责）。
+    const closeBtn = await cdp.evaluate(`
+      (() => {
+        var el = document.getElementById('storageWarn');
+        var btn = document.getElementById('storageWarnClose');
+        if (!btn) return 'no-btn';
+        el.hidden = false;          // 先摆成显示态，才观察得到「被关闭」
+        var wasShown = !el.hidden;
+        btn.click();
+        // 守卫：必须确认它「曾经显示过」，否则 hidden===true 是恒真的。
+        return wasShown && el.hidden ? 'closed' : (wasShown ? 'still-visible' : 'never-shown');
+      })()
+    `);
+    check('存储异常横幅的关闭按钮可用', closeBtn === 'closed', String(closeBtn));
+
+    const firstMineId = await cdp.evaluate(`
+      (() => {
+        var m = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
+        return Object.keys(m)[0] || '';
+      })()
+    `);
+    void firstMineId;
+
+    // 前面的失败点击把那条收藏从「想玩」变走了，后面「按年份分组」「看板四列」
+    // 都依赖「我的游玩」里有卡片。这里补一条回去，恢复到本段开始时的状态。
+    await cdp.evaluate(`
+      (() => {
+        var t = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'mine');
+        if (t) t.click();
+        return 'ok';
+      })()
+    `);
+    await sleep(300);
+    const mineCount = await cdp.evaluate("document.querySelectorAll('.card').length");
+    if (mineCount === 0) {
+      await cdp.evaluate(`
+        (() => {
+          var a = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'all');
+          if (a) a.click();
+          return 'ok';
+        })()
+      `);
+      await sleep(300);
+      await cdp.evaluate("document.querySelector('.card [data-act=\"toggle\"]').click()");
+      await sleep(300);
+      await cdp.evaluate(`
+        (() => {
+          var t = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'mine');
+          if (t) t.click();
+          return 'ok';
+        })()
+      `);
+      await sleep(300);
+    }
+
 
     await cdp.evaluate("document.getElementById('groupBtn').click()");
     await sleep(300);

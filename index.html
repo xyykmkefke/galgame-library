@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.41.0">
+<meta name="version" content="2.42.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -438,7 +438,27 @@
     color: #ffd479;
     font-size: 12.5px;
     line-height: 1.6;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
   }
+  .notice[hidden] { display: none; }
+  .notice-close {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 16px;
+    line-height: 1.2;
+    cursor: pointer;
+    opacity: 0.7;
+    /* 触控目标不能太小，移动端最小 44px 由行高撑起 */
+    min-width: 24px;
+    min-height: 24px;
+  }
+  .notice-close:hover { opacity: 1; }
 
   /* 离线提示条：断网时出现在头部下方，恢复后自动收起 */
   .offlinebar {
@@ -2688,7 +2708,8 @@
 
 <main class="wrap">
   <div class="notice" id="storageWarn" hidden>
-    当前浏览器禁用了本地存储，加入的游戏只在本次打开期间有效。请切到「我的游玩」用「导出备份」保存结果。
+    <span id="storageWarnText">当前浏览器禁用了本地存储，加入的游戏只在本次打开期间有效。请切到「我的游玩」用「导出备份」保存结果。</span>
+    <button class="notice-close" id="storageWarnClose" type="button" aria-label="关闭提示">×</button>
   </div>
   <div class="minebar" id="minebar" hidden>
     <div class="stat">收藏 <b id="statCount">0</b> 部</div>
@@ -2762,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.41.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.42.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3633,6 +3654,29 @@
     }
   })();
   var $ = function (id) { return document.getElementById(id); };
+  // 本地存储不可用 / 写入失败的常驻提示。
+  // 之所以要常驻：toast 只能活 1.8 秒，而「记录没存下来」这件事需要用户当下就采取行动
+  //（导出备份），一闪而过的提示等于没有提示。这个横幅在问题解决前一直挂着。
+  function showStorageBroken() {
+    var el = $('storageWarn');
+    if (!el) return;
+    var txt = $('storageWarnText');
+    // 只改文字节点，不要写 el.innerHTML —— 那会把关闭按钮一起抹掉
+    var msg = '收藏没能保存到浏览器（存储被拒绝写入），刷新或关闭页面后会丢失。请到「我的游玩」用「导出备份」先存一份。';
+    if (txt) txt.textContent = msg; else el.textContent = msg;
+    el.hidden = false;
+  }
+  function hideStorageBroken() {
+    var el = $('storageWarn');
+    if (!el) return;
+    el.hidden = true;
+  }
+  // 关闭按钮：用户看过了就可以收起来，不必一直挂着
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    if (!e.target.closest('#storageWarnClose')) return;
+    hideStorageBroken();
+  });
   var searchEl = $('search');
   var gridEl = $('grid');
   // 分批渲染：首屏最多 240 张，其余按需追加，避免一次性插入近万节点
@@ -3717,12 +3761,29 @@
     persistDeleted();
   }
 
+  // 保存用户的收藏记录。返回 false 表示没写进去，调用方必须据此决定提示文案。
+  //
+  // ⚠ 这里不能只弹一句 toast 就算处理完了（2026-11-28 实测确认）：
+  // 之前 7 个调用点都是 `saveMine(); toast('已标记为…')` 连写，两次 toast 在同一个任务里，
+  // 浏览器连一帧都没机会绘制，失败提示**一次都没显示过**，用户只看到「已加入我的游玩」。
+  // 而 localStorage 里确实什么都没写进去 —— 数据丢了、界面说成功，是最坏的一种组合。
+  // 所以修法是两件事一起做：
+  //   1. 失败状态挂到常驻通道（storageWarn 横幅），不依赖 toast 的显示窗口；
+  //   2. 所有成功提示都以返回值为前提（见各调用点的 `if (saveMine())`）。
+  var storageBroken = false;
   function saveMine(opts) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(myMap));
     } catch (e) {
-      toast('浏览器禁止本地存储，请及时导出备份');
+      storageBroken = true;
+      showStorageBroken();
+      toast('保存失败：浏览器拒绝写入本地存储');
       return false;
+    }
+    // 之前失败过、这次成功了（比如用户清理了空间）：把常驻提示收回去
+    if (storageBroken) {
+      storageBroken = false;
+      hideStorageBroken();
     }
     // 云同步写入本机时不计数，也不触发回推，避免同步循环
     if (!opts || !opts.fromSync) {
@@ -5139,19 +5200,22 @@
     state.bulk = false;
     render();
     var verb = kind === 'remove' ? '移出' : '标记为' + STATUS[kind];
-    toast('已' + verb + ' ' + ids.length + ' 部', {
-      label: '撤销',
-      fn: function () {
-        ids.forEach(function (id) { clearDeleted(id); });
-        Object.keys(snapshot).forEach(function (id) { myMap[id] = snapshot[id]; });
-        ids.forEach(function (id) {
-          if (!snapshot[id]) delete myMap[id];
-        });
-        saveMine();
-        render();
-        toast('已撤销批量操作');
-      }
-    });
+    // 保存失败时不能再报「已…」：那会让用户以为数据存住了（失败提示会被这句覆盖）
+    if (!storageBroken) {
+      toast('已' + verb + ' ' + ids.length + ' 部', {
+        label: '撤销',
+        fn: function () {
+          ids.forEach(function (id) { clearDeleted(id); });
+          Object.keys(snapshot).forEach(function (id) { myMap[id] = snapshot[id]; });
+          ids.forEach(function (id) {
+            if (!snapshot[id]) delete myMap[id];
+          });
+          saveMine();
+          render();
+          if (!storageBroken) toast('已撤销批量操作');
+        }
+      });
+    }
   }
 
   // ---- 云同步状态常驻显示 ----
@@ -6494,7 +6558,8 @@
     myMap[id].s = status;
     myMap[id].u = Date.now();
     saveMine();
-    toast('已标记为「' + STATUS[status] + '」：' + (item.cn || item.n));
+    // 失败时 saveMine 已经把常驻横幅挂上了，这里不再报「已标记为」把它盖掉
+    if (!storageBroken) toast('已标记为「' + STATUS[status] + '」：' + (item.cn || item.n));
     render();
   }
 
@@ -6508,14 +6573,14 @@
       markDeleted(id);
       saveMine();
       render();
-      toast('已移出我的游玩：' + (item.cn || item.n), {
+      if (!storageBroken) toast('已移出我的游玩：' + (item.cn || item.n), {
         label: '撤销',
         fn: function () {
           myMap[id] = prev;
           clearDeleted(id);
           saveMine();
           render();
-          toast('已恢复：' + (item.cn || item.n));
+          if (!storageBroken) toast('已恢复：' + (item.cn || item.n));
         }
       });
     } else {
@@ -6523,7 +6588,7 @@
       clearDeleted(id);
       saveMine();
       render();
-      toast('已加入我的游玩：' + (item.cn || item.n));
+      if (!storageBroken) toast('已加入我的游玩：' + (item.cn || item.n));
     }
   }
 
@@ -7393,7 +7458,7 @@
       markDeleted(id);
       saveMine();
       closeCardMenu();
-      toast('已移出我的游玩：' + (ritem ? (ritem.cn || ritem.n || '') : ''));
+      if (!storageBroken) toast('已移出我的游玩：' + (ritem ? (ritem.cn || ritem.n || '') : ''));
       render();
       return;
     }
@@ -7410,8 +7475,10 @@
       }
       saveMine();
       closeCardMenu();
-      toast((isNew ? '已加入并标记为「' : '已标记为「') + STATUS[status] + '」：' +
-        (item.cn || item.n || ''));
+      if (!storageBroken) {
+        toast((isNew ? '已加入并标记为「' : '已标记为「') + STATUS[status] + '」：' +
+          (item.cn || item.n || ''));
+      }
       render();
       return;
     }
@@ -7481,13 +7548,15 @@
     if (myMap[id]) {
       delete myMap[id];
       markDeleted(id);
-      toast('已移除：' + (item.cn || item.n));
+      // 先保存、后提示：反过来会让失败提示被「已移除」盖掉
+      saveMine();
+      if (!storageBroken) toast('已移除：' + (item.cn || item.n));
     } else {
       myMap[id] = { s: 'want', t: Date.now(), u: Date.now() };
       clearDeleted(id);
-      toast('已加入我的游玩：' + (item.cn || item.n));
+      saveMine();
+      if (!storageBroken) toast('已加入我的游玩：' + (item.cn || item.n));
     }
-    saveMine();
     render();
     renderDetail(id);
   });
@@ -8018,13 +8087,16 @@
           cur.t = Math.min(Number(cur.t) || Infinity, Number(isObj && entry.addedAt) || Infinity) || cur.t;
           merged += 1;
         });
-        saveMine();
-        render();
-        toast('导入完成：新增 ' + added + ' 条，合并 ' + merged + ' 条' +
-          (skipped ? '，跳过 ' + skipped + ' 条无效记录' : ''));
-      } catch (err) {
-        toast('导入失败：文件格式不正确');
-      }
+          saveMine();
+          render();
+          // 导入是最需要如实回报的场景：几百条记录没写进去却提示「导入完成」，后果最严重
+          if (!storageBroken) {
+            toast('导入完成：新增 ' + added + ' 条，合并 ' + merged + ' 条' +
+              (skipped ? '，跳过 ' + skipped + ' 条无效记录' : ''));
+          }
+        } catch (err) {
+          toast('导入失败：文件格式不正确');
+        }
     };
     reader.readAsText(file);
     e.target.value = '';
@@ -8042,19 +8114,19 @@
     ids.forEach(function (id) { myDeleted[id] = ts; });
     myMap = {};
     persistDeleted();
-    saveMine();
-    render();
-    toast('已清空我的游玩（' + ids.length + ' 条）', {
-      label: '撤销',
-      fn: function () {
-        ids.forEach(clearDeleted);
-        myMap = snapshot;
-        persistDeleted();
-        saveMine();
-        render();
-        toast('已恢复 ' + ids.length + ' 部');
-      }
-    });
+      saveMine();
+      render();
+      if (!storageBroken) toast('已清空我的游玩（' + ids.length + ' 条）', {
+        label: '撤销',
+        fn: function () {
+          ids.forEach(clearDeleted);
+          myMap = snapshot;
+          persistDeleted();
+          saveMine();
+          render();
+          if (!storageBroken) toast('已恢复 ' + ids.length + ' 部');
+        }
+      });
   });
 
   // ---- 云同步：GitHub Gist（Token 仅保存在本机） ----

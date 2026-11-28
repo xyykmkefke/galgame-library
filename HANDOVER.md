@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.41.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **246/246**，`check-data` **0 问题**）
+- 当前状态：**v2.42.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **249/249**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -21,8 +21,9 @@
 | v2.40.0 | 制作人员字段词典化，扩展库体积 -77.7KB gzip | 见第 74 章 |
 | v2.40.1 | 修 `--popularity-only` 词典塌缩 + 制作人员深链冷启动丢失 | 见第 75 章 |
 | v2.41.0 | 开发商/系列深链冷启动同样丢失（同一根因的另两处） | 见第 76 章 |
+| v2.42.0 | 收藏保存失败时误报成功（数据丢了、界面说存住了） | 见第 77 章 |
 
-**当前验收基线：`check-data` 0 问题、`verify` 246/246。** 改动前先跑这两个确认基线。
+**当前验收基线：`check-data` 0 问题、`verify` 249/249。** 改动前先跑这两个确认基线。
 
 **已知遗留（第 69.9 节详述）：**
 - 含汉字的 48 个社名仍无拉丁别名（读音不唯一，需人工整理）
@@ -2345,3 +2346,125 @@ FAIL  过期深链的脏值被丢弃且不留空结果  → 未丢弃: dv/se/sv
 - 同类风险还剩一处没验：`map.f`（平台）用的 `platforms` 也是遍历 `DATA` 建的，
   但平台名是有限枚举（扩展库与主库共用同一套），扩展库不会引入主库没有的平台值，
   所以不构成缺陷。**这条结论来自「平台是封闭枚举」这一前提，若将来引入新平台名需重新评估。**
+
+## 77. 收藏保存失败却报「已加入」：数据丢了，界面说存住了（v2.42.0，2026-11-28）
+
+### 77.1 问题
+
+`saveMine()` 写入 `localStorage` 失败时，原实现是：
+
+```js
+function saveMine(opts) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(myMap));
+  } catch (e) {
+    toast('浏览器禁止本地存储，请及时导出备份');
+    return false;          // ← 返回值有，但没人看
+  }
+  ...
+}
+```
+
+而 7 个调用点全都是这个形状：
+
+```js
+saveMine();
+toast('已加入我的游玩：' + name);
+```
+
+两次 `toast` 在**同一个任务**里执行，浏览器连一帧都没机会绘制。
+`toast()` 又是单例元素，后一次直接改写前一次的 DOM。结果是：
+
+- 失败提示**一次都没显示过**（不是「被覆盖后用户看不清」，是压根没画出来）；
+- `localStorage` 里确实什么都没写进去；
+- 用户看到的是「已加入我的游玩」，并在下次打开时发现记录没了。
+
+这是最坏的一种组合：**数据丢失 + 界面明确说成功**。
+
+### 77.2 实测证据（修复前）
+
+用真实浏览器把 `Storage.prototype.setItem` 改成对收藏键抛 `QuotaExceededError`，
+再点卡片上的「＋ 加入」，用 `MutationObserver` 记录 toast 的**全部历史**：
+
+```
+点击结果: mine-btn
+toast 历史: ["已加入我的游玩：妹控计划"]
+toast 最终: "已加入我的游玩：妹控计划"
+存储内容: null
+曾出现失败提示: false
+曾出现成功提示: true
+```
+
+`toast 历史` 只有一条，证实失败提示从未进入 DOM，而不是「显示后被覆盖」。
+
+### 77.3 修法：两条通道 + 所有成功提示加前提
+
+1. **常驻通道。** 失败时挂上 `#storageWarn` 横幅。toast 只活 1.8 秒，
+   而「记录没存下来」需要用户当下就去导出备份 —— 一闪而过的提示等于没有提示。
+2. **成功提示以保存成功为前提。** 所有 `toast('已…')` 前面加 `if (!storageBroken)`。
+3. **顺序也要对。** 详情页那处原来是 `toast('已移除')` 在前、`saveMine()` 在后，
+   同样会覆盖失败提示，改成先存后提示。
+4. 横幅加关闭按钮，并让「下次成功写入」自动收回 —— 问题解决了不能一直挂着吓人。
+
+`saveMine` 内部：
+
+```js
+var storageBroken = false;
+function saveMine(opts) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(myMap));
+  } catch (e) {
+    storageBroken = true;
+    showStorageBroken();
+    toast('保存失败：浏览器拒绝写入本地存储');
+    return false;
+  }
+  if (storageBroken) { storageBroken = false; hideStorageBroken(); }   // 复原
+  ...
+}
+```
+
+### 77.4 反向验证
+
+撤掉修复（失败只 toast、成功提示无条件），三条断言的表现：
+
+```
+FAIL  存储写入失败时如实告知且不误报成功  → clicked · 横幅未显示 · 失败提示无 · 误报成功有:已移出我的游玩：妹控计划撤销
+FAIL  写入恢复正常后横幅自动收回  → not-shown-before
+PASS  存储异常横幅的关闭按钮可用  → closed
+通过 247/249
+```
+
+第一条的 detail 就是缺陷的精确指纹：**横幅未显示 · 失败提示无 · 误报成功有**。
+
+第三条在缺陷态仍 PASS 是正确的 —— 它测的是「显示态下点 × 能收起」，
+与「横幅该不该被挂起来」是两个独立性质。
+
+### 77.5 一个差点又踩的坑
+
+「自动收回」断言的第一版写成了：
+
+```js
+el.hidden = false;      // 手动摆成显示
+b.click();
+return el.hidden;       // true 就算通过
+```
+
+在缺陷态下这条**照样 PASS** —— 因为横幅从来没被 `showStorageBroken()` 挂起来过，
+`hidden` 恒为真，是个恒真断言。修法是加守卫：进入断言时先记 `shownBefore = !el.hidden`，
+前提不成立就明确返回 `not-shown-before` 判 FAIL。
+
+**这是「恒真断言最爱藏在恢复/清理类步骤里」的又一次复现。**
+凡是「A 之后 B 应该变成某状态」的断言，都要先确认 A 真的发生过。
+
+### 77.6 验收
+
+`check-data` 0 问题（9 条 PASS）、`verify` **249/249**（新增 3 条，已全部反向验证）。
+版本 2.42.0，SW `yuc-gl-shell-v61`。
+
+### 77.7 遗留
+
+- `persistDeleted()` / `persistSettings()` / `savePrefs()` 等其它写入点仍然只 `catch` 后忽略，
+  失败时不告知。它们丢的是删除标记、偏好这类可再生数据，危害远低于收藏记录，
+  但严格说也不该静默。**留作后续，别忘。**
+- 云同步失败已有独立状态显示（`syncState`），本次未动。
