@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.46.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **260/260**，`check-data` **0 问题**）
+- 当前状态：**v2.47.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **262/262**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → **v2.46.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
+- 本次会话：v2.19.0 → **v2.47.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
 
 ## 0. 接手先读这里（2026-11-26 收尾状态）
 
@@ -26,6 +26,7 @@
 | v2.44.0 | 备份不带删除标记 → 导出再导入，删掉的会自己回来 | 见第 79 章 |
 | v2.45.0 | 视图保存失败被「已保存」盖掉，超上限静默挤掉旧视图 | 见第 80 章 |
 | v2.46.0 | 幽灵记录：收藏里有、库里查不到，四处口径各说各话 | 见第 81 章 |
+| v2.47.0 | 封面缓存回收按 URL 正则猜类型，把三个数据源和 PWA 图标当封面删了 | 见第 82 章 |
 
 **当前验收基线：`check-data` 0 问题、`verify` 260/260。** 改动前先跑这两个确认基线。
 
@@ -2977,3 +2978,177 @@ Object.keys(snapshot).forEach(function (id) {
 
 `check-data` 0 问题、`verify` **260/260**（新增 5 条，四方向分别反向验证）。
 版本 2.46.0，SW `yuc-gl-shell-v65`。
+
+## 82. 封面缓存回收把数据文件当封面删了（v2.47.0，2026-11-28）
+
+### 82.1 问题从哪来
+
+前一轮（第 81 章）清完了「数据类静默失败」，这一轮换到 **PWA 缓存**这条线。
+选它的理由：代码改对了、线上也发布了，用户却可能永远看不到新版；反过来，
+缓存层出的问题用户也永远不知道是自己「多翻了几页」导致的 —— 因果链长，最难归因。
+
+`sw.js` 里有一个封面缓存回收函数 `trimImageCache`，用来把封面数量压到 `IMG_LIMIT = 500`。
+它判断「这条缓存是不是封面」的方式是：
+
+```js
+req.destination === 'image' || /bgmimg|anibt|vndb|ymgal/.test(req.url)
+```
+
+前半段和后半段都有问题。而后半段那个正则，**直接把应用自己的数据文件算成了封面**。
+
+### 82.2 `req.destination` 在缓存读回来时恒为空
+
+Cache API 的 `cache.keys()` 返回的 `Request` 是从缓存条目**重建**的，
+只保留 url / method / headers / mode，**不保留 destination**。
+实测（Edge 无头，2026-11-28）：塞入一张 `no-cors` 图片、再塞一个同源脚本，
+读回来的两个 key `destination` 都是空字符串 `''`。
+
+所以 `req.destination === 'image'` 这个条件是**永远为假**的。
+真正生效的只有后面那个正则 —— 也就是说，这个函数的行为完全由一行正则决定，
+而那一行是错的。
+
+### 82.3 正则命中了三个数据源
+
+`/bgmimg|anibt|vndb|ymgal/` 的设计意图是匹配封面 CDN。但应用自己的文件里：
+
+| 文件 | 大小 | 是否命中 | 命中原因 |
+|---|---|---|---|
+| `data/vndb.js` | 142 KB | **是** | 文件名含 `vndb` |
+| `data/ymgal.js` | 251 KB | **是** | 文件名含 `ymgal` |
+| `data/vndb-extra.js` | 2.0 MB | **是** | 文件名含 `vndb` |
+
+而这正好是第二数据源（VNDB）、第三数据源（月幕）、扩展库（VNDB 日系）三个文件的全部内容。
+
+**更糟的是删除顺序。** `trimImageCache` 按 `imgs.slice(0, imgs.length - IMG_LIMIT)` 从头删，
+而这三个文件是 `install` 阶段 `cache.addAll(DATA)` **最先**写进缓存的 ——
+也就是说它们是**第一批**被删的，用户只要多翻几十页就会触发。
+
+实测（620 张封面，主库 1966 部，正常浏览量）：
+
+```
+缓存条目 636 → 删除 126 条
+误删 6 条：icons/icon-180.png, icons/icon-192.png, icons/icon-512.png,
+          data/vndb.js, data/ymgal.js, data/vndb-extra.js
+```
+
+注意三个 **PWA 图标也在里面** —— 它们的 `destination` 本来就是 `image`
+（但缓存读回来是空），而它们同样在 install 最前面写入，按顺序被先删。
+桌面图标变白块，用户会以为是系统问题。
+
+### 82.4 用户会看到什么
+
+| 现象 | 用户的理解 |
+|---|---|
+| 断网后只剩主库，详情页缺 VNDB / 月幕信息 | 「这个 App 离线不好用」 |
+| 桌面图标变成白块 | 「手机有问题」或「这网站做得很糙」 |
+| 联网时一切正常（`cache miss` 就走网络） | 所以**在线根本复现不了** |
+
+最后一行是关键：这个问题只在**离线**暴露，而开发者验离线通常是「装好就断网测一次」，
+那时缓存刚建、还没触发回收。要复现得先在线翻几百页、再断网 —— 几乎没人这么测。
+
+### 82.5 修法：反过来标「哪些不能删」
+
+不要试图判断「这是不是封面」（缓存里拿不到类型信息，只能靠 URL 猜，而 URL 猜必然会误伤）。
+改成用**白名单排除**：壳与数据文件是已知的、可枚举的，直接列出来。
+
+```js
+function shellUrls() {
+  var base = self.registration.scope;
+  var set = {};
+  CORE.concat(DATA).forEach(function (rel) {
+    try {
+      var u = new URL(rel, base);
+      set[u.origin + u.pathname] = 1;   // 忽略查询串，见下
+    } catch (e) {}
+  });
+  return set;
+}
+
+function trimImageCache(cache) {
+  var keep = shellUrls();
+  return cache.keys().then(function (keys) {
+    var imgs = keys.filter(function (req) {
+      var u;
+      try { u = new URL(req.url); } catch (e) { return true; }
+      return !keep[u.origin + u.pathname];
+    });
+    ...
+  });
+}
+```
+
+三个细节，都是踩出来的：
+
+1. **用 `registration.scope` 解析绝对 URL，不要「剥掉第一段路径」猜部署子路径。**
+   线上是 `/galgame-library/index.html`，本地是 `/index.html`，同一段剥路径的代码
+   在本地会把 `index.html` 整个剥掉，白名单直接失效。用 scope 两边都正确。
+2. **比较时忽略查询串。** 页面用 `loadScriptOnce('data/vndb-extra.js?v=' + Date.now())`
+   做强制刷新，带 `?v=` 的条目 url 与预缓存的裸 url 不同。只比 `href` 的话，
+   实测这些条目仍会被当封面删掉 —— 修完第一版还剩这个洞。
+3. **删掉死变量 `SHELL`。** 它是 `CORE` + `DATA` 的重复定义，全文只出现一次（就是定义那行），
+   从未被使用。留着它等于给「清单」留了第二个副本，改清单时很容易只改一处。
+
+### 82.6 顺带删掉的死代码
+
+`SHELL` 定义里有 16 项，`CORE`（7 项）+ `DATA`（9 项）= 16 项，内容完全相同。
+它从未被任何代码引用，实际生效的是 `CORE` / `DATA` 两个数组。已删除。
+
+### 82.7 断言怎么写的（以及为什么这么写）
+
+关键点：**执行真实的 `trimImageCache`，不在测试里重写判断逻辑。**
+如果测试自己实现一遍「什么算封面」，那测的是测试的实现，产品改错了也照样绿。
+
+做法是 `fetch('sw.js')` 取源码，注入 `<script>` 执行，把函数与 `CORE` / `DATA` / `IMG_LIMIT`
+一起取出来：
+
+```js
+const el = document.createElement('script');
+el.textContent = 'window.__swProbe = (function (self) {' + src +
+  '\nreturn { trimImageCache: trimImageCache, CORE: CORE, DATA: DATA, IMG_LIMIT: IMG_LIMIT };\n})(window.__swSandbox);';
+```
+
+这里撞到两个坑：
+
+- **`self.registration` 在页面上下文不存在。** 这段代码跑在页面里，`self` 是 `window`，
+  没有 `registration`。scope 改用 `navigator.serviceWorker.controller.scriptURL` 推导。
+- **CSP 禁止 `new Function`。** 站点 CSP 是 `script-src 'self' 'unsafe-inline'`，没有 `unsafe-eval`，
+  第一次写 `new Function(src)` 直接 `EvalError`。改用 `<script>` 标签注入即可
+  （`unsafe-inline` 是允许的）—— 而且这条路径没有绕过任何安全策略。
+
+两条断言，**守两个相反的方向**：
+
+| 断言 | 守什么 | 缺陷态表现 |
+|---|---|---|
+| 封面缓存回收不误删应用自身文件 | 没多删 | 删除 126 条 · 误删 6 条 |
+| 封面缓存回收仍把封面压到上限内 | 没少删 | 剩余封面 494（上限 500） |
+
+第二条不是凑数：如果白名单写得过宽（比如把封面也包含进去），缓存会无限增长，
+而第一条照样通过。只有两条都有，才排除了两个方向的错误。
+
+期望值取 `sw.js` 里的 `IMG_LIMIT` 而不是在测试里写死 500 —— 上限一改就静默失配。
+
+### 82.8 反向验证
+
+把 `trimImageCache` 的过滤条件换回原正则实现，重跑：
+
+```
+FAIL  封面缓存回收不误删应用自身文件  → 16 个壳/数据文件 · 删除 126 条 · 误删 6 条：
+        /data/vndb.js, /data/ymgal.js, /data/vndb-extra.js, /data/vndb.js?v=...
+FAIL  封面缓存回收仍把封面压到上限内  → 剩余封面 494（上限 500）
+通过 260/262
+```
+
+恢复修复后 `通过 262/262`：
+
+```
+PASS  封面缓存回收不误删应用自身文件  → 16 个壳/数据文件 · 删除 120 条 · 误删 0 条
+PASS  封面缓存回收仍把封面压到上限内  → 剩余封面 500（上限 500）
+```
+
+注意「删除 126」和「删除 120」的差：缺陷态多删的 6 条正是被误认成封面的文件，
+它们占掉了 6 个本该留给封面的名额。
+
+### 82.9 验收
+
+`check-data` 0 问题、`verify` **262/262**（新增 2 条，双向反向验证）。
+版本 2.47.0，SW `yuc-gl-shell-v66`。

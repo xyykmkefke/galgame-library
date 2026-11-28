@@ -2685,6 +2685,90 @@ async function main() {
     const cachedData = await cdp.evaluate(
       `caches.open(${JSON.stringify(swCache)}).then((c)=>Promise.all([c.match('./data/galgames.js'), c.match('./data/vndb.js'), c.match('./data/ymgal.js'), c.match('./data/vndb-extra.js'), c.match('./data/bgm-extra.js')])).then((a)=>a.every(Boolean))`);
     check('Service Worker 已缓存全库数据、第二 / 第三数据源与两类扩展', cachedData === true);
+
+    // 封面缓存回收不能吃掉应用自己的文件。
+    //
+    // 缺陷形态：原来用 /bgmimg|anibt|vndb|ymgal/ 判断「这条是不是封面」，
+    // 而 data/vndb.js、data/ymgal.js、data/vndb-extra.js 全部命中该正则。
+    // 它们又是 install 阶段最先写进缓存的，裁剪按插入顺序从头删 → 最先被删。
+    // 实测 620 张封面后误删 6 条（三个数据文件 + 三个 PWA 图标），
+    // 断网后 vndb / 月幕 / VNDB 扩展三个数据源全挂，只剩主库。
+    //
+    // 这里直接执行真实的 trimImageCache（从 sw.js 源码取出），喂入真实形态的 key 列表，
+    // 而不是在测试里重写一遍判断逻辑 —— 重写的话测的是测试自己的实现，不是产品代码。
+    const trimResult = await cdp.evaluate(`(async () => {
+      const src = await fetch('sw.js').then((r) => r.text());
+
+      // 这段代码跑在页面上下文：self 是 window，没有 self.registration。
+      // scope 由 controller 的 scriptURL 推导（sw.js 在站点根，scope 即其所在目录）。
+      const swUrl = navigator.serviceWorker.controller
+        ? navigator.serviceWorker.controller.scriptURL
+        : location.origin + '/sw.js';
+      const scope = swUrl.replace(/[^/]*$/, '');
+
+      // 站点 CSP 是 script-src 'self' 'unsafe-inline'，不含 unsafe-eval：
+      // new Function / eval 都会被拒（实测 EvalError），所以改用 <script> 标签注入源码。
+      // 好处是这条断言走的是页面允许的执行路径，没有绕过任何安全策略。
+      window.__swSandbox = {
+        addEventListener() {}, skipWaiting() {}, clients: { claim() {} },
+        location: { origin: location.origin }, registration: { scope },
+      };
+      const el = document.createElement('script');
+      el.textContent =
+        'window.__swProbe = (function (self) {' + src +
+        '\\nreturn { trimImageCache: trimImageCache, CORE: CORE, DATA: DATA, IMG_LIMIT: IMG_LIMIT };\\n})(window.__swSandbox);';
+      document.head.appendChild(el);
+      el.remove();
+
+      const probe = window.__swProbe;
+      delete window.__swSandbox;
+      if (!probe || !probe.trimImageCache) {
+        return { error: '未能从 sw.js 源码取出 trimImageCache' };
+      }
+
+      // 构造真实缓存形态：壳与数据（install 先写）→ 620 张封面（后写）
+      const shell = probe.CORE.concat(probe.DATA).map((rel) => new URL(rel, scope).href);
+      const keys = shell.map((u) => ({ url: u }));
+      // 运行时还会用 ?v= 强制刷新，这些条目同样不能被当封面删
+      probe.DATA.forEach((rel) => keys.push({ url: new URL(rel, scope).href + '?v=' + Date.now() }));
+      const COVERS = 620;
+      for (let i = 0; i < COVERS; i++) {
+        keys.push({ url: 'https://bgmimg.anibt.net/cover/' + i + '.jpg' });
+      }
+
+      const deleted = [];
+      const cache = {
+        keys: () => Promise.resolve(keys),
+        delete: (req) => { deleted.push(req.url); return Promise.resolve(true); },
+      };
+      await probe.trimImageCache(cache);
+
+      const shellPaths = new Set(shell);
+      const lostShell = deleted.filter((u) => shellPaths.has(u.split('?')[0]));
+      return {
+        deleted: deleted.length,
+        lostShell: lostShell,
+        coversLeft: COVERS - deleted.length,
+        shellCount: shell.length,
+        keepsLimit: probe.IMG_LIMIT,
+      };
+    })()`);
+    check(
+      '封面缓存回收不误删应用自身文件',
+      !trimResult.error && trimResult.shellCount > 0 && trimResult.lostShell.length === 0,
+      trimResult.error || (`${trimResult.shellCount} 个壳/数据文件 · 删除 ${trimResult.deleted} 条 · ` +
+        `误删 ${trimResult.lostShell.length} 条` +
+        (trimResult.lostShell.length ? '：' + trimResult.lostShell.slice(0, 4).join(', ') : '')),
+    );
+    // 上一条只守「没多删」。这条守「也没少删」—— 白名单若写得过宽（把封面也算白名单），
+    // 缓存会无限增长，而上面那条照样通过。两个方向都要有断言。
+    // 期望值取 sw.js 里的 IMG_LIMIT，而不是在测试里再写一个 500 —— 否则上限一改就静默失配。
+    check(
+      '封面缓存回收仍把封面压到上限内',
+      !trimResult.error && trimResult.coversLeft === trimResult.keepsLimit,
+      trimResult.error || `剩余封面 ${trimResult.coversLeft}（上限 ${trimResult.keepsLimit}）`,
+    );
+
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', {
       offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
