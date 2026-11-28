@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.47.0">
+<meta name="version" content="2.48.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.47.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.48.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3053,6 +3053,10 @@
   var pendingFilters = null;
   // 扩展库加载失败标记：失败时 fullReady 保持 false，才能提示「仅主库」并允许重试
   var extraFailed = false;
+  // 已合并进 DATA、但还有文件没到。空态判断必须区分这个状态：
+  // 否则用户搜索时看到「扩展库还在加载，完成后会自动刷新结果」，
+  // 而实际上不会再加载了 —— 那句话承诺了一件不会发生的事。
+  var extraPartial = false;
   var extraLoading = false;
   var DATA = [];
   var byId = new Map();
@@ -3284,30 +3288,68 @@
       status.textContent = '扩展库加载中…';
     }
     var start = function () {
-      Promise.all([
-        loadScriptOnce('data/vndb-extra.js'),
-        loadScriptOnce('data/bgm-extra.js'),
-        loadScriptOnce('data/recent-extra.js'),
-      ]).then(function () {
-        extraFailed = false;
-        mergeExtraData();
-        // 合并后如果正处在「扩展库未就绪」的空结果状态，重绘一次让真实结果补上
-        if (state.q.trim()) render();
-      }).catch(function () {
-        // 加载失败：保留主库可用，但明确告知「只加载了主库」并给出重试入口
-        extraFailed = true;
-        // 对验收脚本 / 深链标记为已就绪，避免它们在扩展库永久失败时一直等待
-        window.__FULL_DATA_READY = true;
-        if (status) {
-          status.hidden = false;
-          status.textContent = '扩展库加载失败，当前仅显示主库 · 点此重试';
-          status.style.cursor = 'pointer';
-          status.onclick = function () {
-            status.onclick = null;
-            status.style.cursor = '';
-            retryExtraData();
-          };
+      // 三个文件独立加载，谁成功就合并谁。
+      //
+      // 原来用 Promise.all：它是全或无的 —— 只要其中一个失败就进 catch，
+      // 而 catch 里从不调用 mergeExtraData()，于是**已经下载成功的另外两个被白白丢掉**。
+      // 实测规模差异很大：vndb-extra.js 2.0MB/5737 条、recent-extra.js 321KB/1329 条、
+      // bgm-extra.js 8KB/20 条。弱网下最可能失败的正是那个 2MB 的，
+      // 而它一失败，用户会看到「扩展库加载失败，当前仅显示主库」——
+      // 其实 1329 条新作索引早就下到他浏览器里了，只是没被合并。
+      //
+      // mergeExtraData 本身对缺失的文件是安全的（每个都 `|| []` 兜底），
+      // 所以这里只需要「等到都结束，然后合并已到的部分」，不需要全或无。
+      var files = [
+        { src: 'data/vndb-extra.js', label: 'VNDB 扩展' },
+        { src: 'data/bgm-extra.js', label: 'Bangumi 关联' },
+        { src: 'data/recent-extra.js', label: '新作索引' },
+      ];
+      var failed = [];
+      var settled = files.map(function (f) {
+        return loadScriptOnce(f.src).catch(function () {
+          failed.push(f.label);
+        });
+      });
+      Promise.all(settled).then(function () {
+        // 全部三个都失败才算彻底失败；只要有一个到了，就应该把它合并进来
+        var anyLoaded = files.length > failed.length;
+        if (anyLoaded) {
+          extraFailed = false;
+          extraPartial = failed.length > 0;
+          // mergeExtraData 内部会把 status 隐藏到 true，所以状态条必须在它之后设置
+          mergeExtraData();
+        } else {
+          extraFailed = true;
+          extraPartial = false;
+          window.__FULL_DATA_READY = true;
         }
+        if (status) {
+          if (!failed.length) {
+            // 全部成功：mergeExtraData 已收起状态条，这里不用再动
+          } else if (anyLoaded) {
+            // 部分成功：必须说清楚「哪几个没到」，否则用户会以为搜的是全库
+            status.hidden = false;
+            status.textContent = '部分扩展库未加载（' + failed.join('、') + '），已按已加载部分显示 · 点此重试';
+            status.style.cursor = 'pointer';
+            status.onclick = function () {
+              status.onclick = null;
+              status.style.cursor = '';
+              retryExtraData();
+            };
+          } else {
+            status.hidden = false;
+            status.textContent = '扩展库加载失败，当前仅显示主库 · 点此重试';
+            status.style.cursor = 'pointer';
+            status.onclick = function () {
+              status.onclick = null;
+              status.style.cursor = '';
+              retryExtraData();
+            };
+          }
+        }
+        // 无条件重绘：合并结果必须反映到列表上。
+        // 原来只在 state.q.trim() 时才 render()，但「扩展库到了」影响的是全库条数、
+        // 年份导航与筛选可选值，不只是搜索结果。
         render();
       });
     };
@@ -3326,20 +3368,57 @@
       status.onclick = null;
       status.style.cursor = '';
     }
-    var finish = function () {
+    // 与 scheduleExtraData 同一个道理：不能全或无。
+    // 原来的 catch(finish) 还有第二个问题 —— finish 会重新调用 scheduleExtraData()，
+    // 等于再发起一整轮三个文件的请求。那个 2MB 的文件如果一直失败，
+    // 用户每点一次重试就重下一遍已经到手的 321KB，而且永远显示「加载中」。
+    var files = [
+      { src: 'data/vndb-extra.js', label: 'VNDB 扩展' },
+      { src: 'data/bgm-extra.js', label: 'Bangumi 关联' },
+      { src: 'data/recent-extra.js', label: '新作索引' },
+    ];
+    var failed = [];
+    // 已经成功加载过的文件不再重下：它们的 window.GL_* 已经在内存里，
+    // 重复请求只是白花流量（vndb-extra 是 2MB）。只对还没到手的加重试参数绕缓存。
+    var settled = files.map(function (f) {
+      var ready = (f.src.indexOf('vndb-extra') >= 0 && window.GL_VNDB_EXTRA) ||
+                  (f.src.indexOf('bgm-extra') >= 0 && window.GL_BGM_EXTRA) ||
+                  (f.src.indexOf('recent-extra') >= 0 && window.GL_RECENT);
+      if (ready) return Promise.resolve();
+      return loadScriptOnce(f.src + '?v=' + Date.now()).catch(function () {
+        failed.push(f.label);
+      });
+    });
+    Promise.all(settled).then(function () {
       extraLoading = false;
-      scheduleExtraData();
-    };
-    Promise.all([
-      loadScriptOnce('data/vndb-extra.js?v=' + Date.now()),
-      loadScriptOnce('data/bgm-extra.js?v=' + Date.now()),
-      loadScriptOnce('data/recent-extra.js?v=' + Date.now()),
-    ]).then(function () {
-      extraLoading = false;
-      extraFailed = false;
-      mergeExtraData();
-      if (state.q.trim()) render();
-    }).catch(finish);
+      var anyLoaded = files.length > failed.length;
+      if (anyLoaded) {
+        extraFailed = false;
+        extraPartial = failed.length > 0;
+        mergeExtraData();
+      } else {
+        extraFailed = true;
+        extraPartial = false;
+        window.__FULL_DATA_READY = true;
+      }
+      if (status) {
+        if (!failed.length) {
+          // 全部到齐：mergeExtraData 已收起状态条
+        } else {
+          status.hidden = false;
+          status.textContent = (anyLoaded ? '部分扩展库未加载（' : '扩展库加载失败（') +
+            failed.join('、') + '）' + (anyLoaded ? '，已按已加载部分显示' : '，当前仅显示主库') +
+            ' · 点此重试';
+          status.style.cursor = 'pointer';
+          status.onclick = function () {
+            status.onclick = null;
+            status.style.cursor = '';
+            retryExtraData();
+          };
+        }
+      }
+      render();
+    });
   }
   var STORAGE_KEY = 'yuc_gl_mine_v1';
   var PREFS_KEY = 'yuc_gl_prefs_v1';
@@ -5517,10 +5596,19 @@
         emptyEl.innerHTML = '<b>这个范围内没有未收藏的游戏</b>关闭「隐藏已收藏」即可看到已收藏条目' +
           '<br><button class="btn" id="resetFilters" type="button">清除筛选条件</button>';
       } else if (!fullReady) {
-        // 扩展库尚未就绪：此刻的空结果不一定是真没有，不能报「没找到」误导用户
+        // 扩展库尚未就绪：此刻的空结果不一定是真没有，不能报「没找到」误导用户。
+        // 三种状态要分开说，因为对用户意味着三种不同的下一步：
+        //   全部失败 → 只搜了主库，重试
+        //   部分成功 → 已合并了一部分，缺的那几个不会再自己到，重试
+        //   仍在加载 → 等一会儿就会自己出来，不用点
         if (extraFailed) {
           emptyEl.innerHTML = '<b>扩展库加载失败</b>当前只搜了主库，还有大量作品没加载进来' +
             '<br><button class="btn" id="retryExtra" type="button">重新加载扩展库</button>';
+        } else if (extraPartial) {
+          // 原来这里和「还在加载」共用一句话：「完成后会自动刷新结果」。
+          // 但部分失败的场景下不会再有任何加载发生，那句话是在承诺一件不会发生的事。
+          emptyEl.innerHTML = '<b>部分扩展库未加载</b>已按已加载的部分搜索，缺失的作品不会自己出现' +
+            '<br><button class="btn" id="retryExtra" type="button">加载缺失的部分</button>';
         } else {
           emptyEl.innerHTML = '<b>扩展库还在加载</b>还有一大批作品正在下载，完成后会自动刷新结果' +
             '<br><button class="btn" id="retryExtra" type="button">立即重试加载</button>';

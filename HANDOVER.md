@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.47.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **262/262**，`check-data` **0 问题**）
+- 当前状态：**v2.48.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **264/264**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → **v2.47.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
+- 本次会话：v2.19.0 → **v2.48.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
 
 ## 0. 接手先读这里（2026-11-26 收尾状态）
 
@@ -27,6 +27,7 @@
 | v2.45.0 | 视图保存失败被「已保存」盖掉，超上限静默挤掉旧视图 | 见第 80 章 |
 | v2.46.0 | 幽灵记录：收藏里有、库里查不到，四处口径各说各话 | 见第 81 章 |
 | v2.47.0 | 封面缓存回收按 URL 正则猜类型，把三个数据源和 PWA 图标当封面删了 | 见第 82 章 |
+| v2.48.0 | 扩展库全或无加载：2MB 那个失败，已到手的 1329 条也被丢弃 | 见第 83 章 |
 
 **当前验收基线：`check-data` 0 问题、`verify` 260/260。** 改动前先跑这两个确认基线。
 
@@ -402,7 +403,11 @@ PWA / 移动端：
 >
 > **子代理授权**：任务中可以分派适量子代理以加快进度，不必再问（可独立并行的调研、代码审计、多文件排查、批量验证、独立模块实现）。数量 **2–3 个**为宜，不为凑数硬拆；**禁止多个子代理同时修改同一文件**（会互相覆盖），同一文件的改动由主线串行完成。分工上子代理只做「读取 / 分析 / 出结论」或各自负责互不重叠的文件，主线负责整合、验证、提交与最终汇报。交给子代理的提示必须自包含（目标、已知事实、已排除项、具体文件路径或行号、验收标准），不要写「根据你的发现去修复」这类放权式指令。子代理产出只回到主线，**必须核验真实文件改动后**才对用户汇报。完整准则见工作区 `../.workbuddy/memory/MEMORY.md`。
 >
-> **上下文经济（2026-11-26 明确）**：本项目的 `verify` 单次 **约 145 秒**、输出 **239 行**，`check-data` 只要 **1 秒**。**改数据只跑 `check-data`，收尾时才跑一次 `verify`**——曾因每改一次数据就重跑全量验收，把会话上下文撑到约 8MB（380 万 token），触发多次连接异常与重试。同理：grep 只取需要的行数、不整段打印大 JSON、临时诊断脚本在脚本内算好结论只输出结论。**当前状态直接看第 0 节**，不要从第 1 章顺序读到底。
+> **上下文经济（2026-11-26 明确，2026-11-28 修正耗时）**：本项目的 `verify` 单次 **约 5.5 分钟**（v2.48.0 实测；v1.x 时是 145 秒，随断言数增长已近 5 倍）、输出 **约 270 行**，`check-data` 只要 **1 秒**。**改数据只跑 `check-data`，收尾时才跑一次 `verify`**——曾因每改一次数据就重跑全量验收，把会话上下文撑到约 8MB（380 万 token），触发多次连接异常与重试。同理：grep 只取需要的行数、不整段打印大 JSON、临时诊断脚本在脚本内算好结论只输出结论。**当前状态直接看第 0 节**，不要从第 1 章顺序读到底。
+>
+> **⚠️ 跑验收不要套 `timeout` 太小的值。** 2026-11-28 用 `timeout 520 node scripts/verify.mjs` 跑到 194 条被直接杀掉，
+> 日志停在半截、退出码 127 —— 看起来像「断言失败」其实是超时。判断方法：`grep -c '^PASS'` 有数、`grep -c '^FAIL'` 为 0
+> 且总数不足，就是超时。要么不套 `timeout`，要么给到 600 秒以上。
 
 
 ## 11. 实际落实与计划差异（v1.1.0）
@@ -1039,7 +1044,7 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 ### 43.2 发布流程
 
 1. 按 43.1 表格同步全部版本号与元数据。
-2. `npm run check-data` 与 `npm run verify` 全绿；`verify` 会在项目内写 `.verify` 截图目录。
+2. `npm run check-data`（约 1 秒）与 `npm run verify`（**约 5.5 分钟**，勿套过小的 `timeout`）全绿；`verify` 会在项目内写 `.verify` 截图目录。
 3. commit → push `origin/main` → 等 CI（check-data + verify）成功。
 4. Pages 构建完成后线上复核：`https://xyykmkefke.github.io/galgame-library/` 的 meta 版本、全库条数、SW 缓存名。
 5. 线上复核通过后再更新交接文档与会话日志（HEAD、版本、条数、验收结果）。
@@ -3152,3 +3157,146 @@ PASS  封面缓存回收仍把封面压到上限内  → 剩余封面 500（上�
 
 `check-data` 0 问题、`verify` **262/262**（新增 2 条，双向反向验证）。
 版本 2.47.0，SW `yuc-gl-shell-v66`。
+
+## 83. 扩展库全或无：2MB 那个失败，1329 条已经到手的也丢了（v2.48.0，2026-11-28）
+
+### 83.1 问题从哪来
+
+这一轮的方位是「61 个从未被验收碰过的入口」——先统计 `index.html` 里所有被引用的 id，
+再看 `verify.mjs` 里从未出现过的，差集就是盲区。列表里有 `extraStatus`、`retryExtra`、
+`loadMoreBtn`、`mineSort`、`years`、`syncDisconnectBtn` 等。
+
+按「用户会撞上、错了也不容易发现」排序后，第一个有实质问题的是扩展库加载。
+
+### 83.2 三个文件体量差 250 倍，却用全或无加载
+
+```js
+Promise.all([
+  loadScriptOnce('data/vndb-extra.js'),     // 2.0 MB · 5737 条
+  loadScriptOnce('data/bgm-extra.js'),      // 8 KB  ·   20 条
+  loadScriptOnce('data/recent-extra.js'),   // 321 KB · 1329 条
+]).then(function () {
+  mergeExtraData();
+}).catch(function () {
+  extraFailed = true;
+  // ← 从不调用 mergeExtraData()
+});
+```
+
+`Promise.all` 是**全或无**：只要一个 reject，整个就 reject，`then` 不执行。
+而 `catch` 里只把 `extraFailed` 置真、改一句文案、`render()` —— **从不合并数据**。
+
+于是那个 2MB 的文件一旦失败（弱网下它最可能），另外两个**已经下载成功、已经躺在
+`window.GL_RECENT` / `window.GL_BGM_EXTRA` 里的数据被直接丢弃**，用户看到的是
+「扩展库加载失败，当前仅显示主库」，全库只剩 1968 条主库。
+
+而 `mergeExtraData()` 本身对缺失的文件是完全安全的 —— 它对三个来源都做了 `|| []` 兜底：
+
+```js
+var extras = (window.GL_VNDB_EXTRA && window.GL_VNDB_EXTRA.list) || [];
+var bgms = (window.GL_BGM_EXTRA && window.GL_BGM_EXTRA.list) || [];
+var recents = (window.GL_RECENT && window.GL_RECENT.list) || [];
+```
+
+**也就是说：合并逻辑早就支持「只有部分文件到了」，只是从来没被那样调用过。**
+缺的不是能力，是调用时机。
+
+### 83.3 重试路径更糟：会无限重下
+
+```js
+var finish = function () { extraLoading = false; scheduleExtraData(); };
+Promise.all([...]).then(...).catch(finish);   // ← catch 里重新跑一整轮
+```
+
+`catch(finish)` 会重新调用 `scheduleExtraData()`，等于再发起三个文件的完整请求。
+如果那个 2MB 的一直失败，用户每点一次重试就**重下一遍已经到手的 321KB**，
+而且状态条永远停在「扩展库重试加载中…」—— 因为 `render()` 从不执行。
+
+### 83.4 修法
+
+把「全或无」改成「各自独立、能合并多少就合并多少」。每个 `loadScriptOnce` 自己
+`catch` 并记账，`Promise.all` 只用来等「都结束了」，不承担成败语义：
+
+```js
+var failed = [];
+var settled = files.map(function (f) {
+  return loadScriptOnce(f.src).catch(function () { failed.push(f.label); });
+});
+Promise.all(settled).then(function () {
+  var anyLoaded = files.length > failed.length;
+  if (anyLoaded) { extraFailed = false; extraPartial = failed.length > 0; mergeExtraData(); }
+  else { extraFailed = true; extraPartial = false; }
+  ...
+  render();
+});
+```
+
+四处配套改动：
+
+1. **新增 `extraPartial` 状态。** 只有 `extraFailed` 一个布尔量的话，
+   「部分成功」会被归进「还在加载」，于是空态显示「扩展库还在加载，完成后会自动刷新结果」——
+   而实际上不会再加载了。那句话在承诺一件不会发生的事（第 81 章同一类问题）。
+2. **状态条文案分三档**：全成（收起来）/ 部分成（`部分扩展库未加载（VNDB 扩展），已按已加载部分显示`）/ 全败（`扩展库加载失败，当前仅显示主库`）。部分成时也必须能点重试。
+3. **重试不再重下一整轮。** 已经成功加载过的文件（`window.GL_VNDB_EXTRA` 等已在内存里）
+   直接 `Promise.resolve()` 跳过，只对还没到手的加 `?v=` 绕缓存。
+4. **`render()` 改成无条件执行。** 原来只在 `state.q.trim()` 时重绘，但「扩展库到了」
+   影响的是全库条数、年份导航、筛选可选值，不只是搜索结果。
+
+### 83.5 断言怎么测「只有一个文件失败」
+
+不能伪造返回值 —— 那测的是伪造本身。用 CDP 的 `Network.setBlockedURLs` 真实阻断：
+
+```js
+await cdp.send('Network.setBlockedURLs', { urls: ['*vndb-extra.js*'] });
+await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?partial=${Date.now()}` });
+```
+
+页面走的是真实的 `loadScriptOnce` → `el.onerror` → reject 路径，与弱网完全一致。
+
+两条断言：
+
+| 断言 | 守什么 |
+|---|---|
+| 扩展库部分失败时仍合并已加载的部分 | `hasRecent === true && hasExtra === false` |
+| 扩展库部分失败时提示说明缺了哪个 | 提示含「部分扩展库未加载」且点名「VNDB 扩展」 |
+
+第二条不是凑数：如果只把 `anyLoaded` 逻辑补上、文案还写「加载失败，当前仅显示主库」，
+第一条照样通过，但用户会以为一条扩展数据都没有。
+
+### 83.6 反向验证
+
+把 `loadScriptOnce(f.src).catch(...)` 的 `.catch` 去掉（退回全或无），重跑：
+
+```
+FAIL  扩展库部分失败时仍合并已加载的部分  → 新作索引丢失 · 扩展库未合并 · 全库 1968 条
+FAIL  扩展库部分失败时提示说明缺了哪个  → 扩展库加载中…
+FAIL  全程无 JS 异常  → Error: 加载失败：data/vndb-extra.js
+通过 261/264
+```
+
+三条一起把缺陷的完整面貌暴露出来了：
+
+- 全库 **1968 条**（只剩主库，1329 条新作索引没了）
+- 状态条永远停在 **「扩展库加载中…」**（`.catch` 不执行 → UI 不更新 → 用户以为还在下）
+- **未捕获异常**冒泡（reject 没人接）
+
+恢复后 `264/264`：
+
+```
+PASS  扩展库部分失败时仍合并已加载的部分  → 新作索引已合并 · 全库 3317 条
+PASS  扩展库部分失败时提示说明缺了哪个  → 部分扩展库未加载（VNDB 扩展），已按已加载部分显示
+```
+
+`1968 → 3317`，差的 1349 条就是被丢弃的 `recent-extra`(1329) + `bgm-extra`(20)。
+
+### 83.7 一个测试侧的经验：新增导航会撑爆时间预算
+
+新断言要两轮整页导航（阻断态 + 恢复态），整轮验收从 ~4 分钟涨到 ~5 分半。
+第一次跑用 `timeout 520` 中断，日志停在 194 条 PASS、`EXIT=127`——
+**这不是断言失败，是命令被 timeout 杀掉**。判断方法：看 `grep -c '^PASS'` 与
+`grep -c '^FAIL'`，FAIL 为 0 而总数不足，就是超时。给足 600s 后正常 `EXIT=0`。
+
+### 83.8 验收
+
+`check-data` 0 问题、`verify` **264/264**（新增 2 条，反向验证时另有 1 条既有断言连带 FAIL）。
+版本 2.48.0，SW `yuc-gl-shell-v67`。

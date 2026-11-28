@@ -2784,6 +2784,57 @@ async function main() {
     await waitFor("document.querySelectorAll('.card').length > 0", 15000);
     await waitFor("window.__FULL_DATA_READY === true", 20000);
 
+    // ---------- 扩展库部分失败：能加载的必须合并进去 ----------
+    //
+    // 缺陷形态：三个扩展文件用 Promise.all 加载，这是**全或无**的 ——
+    // 只要一个失败就进 catch，而 catch 里从不调用 mergeExtraData()，
+    // 于是已经下载成功的另外两个被白白丢掉，用户看到「扩展库加载失败，当前仅显示主库」。
+    //
+    // 三个文件体量差得很远：vndb-extra.js 2.0MB/5737 条、recent-extra.js 321KB/1329 条、
+    // bgm-extra.js 8KB/20 条。弱网下最可能失败的正是那个 2MB 的，
+    // 而它一失败，1329 条新作索引（已经下到浏览器里了）也被一起丢弃。
+    //
+    // 这里用 Network.setBlockedURLs 真实阻断 vndb-extra.js —— 不是伪造返回值，
+    // 页面走的是真实的 loadScriptOnce onerror 路径。
+    await cdp.send('Network.enable');
+    await cdp.send('Network.setBlockedURLs', { urls: ['*vndb-extra.js*'] });
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?partial=${Date.now()}` });
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    // 等扩展库加载流程收尾（三个请求各自 resolve/reject 后才合并）
+    await waitFor(
+      "document.getElementById('extraStatus') && !document.getElementById('extraStatus').hidden",
+      15000,
+    );
+    const partialState = await cdp.evaluate(`(() => {
+      const d = window.GL_DATA || [];
+      return {
+        total: d.length,
+        hasExtra: d.some((x) => x.ex === 1),
+        hasRecent: d.some((x) => x.rn === 1),
+        hasBgm: d.some((x) => x.bg === 1),
+        statusText: (document.getElementById('extraStatus') || {}).textContent || '',
+        statusHidden: !!(document.getElementById('extraStatus') || {}).hidden,
+      };
+    })()`);
+    // 核心：vndb-extra 被阻断，但 recent-extra 那 1329 条必须已经合并进来
+    check(
+      '扩展库部分失败时仍合并已加载的部分',
+      partialState.hasRecent === true && partialState.hasExtra === false,
+      `vndb-extra 已阻断 · 新作索引${partialState.hasRecent ? '已合并' : '丢失'} · ` +
+        `扩展库${partialState.hasExtra ? '误入' : '未合并'} · 全库 ${partialState.total} 条`,
+    );
+    // 提示必须说清「哪几个没到」，而不是笼统的「加载失败」
+    check(
+      '扩展库部分失败时提示说明缺了哪个',
+      !partialState.statusHidden && /部分扩展库未加载/.test(partialState.statusText) &&
+        /VNDB 扩展/.test(partialState.statusText),
+      partialState.statusText.slice(0, 70),
+    );
+    await cdp.send('Network.setBlockedURLs', { urls: [] });
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?restored=${Date.now()}` });
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+
     await cdp.evaluate("localStorage.clear()");
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?deep=${Date.now()}#d=1126` });
     await waitFor("document.getElementById('modal').hidden === false", 12000);
