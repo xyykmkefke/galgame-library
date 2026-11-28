@@ -1,11 +1,11 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.50.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **271/271**，`check-data` **0 问题**）
+- 当前状态：**v2.51.0**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **275/275**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
-- 本次会话：v2.19.0 → **v2.50.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
+- 本次会话：v2.19.0 → **v2.51.0**（VNDB 扩展、Bangumi 关联、月幕补齐、题材优化、裁剪、非 gal 标记、系列聚合、首屏优化、跨站缓存隔离、主库字段补齐、A5 重匹配全量收尾、VNDB 标题索引离线匹配、关联扫描收口、**搜索别名等价性收尾**、**搜索分词标点缺陷**、**制作人员词典化**）
 
 ## 0. 接手先读这里（2026-11-26 收尾状态）
 
@@ -30,6 +30,7 @@
 | v2.48.0 | 扩展库全或无加载：2MB 那个失败，已到手的 1329 条也被丢弃 | 见第 83 章 |
 | v2.49.0 | 断开云同步删不掉凭据却说「已断开」，刷新后又自己连上 | 见第 84 章 |
 | v2.50.0 | 统计页把半截数字当权威，复制摘要把它带出页面也无说明 | 见第 85 章 |
+| v2.51.0 | 扩展库未加载完就导入备份，扩展库作品全被当成无效记录丢弃 | 见第 86 章 |
 
 **当前验收基线：`check-data` 0 问题、`verify` 260/260。** 改动前先跑这两个确认基线。
 
@@ -3568,3 +3569,146 @@ var head = '全库 ' + DATA.length + ' 部' + dataScope().tag;
 
 `check-data` 0 问题、`verify` **271/271**（新增 4 条，反向验证时 3 条 FAIL，耗时约 5.5 分钟）。
 版本 **2.50.0**，SW `yuc-gl-shell-v69`。
+
+---
+
+## 86. 扩展库还没加载完就导入备份：扩展库作品全被当成「无效记录」丢弃（v2.51.0，2026-11-28）
+
+### 86.1 缺陷
+
+```js
+raw.forEach(function (entry, index) {
+  var id = String(isObj ? entry.id : entry);
+  if (!byId.has(id)) { skipped += 1; return; }   // ← 这里
+```
+
+`byId` 在扩展库合并前只有主库 1968 条（`mergeExtraData()` 里才重建为全库 9054）。而扩展库是 2MB 延迟加载的。**在这中间导入备份，扩展库那 5737 条 id 一条都查不到，全部被判为「无效记录」整条丢弃。**
+
+实测（Edge 无头，阻断三个扩展文件后导入一份 2 条的备份：主库 `621282` + 只存在于 vndb-extra 的 `1000211`）：
+
+```
+导入完成：新增 1 条，合并 0 条，跳过 1 条无效记录
+```
+
+提示如实播报了丢弃数量 —— 反而更糟：它看起来像「备份文件里有脏数据」，用户根本想不到是加载时序。
+
+**丢掉的条目不可逆。** 备份文件还在，但用户已经看到「导入完成」，多数人不会再导第二次。
+
+### 86.2 为什么这不是罕见路径
+
+「换设备恢复备份」的人，恰好就是**刚拿到新设备、打开页面就要导入**的那批人。他们打开页面的第 3 秒看到「导入备份」按钮，点下去时扩展库才刚发出去两个请求。
+
+弱网下（正是换设备最常见的场景）这个窗口有好几秒。
+
+### 86.3 修法：数据不全时不判断有效性
+
+与项目已有的 `pendingFilters` / `pendingDetail` 同一套模式：
+
+```js
+var canValidate = fullReady && !extraPartial;
+```
+
+`canValidate` 为假时**不做丢弃判断**，直接存下来。`saveMine()` 不按 byId 过滤，写得进去；扩展库合并完成后它们自然出现在列表里。真正无效的 id 会变成幽灵记录，由「清理失效记录」处理 —— 那条路是用户主动、可见、可撤销的。
+
+为什么用 `fullReady && !extraPartial` 而不是只判 `fullReady`：部分失败时 `mergeExtraData()` 照样会跑（v2.48.0），`fullReady` 会变真，但全库仍有 5737 条不在 `byId` 里。只判 `fullReady` 会漏掉这个状态。
+
+### 86.4 三处配套，缺一处就成静默死角
+
+**(a) 导入提示要说明「这次没校验」**
+
+```
+导入完成：新增 2 条，合并 0 条（扩展库未加载完，未能校验 id；无效记录会在数据完整后作为失效记录出现）
+```
+
+不说这句的话，「跳过 0 条」会被读成「都验证过了」——而实际上一个都没验。
+
+**(b) 数据到齐后要告知结果**
+
+```js
+function reportPendingImport() {
+  if (!pendingImportCheck) return;
+  var pic = pendingImportCheck;
+  pendingImportCheck = null;
+  var nowVisible = pic.ids.filter(function (id) { return byId.has(id); }).length;
+  var stillGhost = pic.ids.length - nowVisible;
+  toast('导入的 ' + pic.ids.length + ' 条中 ' + nowVisible + ' 条已在库中' +
+    (stillGhost ? '，另有 ' + stillGhost + ' 条不在当前数据库' +
+      (extraFailed ? '（扩展库加载失败，补齐后可能恢复）' : '（可在「失效记录」里清理）') : ''));
+}
+```
+
+用户导入时听到「未能校验 id」，这是在**承诺一件事还没结果**。不给下文等于食言。
+
+**(c) 这个函数必须在两条路径上都调用**
+
+```js
+// scheduleExtraData 的 else（全部失败）
+} else {
+  extraFailed = true;
+  extraPartial = false;
+  window.__FULL_DATA_READY = true;
+  reportPendingImport();        // ← 少了这行，pendingImportCheck 永远挂着
+}
+```
+
+**第一次修的时候只补了 `scheduleExtraData`，漏了 `retryExtraData` 里一模一样的 else 分支。** 是验收脚本第二条断言失败才发现的 —— 这类「同一模块里 A 有、B 没有」的不对称比两处都错更难发现，因为读 A 时会觉得这个模块考虑得很周全。
+
+### 86.5 断言：四条
+
+```
+扩展库未就绪时导入不丢弃扩展库条目  → 扩展库 id 1000211 已写入 · 当时全库 1968 条
+未校验 id 时导入提示如实说明        → 导入完成：新增 2 条，合并 0 条（扩展库未加载完，未能校验 id…）
+扩展库到位后导入的扩展库条目显形    → 重试已触发 · 全库 9054 条 · 1000211 已入全库
+扩展库到位后告知未校验条目的结果    → 导入的 2 条中 2 条已在库中
+```
+
+第一条不只查 toast，**回读 localStorage 确认真的写进去了** —— 「说新增了」和「真的新增了」是两件事。
+
+「扩展库独有 id」由 Node 侧解析数据文件取差集得到，不硬编码：
+
+```js
+const main = new Set((load('galgames.js').GL_DATA || []).map((x) => String(x.i)));
+const ex = (load('vndb-extra.js').GL_VNDB_EXTRA || {}).list || [];
+const only = ex.map((x) => String(x.i)).filter((i) => !main.has(i));
+```
+
+固定写死 `1000211` 的话，数据一更新就可能变成主库条目，断言静默失效。
+
+### 86.6 反向验证（把 canValidate 改回 true）
+
+```
+FAIL  扩展库未就绪时导入不丢弃扩展库条目  → 扩展库 id 1000211 被丢弃 · 当时全库 1968 条
+FAIL  未校验 id 时导入提示如实说明        → 导入完成：新增 1 条，合并 0 条，跳过 1 条无效记录
+FAIL  扩展库到位后告知未校验条目的结果    → 导入完成：新增 1 条，合并 0 条，跳过 1 条无效记录
+通过 272/275
+```
+
+第三条 FAIL 的提示文字**还是那句「跳过 1 条无效记录」**——它从未被覆盖过，说明 `pendingImportCheck` 根本没被登记（`touchedIds` 只在 `!canValidate` 时收集）。这比单纯「提示不对」更能证明根因。
+
+「显形」那条在缺陷态仍 PASS，因为全库数据文件本身就包含 `1000211`（它是真实作品）。那条断言守的是「合并后 byId 里有它」，与导入是否丢弃无关 —— **它守的是另一个性质，不该指望它在缺陷态失败。**
+
+### 86.7 反向验证时踩的坑：整页导航把内存状态清掉了
+
+第一版断言用 `Page.navigate` 切到第二场景，结果「扩展库到位后告知结果」永远 FAIL。
+
+原因：`pendingImportCheck` 只在内存里，换页 = 换了一个全新用户会话，它必然为空。这不是产品缺陷 —— 用户刷新后看到的就是完整列表，也确实不需要那句提示。
+
+修法：在同一页面会话里点 `#extraStatus` 的「重试」触发补齐：
+
+```js
+const retryClicked = await cdp.evaluate(`(() => {
+  const s = document.getElementById('extraStatus');
+  if (!s || s.hidden || typeof s.onclick !== 'function') return 'no-retry-handle';
+  s.onclick();
+  return 'clicked';
+})()`);
+```
+
+并把 `retryClicked` 写进失败时的说明里 —— 若将来入口改名，会直接看到「无入口」而不是含糊的「没显形」。
+
+**教训：断言跨场景时，要清楚哪些状态活在内存里、哪些在存储里。** 换页会清掉前者，而断言往往以为自己在测同一件事。
+
+### 86.8 验收
+
+`check-data` 0 问题、`verify` **275/275**（新增 4 条，反向验证 3 条 FAIL，耗时约 6 分钟）。
+版本 **2.51.0**，SW `yuc-gl-shell-v70`。

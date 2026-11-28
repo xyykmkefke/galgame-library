@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
+import vm from 'node:vm';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const BASE_PORT = 8792;
@@ -2972,6 +2973,144 @@ async function main() {
       !/主库|部分扩展库/.test(statsFull.count) && statsFull.hasNote === false &&
         !/主库|部分扩展库/.test(statsFull.summaryHead || ''),
       `${statsFull.count} · 提示${statsFull.hasNote ? '残留' : '已清'} · 全库 ${statsFull.total} 条`,
+    );
+
+    // ---------- 扩展库未就绪时导入：不能把「查不到」当成「无效」 ----------
+    //
+    // 缺陷形态：导入用 `if (!byId.has(id)) { skipped += 1; return; }` 判无效，
+    // 而 byId 在扩展库合并前只有主库 1968 条。扩展库那 5737 条一条都查不到，
+    // 于是备份里所有扩展库作品都被当成脏数据整条丢弃，提示还如实播报「跳过 N 条无效记录」——
+    // 用户会以为备份文件坏了，根本想不到是加载时序。
+    //
+    // 这不是罕见路径：扩展库是 2MB 延迟加载的，弱网要好几秒；而「换设备恢复备份」的人
+    // 恰好是刚拿到新设备、一打开页面就要导入的那批人。丢弃不可逆：用户看到「导入完成」
+    // 通常不会再导第二次。
+    //
+    // 断言要的三件事，缺一不可：
+    //   A. 那条扩展库 id 必须真的被写进存储（不是只在 toast 里说「新增」）
+    //   B. 提示必须说明「这次没校验 id」，否则「跳过 0 条」会被当成「都验证过了」
+    //   C. 扩展库到位后它必须真的显形，且有一条告知 —— 否则用户以为数据丢了
+    const extraOnlyId = (() => {
+      // 从数据文件解析，不硬编码：主库 id 集合与扩展库做差集，取第一个
+      try {
+        const load = (f) => {
+          const ctx = { window: {} };
+          vm.createContext(ctx);
+          vm.runInContext(readFileSync(path.join(ROOT, 'data', f), 'utf8'), ctx);
+          return ctx.window;
+        };
+        const main = new Set((load('galgames.js').GL_DATA || []).map((x) => String(x.i)));
+        const ex = (load('vndb-extra.js').GL_VNDB_EXTRA || {}).list || [];
+        const only = ex.map((x) => String(x.i)).filter((i) => !main.has(i));
+        return only[0] || '';
+      } catch (e) {
+        return '';
+      }
+    })();
+    // 取一个确定在主库里的 id 作为对照：它能被校验通过，说明不是「整个导入都坏了」
+    const mainIdForImport = await cdp.evaluate(
+      "(() => { const x=(window.GL_DATA||[]).find((x)=>!x.ex && !x.rn && !x.bg && x.d); return x?String(x.i):''; })()",
+    );
+
+    await cdp.send('Network.setBlockedURLs', { urls: ['*vndb-extra.js*', '*recent-extra.js*', '*bgm-extra.js*'] });
+    await cdp.evaluate("localStorage.clear()");
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?impEarly=${Date.now()}` });
+    await waitFor("document.querySelectorAll('.card').length > 0", 20000);
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    const earlyImport = await cdp.evaluate(`(() => {
+      const payload = JSON.stringify({
+        app: 'yuc-galgame-list', version: 1,
+        items: [
+          { id: ${Number(mainIdForImport)}, status: 'done', addedAt: 1700000000000, updatedAt: 1700000000000 },
+          { id: ${extraOnlyId ? Number(extraOnlyId) : 0}, status: 'doing', addedAt: 1700000000000, updatedAt: 1700000000000 },
+        ],
+        deleted: {},
+      });
+      const dt = new DataTransfer();
+      dt.items.add(new File([payload], 'backup.json', { type: 'application/json' }));
+      const input = document.getElementById('fileInput');
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      // FileReader 是异步的：轮询到真正写进存储为止，固定 sleep 曾在慢机上读到空对象
+      return new Promise((r) => {
+        let tries = 0;
+        const tick = () => {
+          let mine = {};
+          try { mine = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}'); } catch (e) {}
+          tries += 1;
+          if (Object.keys(mine).length || tries > 60) {
+            r({
+              keys: Object.keys(mine),
+              toast: (document.getElementById('toast') || {}).textContent || '',
+              total: (window.GL_DATA || []).length,
+              tries,
+            });
+            return;
+          }
+          setTimeout(tick, 100);
+        };
+        tick();
+      });
+    })()`);
+    check(
+      '扩展库未就绪时导入不丢弃扩展库条目',
+      !!extraOnlyId && earlyImport.keys.includes(String(extraOnlyId)) &&
+        earlyImport.keys.includes(String(mainIdForImport)),
+      `扩展库 id ${extraOnlyId} ${earlyImport.keys.includes(String(extraOnlyId)) ? '已写入' : '被丢弃'} · ` +
+        `当时全库 ${earlyImport.total} 条 · ${earlyImport.toast.slice(0, 50)}`,
+    );
+    check(
+      '未校验 id 时导入提示如实说明',
+      /未能校验/.test(earlyImport.toast) && !/跳过 1/.test(earlyImport.toast),
+      earlyImport.toast.slice(0, 90),
+    );
+
+    // 解除阻断，在**同一页面会话**里点「重试」把扩展库补齐。
+    //
+    // 这里不能整页导航：pendingImportCheck（以及所有 window.* 打桩）只活在当前内存里，
+    // 换页就等于换了一个全新的用户会话 —— 那种场景下用户确实听不到结果，
+    // 但也确实不需要听（他刷新后看到的就是完整列表）。要测的是「同一次会话里等到了数据」。
+    await cdp.send('Network.setBlockedURLs', { urls: [] });
+    const retryClicked = await cdp.evaluate(`(() => {
+      const s = document.getElementById('extraStatus');
+      if (!s || s.hidden || typeof s.onclick !== 'function') return 'no-retry-handle';
+      s.onclick();
+      return 'clicked';
+    })()`);
+    const lateImport = await (async () => {
+      for (let i = 0; i < 150; i++) {
+        const st = await cdp.evaluate(`(() => {
+          const d = window.GL_DATA || [];
+          const td = (document.getElementById('toast') || {}).textContent || '';
+          return {
+            has: d.some((x) => String(x.i) === '${extraOnlyId}'),
+            total: d.length,
+            toast: td,
+          };
+        })()`);
+        if (st.has && st.total > 3000 && /导入的/.test(st.toast)) return st;
+        await sleep(200);
+      }
+      const last = await cdp.evaluate(`(() => {
+        const d = window.GL_DATA || [];
+        return {
+          has: d.some((x) => String(x.i) === '${extraOnlyId}'),
+          total: d.length,
+          toast: (document.getElementById('toast') || {}).textContent || '',
+        };
+      })()`);
+      return { ...last, retryClicked };
+    })();
+    check(
+      '扩展库到位后导入的扩展库条目显形',
+      lateImport.has === true,
+      `重试${retryClicked === 'clicked' ? '已触发' : '无入口'} · 全库 ${lateImport.total} 条 · ` +
+        `${extraOnlyId} ${lateImport.has ? '已入全库' : '仍不在全库'}`,
+    );
+    check(
+      '扩展库到位后告知未校验条目的结果',
+      /导入的 2 条中/.test(lateImport.toast) && /已在库中/.test(lateImport.toast),
+      lateImport.toast.slice(0, 90) || '(无提示)',
     );
 
     await cdp.evaluate("localStorage.clear()");

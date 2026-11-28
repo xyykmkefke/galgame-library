@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.50.0">
+<meta name="version" content="2.51.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.50.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.51.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3058,6 +3058,9 @@
   // 而实际上不会再加载了 —— 那句话承诺了一件不会发生的事。
   var extraPartial = false;
   var extraLoading = false;
+  // 扩展库未就绪时导入、因而没能校验 id 的那些条目。
+  // 声明位置与 pendingFilters 同理：必须早于任何导入调用点（var 提升会让晚声明变成 undefined）。
+  var pendingImportCheck = null;
 
   // 「当前 DATA 是不是完整全库」的唯一判据。
   //
@@ -3236,6 +3239,23 @@
     });
   }
 
+  // 数据到齐后，把「导入时没能校验」的那批 id 核对一遍并如实告知。
+  //
+  // 必须在**两条**路径上都调：合并成功（mergeExtraData）和全部失败（scheduleExtraData 的 else 分支）。
+  // 只挂在 mergeExtraData 里是个真漏洞 —— 三个文件全失败时它根本不会被调用，
+  // 于是 pendingImportCheck 永远挂着，用户再也不会听到任何结果，
+  // 而他在导入时收到的提示是「未能校验 id」——一句没有下文的承诺。
+  function reportPendingImport() {
+    if (!pendingImportCheck) return;
+    var pic = pendingImportCheck;
+    pendingImportCheck = null;
+    var nowVisible = pic.ids.filter(function (id) { return byId.has(id); }).length;
+    var stillGhost = pic.ids.length - nowVisible;
+    toast('导入的 ' + pic.ids.length + ' 条中 ' + nowVisible + ' 条已在库中' +
+      (stillGhost ? '，另有 ' + stillGhost + ' 条不在当前数据库' +
+        (extraFailed ? '（扩展库加载失败，补齐后可能恢复）' : '（可在「失效记录」里清理）') : ''));
+  }
+
   function mergeExtraData() {
     if (fullReady) return;
     var extras = (window.GL_VNDB_EXTRA && window.GL_VNDB_EXTRA.list) || [];
@@ -3303,6 +3323,10 @@
     // 先置就绪标记再 render：否则 render 里的空结果判断会把「已合并完成」误认成「仍在加载」
     fullReady = true;
     window.__FULL_DATA_READY = true;
+    // 导入时因数据未就绪而没能校验的条目，此刻才真正可见。
+    // 如果不说一声，用户在扩展库加载完之前导入、发现列表里少了几条，会以为导入失败或数据丢了；
+    // 而实际上它们一直在（存进 localStorage 了），只是被 visibleMineIds() 当幽灵记录挡在列表外。
+    reportPendingImport();
     render();
     var status = $('extraStatus');
     if (status) {
@@ -3359,6 +3383,8 @@
           extraFailed = true;
           extraPartial = false;
           window.__FULL_DATA_READY = true;
+          // 全部失败也必须有下文：pendingImportCheck 不能永远挂着（原因见 reportPendingImport）
+          reportPendingImport();
         }
         if (status) {
           if (!failed.length) {
@@ -3437,6 +3463,10 @@
         extraFailed = true;
         extraPartial = false;
         window.__FULL_DATA_READY = true;
+        // 与 scheduleExtraData 的同名分支必须一致：重试也全部失败时，
+        // pendingImportCheck 同样不能永远挂着。两处少一处就是个静默的死角 ——
+        // 用户点了重试、又失败，然后什么都听不到了。
+        reportPendingImport();
       }
       if (status) {
         if (!failed.length) {
@@ -8307,10 +8337,31 @@
         var added = 0;
         var merged = 0;
         var skipped = 0;
+        // 数据没加载完时，「查不到这条 id」不能当成「这条无效」。
+        //
+        // 实测（Edge 无头，阻断三个扩展数据文件后导入一份含 2 条的备份）：
+        //   备份里一条是主库 id 621282、一条是只存在于 vndb-extra 的 1000211
+        //   提示「导入完成：新增 1 条，合并 0 条，跳过 1 条无效记录」
+        // 那一刻 byId 只有主库 1968 条，扩展库那 5737 条一条都查不到，
+        // 于是扩展库作品全被判成「无效记录」整条丢弃 —— 提示还如实播报了丢弃数量，
+        // 看起来像「文件里有脏数据」，用户根本想不到是加载时序。
+        //
+        // 这不是罕见路径：扩展库是 2MB 延迟加载的，弱网下要好几秒；
+        // 而「换设备恢复备份」的人恰好是拿到新设备、刚打开页面就要导入的那批人。
+        // 丢弃又不可逆 —— 备份文件还在，但用户已经看到「导入完成」，多数人不会再导第二次。
+        //
+        // 正确做法与 pendingFilters / pendingDetail 同一套：数据不全时不判断有效性，
+        // 直接存下来（saveMine 不按 byId 过滤，写得进去），等扩展库合并完成后
+        // 它们自然出现在列表里；真正无效的 id 会变成幽灵记录，由「清理失效记录」处理，
+        // 那条路是用户主动、可见、可撤销的。
+        var canValidate = fullReady && !extraPartial;
+        // 登记这次导入涉及的 id，等扩展库合并后再核对一遍（见 mergeExtraData 里的用法）
+        var touchedIds = [];
         raw.forEach(function (entry, index) {
           var isObj = entry && typeof entry === 'object';
           var id = String(isObj ? entry.id : entry);
-          if (!byId.has(id)) { skipped += 1; return; }
+          if (canValidate && !byId.has(id)) { skipped += 1; return; }
+          if (!canValidate) touchedIds.push(id);
           var status = isObj && STATUS[entry.status] ? entry.status : 'want';
           var u = Number(isObj && (entry.updatedAt || entry.addedAt)) || 0;
           var cur = myMap[id];
@@ -8361,11 +8412,15 @@
         }
 
         saveMine();
+        if (!canValidate && touchedIds.length) pendingImportCheck = { ids: touchedIds };
         render();
         // 导入是最需要如实回报的场景：几百条记录没写进去却提示「导入完成」，后果最严重
         if (!anyStorageFail()) {
           toast('导入完成：新增 ' + added + ' 条，合并 ' + merged + ' 条' +
             (skipped ? '，跳过 ' + skipped + ' 条无效记录' : '') +
+            // 没校验过 id 就要说出来：用户可能正在期待一个「跳过 N 条」，
+            // 而这次一条都没跳 —— 不是确认了都对，而是还没法确认。
+            (!canValidate ? '（扩展库未加载完，未能校验 id；无效记录会在数据完整后作为失效记录出现）' : '') +
             (tombAdded ? '，恢复 ' + tombAdded + ' 条删除记录' : '') +
             (tombStale ? '，跳过 ' + tombStale + ' 条过期删除记录' : ''));
         }
