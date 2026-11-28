@@ -1042,6 +1042,37 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 4. Pages 构建完成后线上复核：`https://xyykmkefke.github.io/galgame-library/` 的 meta 版本、全库条数、SW 缓存名。
 5. 线上复核通过后再更新交接文档与会话日志（HEAD、版本、条数、验收结果）。
 
+#### 43.2.1 用 `scripts/gh-push.mjs` 推送时，CI 和 Pages 都不会自动跑（2026-11-28 实测）
+
+**这一条必须记住：`gh-push.mjs` 走 Git Data API 直接 PATCH `refs/heads/main`，
+这种 ref 更新不产生 `push` 事件，因此 `on: push` 的 workflow 一个都不触发。**
+
+表现：脚本报「已更新 main → `<sha>`」，远端 SHA 也对，但
+
+- `gh run list` 里看不到该 commit 的任何 run（CI 不跑）；
+- Pages 的 legacy 构建也不跑 —— `gh api .../pages/builds/latest` 的 `commit` 还停在上一个；
+- 线上 `index.html` 的 meta 版本**静默停在旧版本**，SW 缓存名同样不动。
+
+v2.45.0 就踩了这个坑：推送后等了 10 分钟，CI 列表里始终只有上一个 commit 的记录，
+线上一直是 2.44.0。
+
+补救（两步都要做，缺一个就有一半没生效）：
+
+```bash
+# 1. 手动跑 CI（workflow_dispatch 已在 ci.yml 里声明）
+gh workflow run ci.yml --ref main
+
+# 2. 请求 Pages 重新构建（legacy 构建无法用 workflow_dispatch）
+gh api -X POST repos/xyykmkefke/galgame-library/pages/builds
+```
+
+然后分别确认：`gh run list` 里出现该 SHA 的 CI run 且 success；
+`gh api .../pages/builds/latest --jq .status` 变成 `built` 且 `.commit` 是新 SHA；
+最后才 curl 线上核 meta 版本与 SW 名。
+
+**判据：只要这次用了 `gh-push.mjs`，就必须显式触发 CI 与 Pages，不能靠「push 会自动跑」。**
+直连 `git push` 成功时不需要这两步。
+
 ## 44. VNDB relations 边表（P1，2026-11-23）
 
 ### 44.1 目的
@@ -2785,6 +2816,7 @@ if (saveViews(views)) renderViewsMenu();
 
 `check-data` 0 问题、`verify` **255/255**（新增 3 条，三方向分别反向验证）。
 版本 2.45.0，SW `yuc-gl-shell-v64`。
+发布时踩到 `gh-push.mjs` 不触发 workflow 的坑，补救过程见 43.2.1。
 
 ### 80.6 剩余静默 catch 的处置结论
 
