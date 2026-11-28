@@ -1,7 +1,7 @@
 # Galgame 库 · 落实与交接
 
 - 文档日期：2026-11-26
-- 当前状态：**v2.51.1**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **275/275**，`check-data` **0 问题**）
+- 当前状态：**v2.51.2**（主库 1968 条，其中 205 条非 gal 默认隐藏；`npm run verify` **275/275**，`check-data` **0 问题**）
 - 模板项目：`../番剧`（Bangumi Anime Library v1.6.8）
 - 模板线上：<https://xyykmkefke.github.io/bangumi-anime-library/>
 - 目标版本：v1.0.0（已达成，v1.1.0 增补数据源与交互改进）
@@ -1032,13 +1032,13 @@ VNDB 匹配规则：把中文名、原名及其副标题前段做归一（NFKC�
 
 | 文件 | 位置 | 当前值 |
 |---|---|---|
-| `package.json` | `version` | 2.51.1 |
-| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.51.1 |
-| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.51.1 |
-| `README.md` | 「状态：**vN**」 | v2.51.1 |
-| `manifest.webmanifest` | `version` | 2.51.1 |
-| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v71 |
-| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.51.1 |
+| `package.json` | `version` | 2.51.2 |
+| `package-lock.json` | 顶层 `version` 与 `packages[""].version` **两处** | 2.51.2 |
+| `index.html` | `<meta name="version">` 与页脚 `vN` | 2.51.2 |
+| `README.md` | 「状态：**vN**」 | v2.51.2 |
+| `manifest.webmanifest` | `version` | 2.51.2 |
+| `sw.js` | `CACHE = 'yuc-gl-shell-vN'` | v72 |
+| `HANDOVER.md` | 文档头「当前状态」与末节「当前状态」 | v2.51.2 |
 
 - v2.23.1 之前曾漏更新 `manifest.webmanifest`（停在 2.0.0）与 `package-lock.json`（停在 1.1.0），本次已补齐；两者不影响运行，但会造成 PWA 元数据与依赖锁文件的版本不一致。
 - `manifest.webmanifest` 的 `description` 含作品数（当前 9054），数据规模大幅变化时应同步修改。
@@ -3738,3 +3738,20 @@ const retryClicked = await cdp.evaluate(`(() => {
 ### 87.4 验收
 
 `check-version` 19/19、`check-data` 0 问题、`verify` **275/275**；体积 3544KB；版本 **2.51.1**，SW `yuc-gl-shell-v71`。
+
+## 88. 新作索引例行刷新与别名回归守卫（v2.51.2，2026-11-29）
+
+### 88.1 例行增量
+
+- `fetch-recent-index` 预演：原始 2097 条（上次 2091），保留 1336 条（存量 1329），**净增 7 条**（コヨリニウム、ウィステリア、へっぽこチョロいぞ放課後のこっくりさん、ギャルズフィクション Festival、アクアチャイム、ちゅきちゅきおおかみさんとうしさん、サディスティック女王様），全部 2026-10 之后发售，无存量移除。
+- `--apply` 写入后 `build-pinyin` 刷新 1336 条 `py`；全库 9054 → **9061**（主库 1968 + 关联 20 + 扩展 5737 + 新作 1336），默认可见 8856。
+
+### 88.2 抓到一个回归
+
+- **重建新作索引会清空 `al`**：刷新后 1238 条别名直接归零（体积 321KB → 245KB）。补别名是独立步骤，`fetch-recent-index` 不负责。
+- 修法：重建后必须跑 `node scripts/fill-extra-aliases.mjs --apply`（本次补 1240 条 / 1529 个写法），再跑 `npm run build-pinyin`。
+- 防复发：`check-data` 新增「新作别名覆盖 ≥85%」断言（当前 92.8%），忘跑就红；README 开发段把「重建 → 补别名 → 拼音」写成连续三行。
+
+### 88.3 验收
+
+`check-version` 19/19、`check-data` 0 问题、`verify` **275/275**；体积 **3546KB**（新作 322KB），预算 4000KB 内。版本 **2.51.2**，SW `yuc-gl-shell-v72`。

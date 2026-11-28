@@ -618,11 +618,13 @@ try {
   });
   const ratio = (n) => (list.length ? n / list.length : 0);
   const tgCover = list.filter((x) => x.tg && x.tg.length).length;
+  const withAl = list.filter((x) => Array.isArray(x.al) && x.al.length).length;
   console.log(`新作索引：${list.length} 条（抓取 ${recent.meta?.fetched || 0}，跳过已有 ${recent.meta?.skippedExisting || 0}，` +
     `released >= ${since}），异常 ${bad.length} 条`);
   console.log(`新作覆盖：日期 ${(ratio(cover.date) * 100).toFixed(1)}% · 封面 ${(ratio(cover.img) * 100).toFixed(1)}% · ` +
     `平台 ${(ratio(cover.pl) * 100).toFixed(1)}% · 开发商 ${(ratio(cover.dev) * 100).toFixed(1)}% · ` +
     `题材 ${(ratio(tgCover) * 100).toFixed(1)}%（新作票数少，标签权重普遍不足，覆盖率天然偏低）`);
+  console.log(`新作别名：${withAl} 条有 al（${(ratio(withAl) * 100).toFixed(1)}%）`);
   if (list.length < 200) {
     console.log(`FAIL 新作索引过少：${list.length} < 200`);
     total += 1;
@@ -638,6 +640,11 @@ try {
       total += 1;
     }
   });
+  // 重建新作索引会清空 al；补别名是独立步骤，覆盖率跌破 85% 多半是忘了跑 fill-extra-aliases
+  if (ratio(withAl) < 0.85) {
+    console.log(`FAIL 新作别名覆盖不足：${(ratio(withAl) * 100).toFixed(1)}% < 85%（重建后需运行 node scripts/fill-extra-aliases.mjs --apply）`);
+    total += 1;
+  }
   if (bad.length) {
     console.log(`FAIL 新作条目异常：${bad.slice(0, 5).join(', ')}`);
     total += bad.length;
