@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.45.0">
+<meta name="version" content="2.46.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.45.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.46.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -3850,10 +3850,25 @@
     }
   }
 
+  // 能真正展示出来的收藏数（排除「收藏里有、库里已经查不到」的幽灵记录）。
+  //
+  // 为什么需要这个函数：数据裁剪（第 40 章）会让作品从库里消失，但用户的收藏还在；
+  // 云端同步也会把当前数据里没有的旧 id 一起带回来（mergeRemote 不按 byId 过滤）。
+  // 这类记录不计入列表，也不该计入任何「你有几条收藏」的口径。
+  //
+  // 曾经有三处口径不一致：mineCount 排除了幽灵（正确），而空态判断、backupHint、
+  // 清空提示用的都是未过滤的 Object.keys(myMap).length。实测（2 真 + 2 幽灵）：
+  //   mineCount 显示 2，清空提示却说「已清空 4 条」；
+  //   只有幽灵时 mineCount 是 0、列表 0 张，空态却显示「换个状态看看」——
+  //   实际上怎么换都不会有。同一个数字写在四个地方必然分叉，统一成一个函数。
+  function visibleMineIds() {
+    return Object.keys(myMap).filter(function (id) { return byId.has(id); });
+  }
+
   function renderBackupHint() {
     var el = $('backupHint');
     if (!el) return;
-    if (!Object.keys(myMap).length) {
+    if (!visibleMineIds().length) {
       el.hidden = true;
       el.textContent = '';
       return;
@@ -5395,8 +5410,7 @@
     if (state.tab === 'all' && state.view === 'board') state.view = 'grid';
     var list = filteredList();
     // 云端可能带回当前数据里还没有的旧条目，计数与列表保持一致，只算能展示的
-    var mineTotal = 0;
-    Object.keys(myMap).forEach(function (id) { if (byId.has(id)) mineTotal += 1; });
+    var mineTotal = visibleMineIds().length;
     $('mineCount').textContent = mineTotal;
     $('minebar').hidden = state.tab !== 'mine';
     $('filters').style.display = state.tab === 'mine' ? 'none' : 'flex';
@@ -5480,6 +5494,14 @@
         if (!Object.keys(myMap).length) {
           emptyEl.innerHTML = '<b>还没有加入任何游戏</b>切换到「全部 Galgame」，点击封面即可加入我的游玩' +
             '<br><button class="btn" id="browseAllBtn" type="button">去全部 Galgame</button>';
+        } else if (!visibleMineIds().length) {
+          // 有收藏，但库里一条都查不到（老数据被裁剪、或云端带回了已下架的旧 id）。
+          // 原来这里会落到下面的「换个状态看看」，而实际怎么换都不会有 —— 文案在骗人。
+          emptyEl.innerHTML = '<b>' + Object.keys(myMap).length + ' 条收藏的作品已不在当前数据库中</b>' +
+            '可能是数据更新时下架，或云同步带回了更早的条目。它们仍保留在存储里，' +
+            '导出备份不会丢' +
+            '<br><button class="btn" id="browseAllBtn" type="button">去全部 Galgame</button>' +
+            '<button class="btn" id="cleanGhostBtn" type="button">清理这 ' + Object.keys(myMap).length + ' 条</button>';
         } else if (q) {
           // 有收藏但被关键词筛空：给出准确文案并支持一键清除
           emptyEl.innerHTML = '<b>没有找到匹配的游戏</b>换个关键词试试' +
@@ -5981,7 +6003,7 @@
     });
     lines.push('平台 Top5：' + topEntries(platforms, 5).map(function (e) { return e[0] + ' ' + e[1]; }).join(' / '));
     lines.push('开发商 Top5：' + topEntries(devs, 5).map(function (e) { return e[0] + ' ' + e[1]; }).join(' / '));
-    lines.push('我的收藏：' + Object.keys(myMap).filter(function (id) { return byId.has(id); }).length + ' 部');
+    lines.push('我的收藏：' + visibleMineIds().length + ' 部');
     var mins = 0, timed = 0;
     Object.keys(myMap).forEach(function (id) {
       var x = byId.get(id);
@@ -7218,6 +7240,26 @@
       render();
       return;
     }
+    if (e.target.closest('#cleanGhostBtn')) {
+      // 清理「收藏里有、库里查不到」的幽灵记录。
+      // 必须先算清单再问确认：用户得知道要删掉几条、删的是什么。
+      var ghostIds = Object.keys(myMap).filter(function (id) { return !byId.has(id); });
+      if (!ghostIds.length) { render(); return; }
+      if (!confirm('这 ' + ghostIds.length + ' 条记录的作品已不在当前数据库中，' +
+        '清理后无法在界面上恢复（导出的备份里仍保留）。确定清理吗？')) return;
+      var gts = Date.now();
+      ghostIds.forEach(function (id) {
+        delete myMap[id];
+        // 墓碑必须写：不写的话下次云同步会把它们原样拉回来，
+        // 用户会看到「清理了又回来」（与第 78 章同一个坑）。
+        myDeleted[id] = gts;
+      });
+      persistDeleted();
+      saveMine();
+      render();
+      if (!anyStorageFail()) toast('已清理 ' + ghostIds.length + ' 条失效记录');
+      return;
+    }
     if (!e.target.closest('#resetFilters')) return;
     state.q = '';
     searchEl.value = '';
@@ -8085,10 +8127,16 @@
 
   $('exportMd').addEventListener('click', function () {
     var ids = sortedMine();
+    // 头部计数必须和表格实际写出的行数一致。原来用 ids.length（含幽灵记录），
+    // 而下面的 forEach 遇到 byId 查不到的会 return —— 实测 2 真 + 2 幽灵时
+    // 显示「共 4 部」但表格只有 2 行，用户会以为导出丢了数据。
+    var validIds = ids.filter(function (id) { return byId.has(id); });
+    var ghostN = ids.length - validIds.length;
     var lines = [
       '# 我的游玩',
       '',
-      '共 ' + ids.length + ' 部 · 导出于 ' + new Date().toLocaleString('zh-CN'),
+      '共 ' + validIds.length + ' 部 · 导出于 ' + new Date().toLocaleString('zh-CN') +
+        (ghostN ? '（另有 ' + ghostN + ' 条记录的作品已不在当前数据库中，未列出）' : ''),
       '',
       '| 游戏 | 状态 | 发售日 | 平台 | 开发商 |',
       '| --- | --- | --- | --- | --- |',
@@ -8105,7 +8153,7 @@
     });
     download('我的游玩-' + stamp() + '.md', lines.join('\n'), 'text/markdown;charset=utf-8');
     markBackup();
-    toast('已导出 Markdown：' + ids.length + ' 条');
+    toast('已导出 Markdown：' + validIds.length + ' 条');
   });
 
   $('importBtn').addEventListener('click', function () { $('fileInput').click(); });
@@ -8199,21 +8247,45 @@
     ids.forEach(function (id) {
       snapshot[id] = { s: myMap[id].s, t: myMap[id].t, u: myMap[id].u };
     });
+    // 提示里说的是「清掉了几条收藏」，那就要和 mineCount 用同一个口径。
+    // 原来这里报的是 Object.keys(myMap).length（含幽灵），实测「界面显示 2、提示说已清空 4 条」，
+    // 用户会以为清掉了看不见的东西。幽灵条数另外说明，不能混在一起。
+    var ghostCount = ids.length - visibleMineIds().length;
     var ts = Date.now();
     ids.forEach(function (id) { myDeleted[id] = ts; });
     myMap = {};
     persistDeleted();
       saveMine();
       render();
-      if (!anyStorageFail()) toast('已清空我的游玩（' + ids.length + ' 条）', {
+      if (!anyStorageFail()) toast('已清空我的游玩（' + (ids.length - ghostCount) + ' 条）' +
+        (ghostCount ? '，另有 ' + ghostCount + ' 条失效记录' : ''), {
         label: '撤销',
         fn: function () {
           ids.forEach(clearDeleted);
-          myMap = snapshot;
+          // 合并式恢复，不是整体替换。
+          // 清空之后用户完全可能又加了几条（toast 有 5 秒窗口，够点两下）。
+          // 原来的 `myMap = snapshot` 会把这几条新收藏一起抹掉 —— 正是第 79 章那条
+          // 「导入/恢复必须是加法，不能是状态覆盖」的同一反模式：用旧快照覆盖新操作。
+          // 快照里有的补回去；快照里没有的不动。冲突时（用户在清空后又把同一条加了回来）
+          // 以现有记录为准，因为那是用户更晚的操作。
+          var restoredN = 0;
+          var keptNew = 0;
+          Object.keys(snapshot).forEach(function (id) {
+            if (myMap[id]) return;          // 用户后来自己加回来了，保留他的
+            myMap[id] = snapshot[id];
+            restoredN += 1;
+          });
+          // 快照之外、清空之后新加的条目：一个都不动，只在提示里如实计数
+          Object.keys(myMap).forEach(function (id) {
+            if (!snapshot[id]) keptNew += 1;
+          });
           persistDeleted();
           saveMine();
           render();
-          if (!anyStorageFail()) toast('已恢复 ' + ids.length + ' 部');
+          if (!anyStorageFail()) {
+            toast('已恢复 ' + restoredN + ' 部' +
+              (keptNew ? '，另有 ' + keptNew + ' 部是清空后新加的，未受影响' : ''));
+          }
         }
       });
   });

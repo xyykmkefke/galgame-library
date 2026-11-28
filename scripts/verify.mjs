@@ -2288,6 +2288,195 @@ async function main() {
     const restored = await cdp.evaluate("Object.keys(JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}')).length");
     check('清空后可撤销恢复', restored > 0, restored + ' 条');
 
+    // ---------- 幽灵记录（收藏里有、库里查不到）的口径一致性 ----------
+    // 来源是真实的：数据裁剪（HANDOVER 第 40 章）会让作品从库里消失但收藏还在；
+    // mergeRemote 也会把当前数据里没有的旧 id 直接写进 myMap（不按 byId 过滤）。
+    // 缺陷形态：只有 mineCount 排除了幽灵，另外三处用的是未过滤的 Object.keys(myMap).length：
+    //   1. 清空提示 → 实测「界面显示 2、提示说已清空 4 条」
+    //   2. 空态判断 → 只有幽灵时显示「换个状态看看」，实际怎么换都不会有
+    //   3. 导出 Markdown 头部 → 「共 4 部」但表格只有 2 行
+    const ghostIds = ['900000001', '900000002'];
+    const ghostSetup = await cdp.evaluate(`(() => {
+      const real = (window.GL_DATA || []).filter((x) => x.d).slice(0, 2).map((x) => String(x.i));
+      const m = {};
+      real.forEach((rid, i) => { m[rid] = { s: 'want', t: 1000 + i, u: 1000 + i }; });
+      ${JSON.stringify(ghostIds)}.forEach((g, i) => {
+        // 守卫：确认这些 id 真的不在库里，否则测的就不是幽灵
+        if (document.getElementById('grid') && (window.GL_DATA || []).some((x) => String(x.i) === g)) return;
+        m[g] = { s: 'done', t: 3000 + i, u: 3000 + i };
+      });
+      localStorage.setItem('yuc_gl_mine_v1', JSON.stringify(m));
+      localStorage.setItem('yuc_gl_deleted_v1', '{}');
+      return { real: real, all: Object.keys(m) };
+    })()`);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?ghost=${Date.now()}#tab=mine` });
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    await sleep(700);
+    await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find(b=>b.dataset.tab==='mine'); if(t) t.click(); })()");
+    await sleep(600);
+    const ghostState = await cdp.evaluate(`(() => {
+      const stored = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
+      return {
+        mineCount: Number(document.getElementById('mineCount').textContent),
+        cards: document.querySelectorAll('.card').length,
+        storedN: Object.keys(stored).length,
+        emptyHidden: document.getElementById('empty').hidden,
+        emptyText: (document.getElementById('empty').textContent || '').trim()
+      };
+    })()`);
+    check('幽灵记录不计入收藏数但保留在存储里',
+      ghostState.mineCount === 2 && ghostState.cards === 2 && ghostState.storedN === 4,
+      `显示 ${ghostState.mineCount} · 卡片 ${ghostState.cards} · 存储 ${ghostState.storedN}`);
+
+    // 清空提示必须和 mineCount 同口径。测法：只清空、不撤销，读提示文案。
+    await cdp.evaluate("window.confirm = () => true");
+    await cdp.evaluate("document.getElementById('clearBtn').click()");
+    await sleep(600);
+    const ghostClearToast = await cdp.evaluate("document.getElementById('toast').textContent");
+    const ghostCleared = await cdp.evaluate(
+      "Object.keys(JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}')).length");
+    check('清空提示与收藏数同口径并单列失效记录',
+      ghostCleared === 0 && /已清空我的游玩（2 条）/.test(ghostClearToast) &&
+        /另有 2 条失效记录/.test(ghostClearToast),
+      ghostClearToast);
+
+    // 空态：只剩幽灵时必须说清「作品已不在库中」，不能显示「换个状态看看」
+    await cdp.evaluate(`(() => {
+      const m = {};
+      ${JSON.stringify(ghostIds)}.forEach((g, i) => { m[g] = { s: 'done', t: 3000 + i, u: 3000 + i }; });
+      localStorage.setItem('yuc_gl_mine_v1', JSON.stringify(m));
+      localStorage.setItem('yuc_gl_deleted_v1', '{}');
+    })()`);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?ghost2=${Date.now()}#tab=mine` });
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    await sleep(700);
+    await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find(b=>b.dataset.tab==='mine'); if(t) t.click(); })()");
+    await sleep(600);
+    const onlyGhost = await cdp.evaluate(`(() => ({
+      mineCount: Number(document.getElementById('mineCount').textContent),
+      cards: document.querySelectorAll('.card').length,
+      emptyHidden: document.getElementById('empty').hidden,
+      text: (document.getElementById('empty').textContent || '').trim(),
+      hasCleanBtn: !!document.getElementById('cleanGhostBtn')
+    }))()`);
+    check('只剩幽灵记录时空态说明真实原因',
+      onlyGhost.mineCount === 0 && onlyGhost.cards === 0 && !onlyGhost.emptyHidden &&
+        /已不在当前数据库中/.test(onlyGhost.text) &&
+        // 关键：不能是那句「换个状态看看」，它承诺了一个做不到的事
+        !/换个状态看看/.test(onlyGhost.text) && onlyGhost.hasCleanBtn,
+      `count ${onlyGhost.mineCount} · ${onlyGhost.text.slice(0, 70)}`);
+
+    // 清理按钮：真删掉、且必须写墓碑（否则云同步会拉回来）
+    await cdp.evaluate("window.confirm = () => true");
+    await cdp.evaluate("document.getElementById('cleanGhostBtn').click()");
+    await sleep(700);
+    const ghostClean = await cdp.evaluate(`(() => ({
+      mine: Object.keys(JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}')),
+      del: Object.keys(JSON.parse(localStorage.getItem('yuc_gl_deleted_v1') || '{}')),
+      toast: document.getElementById('toast').textContent
+    }))()`);
+    check('清理幽灵记录同时写墓碑',
+      ghostClean.mine.length === 0 &&
+        ghostIds.every((g) => ghostClean.del.indexOf(g) >= 0) &&
+        /已清理 2 条失效记录/.test(ghostClean.toast),
+      `剩余 ${ghostClean.mine.length} · 墓碑 ${ghostClean.del.length} · ${ghostClean.toast}`);
+
+    // ---------- 清空后的「撤销」必须是合并，不能整体替换 ----------
+    // 缺陷形态：`myMap = snapshot`。清空后用户完全可能又加了几条（toast 有 5 秒窗口），
+    // 一点撤销就全被快照覆盖掉 —— 与第 79 章「导入必须是加法」是同一反模式。
+    // 测法：同一个同步块里完成「清空 → 记下撤销按钮 → 加一条新的 → 点撤销」，
+    // 不受 toast 5 秒超时与后续 toast 覆盖影响，测的纯粹是撤销函数本身的语义。
+    await cdp.evaluate(`(() => {
+      const now = Date.now();
+      const d = (window.GL_DATA || []).filter((x) => x.d).slice(0, 2).map((x) => String(x.i));
+      const m = {};
+      d.forEach((id, i) => { m[id] = { s: 'want', t: now - 5000 + i, u: now - 5000 + i }; });
+      localStorage.setItem('yuc_gl_mine_v1', JSON.stringify(m));
+      localStorage.setItem('yuc_gl_deleted_v1', '{}');
+    })()`);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?undo=${Date.now()}#tab=mine` });
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    await sleep(700);
+    // 导航会重置页面全局：confirm 必须在这之后重新打桩。
+    // 无头浏览器里没打桩的原生 confirm() 会永久阻塞，整轮卡死（实测卡了 9 分钟才手动停掉）。
+    await cdp.evaluate("window.confirm = () => true; 'ok'");
+    await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find(b=>b.dataset.tab==='mine'); if(t) t.click(); })()");
+    await sleep(600);
+    const undoState = await cdp.evaluate(`(() => {
+      // 先记下清空前的收藏（必须在 click() 之前读，否则读到的是清空后的空对象 ——
+      // 那样 preset 恒为空，「原有已恢复」这条会空转成真，等于没测）。
+      const preset = Object.keys(JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}'));
+      document.getElementById('clearBtn').click();
+      const undoBtn = document.getElementById('toastAct');
+      window.__undoBtn = undoBtn;
+      return { hasUndo: !!undoBtn, presetN: preset.length, preset: preset };
+    })()`);
+    // 清空后收藏为空，切到全部列表加一条新的
+    await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find(b=>b.dataset.tab==='all'); if(t) t.click(); })()");
+    for (let i = 0; i < 40; i++) { await sleep(250);
+      if (await cdp.evaluate("document.querySelectorAll('.card').length > 0")) break; }
+    const newlyAdded = await cdp.evaluate(`(() => {
+      const c = [...document.querySelectorAll('.card')][0];
+      if (!c) return '';
+      const b = c.querySelector('[data-act="toggle"]');
+      if (!b) return '';
+      b.click();
+      return c.dataset.id;
+    })()`);
+    await sleep(700);
+    const beforeUndo = await cdp.evaluate(
+      "Object.keys(JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}'))");
+    // 点之前保存下来的那个撤销按钮（即使它已从 toast 里被换掉，节点上的监听仍在）
+    const undoResult = await cdp.evaluate(`(() => {
+      const b = window.__undoBtn;
+      if (!b) return 'no-undo-btn';
+      b.click();
+      return 'clicked';
+    })()`);
+    await sleep(800);
+    const afterUndo = await cdp.evaluate(
+      "Object.keys(JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}'))");
+    const newKept = !!newlyAdded && afterUndo.indexOf(String(newlyAdded)) >= 0;
+    const presetBack = undoState.preset.length > 0 &&
+      undoState.preset.every((id) => afterUndo.indexOf(id) >= 0);
+    check('清空后撤销不抹掉期间新加的收藏',
+      undoState.hasUndo && undoResult === 'clicked' && beforeUndo.length === 1 &&
+        newKept && presetBack,
+      `清空前 ${undoState.presetN} 条 · 新加 ${newlyAdded || '?'} · 撤销前 ${beforeUndo.length} 条 · ` +
+        `撤销后 ${afterUndo.length} 条 · 新加${newKept ? '保留' : '★ 被抹掉'} · ` +
+        `原有${presetBack ? '已恢复' : '没全恢复'}`);
+
+    // 本段结束必须把状态复原：上面把收藏清空了，后面「备份导出带上删除标记」
+    // 需要「我的游玩里有一条能移出的收藏」。这是 v2.42.0 踩过的同一坑 ——
+    // 新断言污染后续断言。修法是把「复原」当成断言块的一部分来写，不是加 sleep。
+    await cdp.evaluate(`(() => {
+      // 放 2 条：后面「备份导出带上删除标记」会移出其中一条造墓碑，
+      // 另一条要留着给「导入备份…不误删本地收藏」当「本地仍在列表」的样本。
+      // 只放 1 条时那条会被移出（变成墓碑），keep 就取到空串，断言会假失败。
+      const d = (window.GL_DATA || []).filter((x) => x.d).slice(0, 2).map((x) => String(x.i));
+      const m = {};
+      const now = Date.now();
+      d.forEach((id, i) => { m[id] = { s: 'want', t: now - 2000 + i, u: now - 2000 + i }; });
+      localStorage.setItem('yuc_gl_mine_v1', JSON.stringify(m));
+      // 注意：只改 localStorage 不够 —— 页面内存里的 myDeleted 还是旧值，
+      // 下一次 persistDeleted() 会把旧墓碑原样写回去。所以这里必须让页面重新载入。
+      localStorage.setItem('yuc_gl_deleted_v1', '{}');
+    })()`);
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?restore=${Date.now()}#tab=mine` });
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    await sleep(700);
+    await cdp.evaluate("(() => { const t=[...document.querySelectorAll('.tab')].find(b=>b.dataset.tab==='mine'); if(t) t.click(); })()");
+    await sleep(600);
+    // 导航会重置页面全局，前面装的下载拦截器（URL.createObjectURL）一起没了。
+    // 不重新装的话，后面「备份导出带上删除标记」永远读到空串，会假失败在「无 deleted 字段」。
+    await cdp.evaluate(`(() => {
+      window.__dl = [];
+      const orig = URL.createObjectURL;
+      URL.createObjectURL = function (b) { b.text().then((t) => window.__dl.push(t)); return orig.call(URL, b); };
+      HTMLAnchorElement.prototype.click = function () { window.__dlName = this.download; };
+    })()`);
+
+
     // ---------- 备份要带上删除标记（墓碑） ----------
     // 缺陷形态：导出的 JSON 只有 items、没有 deleted。
     // 墓碑只活在 localStorage 里，是「这条被删过」的唯一凭据；备份里没有它，
@@ -2334,8 +2523,12 @@ async function main() {
     const tombScenario = await cdp.evaluate(`(() => {
       const mine = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
       const keep = Object.keys(mine)[0] || '';
-      // 找一个库里存在、但本地没收藏的 id，用来测「过期墓碑被丢弃」
-      const xx = (window.GL_DATA || []).find((x) => !mine[String(x.i)] && x.d);
+      // 找一个库里存在、但本地没收藏的 id，用来测「过期墓碑被丢弃」。
+      // 必须排除 tombId —— 它也是「库里存在但本地没收藏」，会被挑中；
+      // 一旦挑中，下面 payload.deleted[stale] = staleTs 就会把刚造好的新鲜墓碑
+      // 覆盖成 181 天前，于是「墓碑恢复」这条断言假失败（实测踩过一次）。
+      const xx = (window.GL_DATA || []).find(
+        (x) => !mine[String(x.i)] && x.d && String(x.i) !== ${JSON.stringify(tombId)});
       const stale = xx ? String(xx.i) : '';
       const staleTs = Date.now() - 181 * 24 * 60 * 60 * 1000;
       // 注意这里必须先 parse：导出的原文是一段 JSON 字符串，直接赋值会得到字符串
