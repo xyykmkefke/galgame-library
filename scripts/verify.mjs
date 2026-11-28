@@ -2203,6 +2203,84 @@ async function main() {
     const restored = await cdp.evaluate("Object.keys(JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}')).length");
     check('清空后可撤销恢复', restored > 0, restored + ' 条');
 
+    // ---------- 备份要带上删除标记（墓碑） ----------
+    // 缺陷形态：导出的 JSON 只有 items、没有 deleted。
+    // 墓碑只活在 localStorage 里，是「这条被删过」的唯一凭据；备份里没有它，
+    // 「导出 → 清空 / 换设备 → 导入」之后墓碑就空了，mergeRemote() 里
+    // `tomb && tomb >= r.u` 判不出删除 → 云端那条被原样拉回来。
+    // 测法：走真实入口造一条墓碑 → 导出 → 抹掉本地 deleted（模拟换设备）→ 冷启动
+    //       → 导入刚才那份备份 → 校验墓碑回来了、没把本地收藏误删、过期墓碑被丢弃。
+    await cdp.evaluate(`(() => {
+      const t = [...document.querySelectorAll('.tab')].find((b) => b.dataset.tab === 'mine');
+      if (t) t.click();
+    })()`);
+    await sleep(300);
+    const tombId = await cdp.evaluate(`(() => {
+      const b = document.querySelector('.card [data-act="toggle"]');
+      if (!b) return '';
+      const card = b.closest('.card');
+      b.click();
+      return card.dataset.id || '';
+    })()`);
+    await sleep(500);
+    const tombStored = await cdp.evaluate(
+      "(() => { try { return JSON.parse(localStorage.getItem('yuc_gl_deleted_v1') || '{}'); } catch { return {}; } })()");
+    // 注意 __dl 里已累积了前面 CSV / Markdown 的内容，必须按点击前的长度取新增那一条
+    const dlBefore = await cdp.evaluate("window.__dl ? window.__dl.length : 0");
+    await cdp.evaluate("document.getElementById('exportBtn').click()");
+    await sleep(600);
+    const exportWithTomb = await cdp.evaluate(
+      `window.__dl && window.__dl.length > ${dlBefore} ? window.__dl[${dlBefore}] : ''`);
+    let tombBackup = null;
+    try { tombBackup = JSON.parse(exportWithTomb); } catch {}
+    check('备份导出带上删除标记',
+      !!tombId && !!tombStored[tombId] && !!tombBackup && !!tombBackup.deleted &&
+        String(tombBackup.deleted[tombId] || '') === String(tombStored[tombId]),
+      tombId
+        ? `墓碑 ${tombId} · 备份里${tombBackup && tombBackup.deleted
+          ? (tombBackup.deleted[tombId] ? '有' : '无') : '无 deleted 字段'}`
+        : '找不到可移出的收藏');
+
+    // 抹掉存储里的 deleted：模拟「换了设备 / 清了浏览器缓存」，墓碑彻底不存在了
+    await cdp.evaluate("localStorage.setItem('yuc_gl_deleted_v1', '{}'); 'ok'");
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${PORT}/?tomb=${Date.now()}` });
+    await waitFor("document.querySelectorAll('.card').length > 0", 15000);
+    await waitFor("window.__FULL_DATA_READY === true", 20000);
+    const tombScenario = await cdp.evaluate(`(() => {
+      const mine = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
+      const keep = Object.keys(mine)[0] || '';
+      // 找一个库里存在、但本地没收藏的 id，用来测「过期墓碑被丢弃」
+      const xx = (window.GL_DATA || []).find((x) => !mine[String(x.i)] && x.d);
+      const stale = xx ? String(xx.i) : '';
+      const staleTs = Date.now() - 181 * 24 * 60 * 60 * 1000;
+      // 注意这里必须先 parse：导出的原文是一段 JSON 字符串，直接赋值会得到字符串
+      const payload = JSON.parse(${JSON.stringify(exportWithTomb)});
+      payload.deleted = payload.deleted || {};
+      payload.deleted[keep] = Date.now();          // 本地还留着这条 → 不该被误删
+      if (stale) payload.deleted[stale] = staleTs; // 181 天前 → 该被判过期丢弃
+      const dt = new DataTransfer();
+      dt.items.add(new File([JSON.stringify(payload)], 'backup-tomb.json', { type: 'application/json' }));
+      const input = document.getElementById('fileInput');
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return { keep: keep, stale: stale };
+    })()`);
+    await sleep(900);
+    const tombAfter = await cdp.evaluate(`(() => {
+      const m = JSON.parse(localStorage.getItem('yuc_gl_mine_v1') || '{}');
+      const d = JSON.parse(localStorage.getItem('yuc_gl_deleted_v1') || '{}');
+      return { mine: m, deleted: d, toast: document.getElementById('toast').textContent };
+    })()`);
+    const tombRestored = !!tombAfter.deleted[tombId];
+    const keepAlive = !!tombScenario.keep && !!tombAfter.mine[tombScenario.keep] && !tombAfter.deleted[tombScenario.keep];
+    const staleDropped = !tombScenario.stale || !tombAfter.deleted[tombScenario.stale];
+    check('导入备份恢复删除标记且不误删本地收藏',
+      tombRestored && keepAlive && staleDropped &&
+        /恢复 1 条删除记录/.test(tombAfter.toast) && /跳过 1 条过期删除记录/.test(tombAfter.toast),
+      `墓碑${tombRestored ? '已恢复' : '丢了'} · 本地收藏 ${tombScenario.keep || '?'}${keepAlive ? '保留' : '被误删'} · ` +
+        `过期墓碑${staleDropped ? '已丢弃' : '被写入'} · ${tombAfter.toast}`);
+
+
     // ---------- 云同步（mock GitHub API） ----------
     await cdp.evaluate("localStorage.clear()");
     const syncIds = await cdp.evaluate(`(() => {

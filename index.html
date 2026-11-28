@@ -20,7 +20,7 @@
 <link rel="dns-prefetch" href="https://gcore.jsdelivr.net">
 <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 <meta name="theme-color" content="#0a0b0d">
-<meta name="version" content="2.43.0">
+<meta name="version" content="2.44.0">
 <link rel="preload" as="script" href="data/galgames.js" fetchpriority="high">
 <link rel="preload" as="script" href="data/vndb.js">
 <link rel="preload" as="script" href="data/ymgal.js">
@@ -2783,7 +2783,7 @@
 </main>
 
 <footer class="wrap">
-  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.43.0</span>
+  数据来源 <a href="https://bgm.tv" target="_blank" rel="noreferrer">Bangumi 番组计划</a> · <a href="https://vndb.org" target="_blank" rel="noreferrer">VNDB</a> · <a href="https://www.ymgal.games" target="_blank" rel="noreferrer">月幕 Galgame</a> · 通过镜像接口生成 · 封面版权归原作者所有 · <button class="footer-link" id="statsLink" type="button">数据统计</button> · 数据更新于 <span id="dataUpdated" title="Bangumi 数据快照生成时间">—</span> · <span title="项目版本" id="appVersion">v2.44.0</span>
 </footer>
 
 <div class="modal" id="modal" hidden>
@@ -8028,7 +8028,12 @@
       app: 'yuc-galgame-list',
       version: 1,
       exportedAt: new Date().toISOString(),
-      items: ids
+      items: ids,
+      // 删除标记必须一起导出。墓碑只活在 localStorage 里，是「这条被删过」的唯一凭据；
+      // 备份里一旦没有它，「导出 → 清空 / 换设备 → 导入」之后墓碑就没了，
+      // 而云同步那边 mergeRemote() 判的是 `tomb && tomb >= r.u` —— 取不到墓碑即视为没删过，
+      // 云端那条会被原样拉回来。用户看到的还是那句「我明明删了，它自己又回来了」。
+      deleted: myDeleted
     };
     download('我的游玩-' + stamp() + '.json', JSON.stringify(payload, null, 2), 'application/json');
     markBackup();
@@ -8120,16 +8125,46 @@
           cur.t = Math.min(Number(cur.t) || Infinity, Number(isObj && entry.addedAt) || Infinity) || cur.t;
           merged += 1;
         });
-          saveMine();
-          render();
-          // 导入是最需要如实回报的场景：几百条记录没写进去却提示「导入完成」，后果最严重
-          if (!anyStorageFail()) {
-            toast('导入完成：新增 ' + added + ' 条，合并 ' + merged + ' 条' +
-              (skipped ? '，跳过 ' + skipped + ' 条无效记录' : ''));
-          }
-        } catch (err) {
-          toast('导入失败：文件格式不正确');
+
+        // 删除标记（墓碑）也要一起恢复。墓碑只存在本地，是「这条被删过」的唯一凭据：
+        // 备份里没有它的话，「导出 → 清空 → 导入」之后墓碑就空了，mergeRemote() 里
+        // `tomb && tomb >= r.u` 判不出来，云端那条会被原样拉回来。
+        // 只补「本地此刻没有这条记录」的墓碑 —— 导入是加法，绝不能因为备份里有墓碑
+        // 就删掉用户现有的收藏，否则拿旧备份导入等于用旧状态覆盖新操作。
+        var tombAdded = 0;
+        var tombStale = 0;
+        var fileDeleted = !Array.isArray(parsed) && parsed && parsed.deleted &&
+          typeof parsed.deleted === 'object' ? parsed.deleted : null;
+        if (fileDeleted) {
+          // 与 loadDeleted() 用同一条过期线：超过 180 天的墓碑在载入时本来就会被丢掉，
+          // 这里不另立标准，免得「从存储读」和「从备份导入」行为不一致。
+          var tombCutoff = Date.now() - DEL_MAX_AGE;
+          Object.keys(fileDeleted).forEach(function (id) {
+            if (!/^\d+$/.test(id)) return;
+            // 本地还留着这条记录 = 用户后来又要回来了，以「在列表里」为准
+            if (myMap[id]) return;
+            var ts = Number(fileDeleted[id]) || 0;
+            if (ts < tombCutoff) { tombStale += 1; return; }
+            if (ts > (Number(myDeleted[id]) || 0)) {
+              myDeleted[id] = ts;
+              tombAdded += 1;
+            }
+          });
+          if (tombAdded) persistDeleted();
         }
+
+        saveMine();
+        render();
+        // 导入是最需要如实回报的场景：几百条记录没写进去却提示「导入完成」，后果最严重
+        if (!anyStorageFail()) {
+          toast('导入完成：新增 ' + added + ' 条，合并 ' + merged + ' 条' +
+            (skipped ? '，跳过 ' + skipped + ' 条无效记录' : '') +
+            (tombAdded ? '，恢复 ' + tombAdded + ' 条删除记录' : '') +
+            (tombStale ? '，跳过 ' + tombStale + ' 条过期删除记录' : ''));
+        }
+      } catch (err) {
+        toast('导入失败：文件格式不正确');
+      }
     };
     reader.readAsText(file);
     e.target.value = '';
